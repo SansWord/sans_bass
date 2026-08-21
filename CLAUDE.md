@@ -95,6 +95,10 @@ out of the project; never commit them.
 - [`docs/devlog.md`](docs/devlog.md) — version-by-version log with tagged learnings
   (`[note]` / `[insight]` / `[gotcha]`). **Read the v1.0.0 and v1.1.0 entries before touching
   the transport or the loader** — most of the non-obvious traps are already written down there.
+- [`docs/behaviour.md`](docs/behaviour.md) — what the player is supposed to *do*, as
+  observable outcomes with a way to observe each one, plus the browser-test harness (faking
+  a separation run, reading gain ramps, the traps that make a working app look broken).
+  **Read this before changing UI behaviour, and update it in the same commit when you do.**
 - [`docs/deployment.md`](docs/deployment.md) — how the site is hosted: GitHub Pages off the
   `gh-pages` branch, the three CI workflows, per-PR preview URLs, and the rules that keep
   `rips/`, `stems/` and the model unpublished. **Read this before touching
@@ -163,11 +167,14 @@ out of the project; never commit them.
 - **Tests are browser pages, not a runner.** `tests/test.html` for units (read
   `window.__testResults`), `tests/parity.html` for separation accuracy against the native
   stems in the repo (read `window.__parity`). Both need `./scripts/serve.sh`. There is no
-  npm and none may be added.
+  npm and none may be added. Everything the unit tests cannot reach — the whole UI — is
+  specified in [`docs/behaviour.md`](docs/behaviour.md), harness included.
 - **Versioning:** three-part semver. `vX.Y.0` for releases, `vX.Y.1` for follow-up sessions,
   `vX.Y.0-design` for design-only sessions. Devlog headings, TL;DR anchors, and any tags match.
 - **Devlog at end of session.** Newest-first, update the TL;DR table with an anchor link, and
   tag every learning bullet `[note]` / `[insight]` / `[gotcha]`.
+- **[`docs/behaviour.md`](docs/behaviour.md) is part of the diff.** A behaviour change that
+  does not update it leaves the two disagreeing, and the doc is what the next session trusts.
 - **Verify audio behaviour by observing audio, not parameters.** Loop bounds being set is not
   evidence the audio wraps; sampling the playhead across laps is. Fault-inject where the real
   environment can't be reproduced (`file://` is not reachable from browser automation).

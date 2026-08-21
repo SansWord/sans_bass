@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [v1.2.2](#v122--separation-panel-and-lane-toggle-refinements-2026-08-20-2120) | UI refinements: lane clicks toggle instead of solo, and separation output drops the original track so all six stems start unmuted |
+| [v1.2.2](#v122--separation-panel-and-lane-toggle-refinements-2026-08-20-2310) | UI refinements: lane clicks toggle instead of solo, separation drops the original track and stops playback, an Unmute all / Restore previous control, and a repaired `[hidden]` rule that had been showing buttons meant to be hidden |
 | [v1.2.1](#v121--github-pages-deployment-with-pr-previews-2026-08-20-2105) | Published to GitHub Pages with per-PR preview deployments; every pull request gets a live URL at `/pr-N/` before it reaches production |
 | [v1.2.0](#v120--in-browser-stem-separation-2026-08-20-2043) | Six-stem separation running entirely in the browser via onnxruntime-web + htdemucs_6s, at ~8x realtime on WebGPU, with stems saveable as one ZIP of WAVs |
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
@@ -23,9 +23,12 @@ Running log of what was built and what was learned building it.
 
 ---
 
-## v1.2.2 — Separation panel and lane toggle refinements (2026-08-20 21:20)
+## v1.2.2 — Separation panel and lane toggle refinements (2026-08-20 23:10)
 
 **Review:** not yet
+
+**Behaviour spec:** [`docs/behaviour.md`](behaviour.md) — written this session; it is the
+reference for every item below and is expected to be updated alongside future behaviour changes.
 
 **What was built:**
 
@@ -49,6 +52,12 @@ Running log of what was built and what was learned building it.
   is not hotkey-only. Pressing it again returns to the lanes that were on before, and it
   relabels itself — **Unmute all** / **Restore previous** — from the live mute state.
 - **The "done" status text is gone.** Six lanes where there was one is the confirmation.
+- **The unmute-all button matches Save stems** (`btn ghost`). Its disabled style was scoped
+  to `.sep .btn[disabled]` and so had never applied outside the separation panel; the rule
+  moved up to `.btn[disabled]`.
+- **[`docs/behaviour.md`](behaviour.md)**, a spec of every expected behaviour as an
+  observable outcome plus the way to observe it, and the browser-test harness that goes with
+  it. `CLAUDE.md` now requires it to be updated in the same commit as a behaviour change.
 
 **Key technical learnings:**
 
@@ -83,6 +92,10 @@ Running log of what was built and what was learned building it.
 - `[note]` The unmute-all button relabels itself inside `applyGains` rather than at each
   call site. Every mute path already routes through there, so the label cannot drift out of
   sync with the lanes — including mutes triggered by the dropdown or the number keys.
+- `[gotcha]` **A scoped disabled style is invisible until something moves.**
+  `.sep .btn[disabled]` had always been written that way, so it worked for Save stems and
+  silently did nothing for any other button. Worth checking the scope of any state style
+  before reusing the class it hangs off.
 - `[note]` The `1`–`6` keys have always called `toggleTrack`, so lane clicks and the number
   keys finally agree. The README had described `2` as "mute everything but the guitar",
   which was never what the key did.
@@ -111,6 +124,12 @@ Running log of what was built and what was learned building it.
   `AudioParam.prototype.setTargetAtTime` to record every ramp showed what actually reached
   the audio graph: clicking Vocals sent it to 1 while Drums stayed at 0. `tracks` is a
   classic-script local and unreachable from the console, so this is also the only way in.
+- `[insight]` **The harness knowledge was worth more than the fixes.** Five sessions of UI
+  work produced maybe eighty lines of behaviour change and a page of hard-won technique:
+  stub the Worker constructor, read gain ramps, assert on computed `display`, force the
+  stylesheet with a cache-buster, allow for throttled timers, send a real `space`. None of
+  it is discoverable from the code. That is why it lives in
+  [`docs/behaviour.md`](behaviour.md) rather than only here.
 
 ---
 

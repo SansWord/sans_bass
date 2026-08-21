@@ -169,3 +169,40 @@ test('unzip: an unsupported compression method reports which file', async () => 
   assertEq(err && err.code, 'method', 'error code');
   assert(err.message.includes('bass.wav'), 'names the offending file');
 });
+
+test('unzip: Zip64 sentinels report Zip64 rather than misparsing', async () => {
+  const blob = buildZip([{ name: 'S/bass.wav', bytes: enc.encode('data') }]);
+  const b = new Uint8Array(await blob.arrayBuffer());
+  const dv = new DataView(b.buffer);
+  dv.setUint32(b.length - 22 + 16, 0xffffffff, true);   // EOCD central-directory offset
+  let err = null;
+  try { await extract(new Blob([b])); } catch (e) { err = e; }
+  assertEq(err && err.code, 'zip64', 'error code');
+  assert(err.message.includes('Zip64'), 'message names Zip64');
+});
+
+test('unzip: an encrypted entry is reported as encrypted', async () => {
+  const blob = buildZip([{ name: 'S/bass.wav', bytes: enc.encode('data') }]);
+  const b = new Uint8Array(await blob.arrayBuffer());
+  const dv = new DataView(b.buffer);
+  const cdOff = dv.getUint32(b.length - 22 + 16, true);
+  dv.setUint16(cdOff + 8, 0x801, true);                 // bit 0 = encrypted, keep bit 11
+  let err = null;
+  try { await extract(new Blob([b])); } catch (e) { err = e; }
+  assertEq(err && err.code, 'encrypted', 'error code');
+});
+
+test('unzip: encryption on a non-audio entry is ignored', async () => {
+  // keep() runs before the encryption check, so an encrypted README must not block a
+  // perfectly readable set of stems.
+  const blob = buildZip([
+    { name: 'S/secret.txt', bytes: enc.encode('data') },
+    { name: 'S/bass.wav', bytes: enc.encode('real') },
+  ]);
+  const b = new Uint8Array(await blob.arrayBuffer());
+  const dv = new DataView(b.buffer);
+  const cdOff = dv.getUint32(b.length - 22 + 16, true);
+  dv.setUint16(cdOff + 8, 0x801, true);                 // first CD record = secret.txt
+  const out = await extract(new Blob([b]));
+  assertEq(out.map((e) => e.name).join(','), 'bass.wav', 'stems still load');
+});

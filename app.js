@@ -28,7 +28,7 @@ const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
 const $ = (id) => document.getElementById(id);
 const el = {
   dropzone: $('dropzone'), player: $('player'), status: $('status'),
-  fileInput: $('file-input'), dirInput: $('dir-input'),
+  fileInput: $('file-input'), zipInput: $('zip-input'),
   play: $('play'), title: $('title'), mainWave: $('main-wave'),
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
@@ -112,6 +112,34 @@ async function loadFiles(fileList) {
   } else {
     say('');
   }
+}
+
+/**
+ * Load a zip of stems. The entries are mapped to the duck-typed shape loadFiles already
+ * consumes — `webkitRelativePath` in particular, because commonName reads it to title the
+ * song from the folder inside the zip, and a real File cannot carry one (it is read-only
+ * and always empty).
+ */
+async function loadZip(file) {
+  if (!file) return;
+  say('Reading zip…');
+  let entries;
+  try {
+    entries = await window.SansUnzip.extract(file);
+  } catch (err) {
+    console.error(err);
+    say(err.message, true);      // already user-ready; see lib/unzip.js zipError()
+    return;
+  }
+  if (!entries.length) {
+    say('No audio files in that zip. Supported: wav, flac, m4a, mp3, opus, aiff.', true);
+    return;
+  }
+  return loadFiles(entries.map((e) => ({
+    name: e.name,
+    webkitRelativePath: e.webkitRelativePath,
+    arrayBuffer: async () => e.bytes.buffer,
+  })));
 }
 
 /**
@@ -660,7 +688,7 @@ el.masterVol.addEventListener('input', () => {
 });
 
 el.fileInput.addEventListener('change', e => loadFiles(e.target.files));
-el.dirInput.addEventListener('change', e => loadFiles(e.target.files));
+el.zipInput.addEventListener('change', e => loadZip(e.target.files[0]));
 
 document.addEventListener('keydown', (e) => {
   if (/input|select|textarea/i.test(e.target.tagName) && e.key !== ' ') return;

@@ -16,8 +16,8 @@
       <input type="file" id="file-input" accept="audio/*,.wav,.flac,.m4a,.mp3,.opus,.ogg,.aiff" multiple hidden>
     </label>
     <label class="btn ghost">
-      Load folder
-      <input type="file" id="dir-input" webkitdirectory directory hidden>
+      Load zip
+      <input type="file" id="zip-input" accept=".zip,application/zip" hidden>
     </label>
   </div>
 </header>
@@ -25,7 +25,7 @@
 <main id="app">
 
   <section id="dropzone" class="dropzone">
-    <p class="big">Drop a song folder here, or use <strong>Load folder</strong></p>
+    <p class="big">Drop a song folder or a <code>.zip</code> here, or use <strong>Load zip</strong></p>
     <p class="dim">One file = plain playback. Multiple files named <code>vocals</code>, <code>guitar</code>,
       <code>bass</code>, <code>drums</code>&hellip; = multitrack stem playback.</p>
     <p class="dim">Everything is decoded locally in your browser. Nothing is uploaded.</p>
@@ -81,6 +81,7 @@
 </main>
 
 <script src="lib/stems.js"></script>
+<script src="lib/unzip.js"></script>
 <script src="app.js"></script>
 <script>
   // separate.js is an ES module and Chrome blocks module scripts on file://. Injecting it

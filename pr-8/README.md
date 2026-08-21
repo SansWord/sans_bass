@@ -396,3 +396,10 @@ not this project's to redistribute. The folders ship with a `.gitkeep` and nothi
 Ripping a CD you own for your own use is generally fine in most places, and separating it
 for practice or study is the same kind of private use. Distributing the stems is a
 different question — those are still the band's recordings.
+
+## Author
+
+Built by **SansWord**.
+
+- Portfolio — <https://sansword.github.io/resume/>
+- LinkedIn — <https://www.linkedin.com/in/sansword/>

@@ -46,6 +46,20 @@ function on(node, ev, fn, opts) {
   node.addEventListener(ev, fn, opts);
 }
 
+const tr = (key, params) => window.SansI18n.t(key, params);
+
+/** The lane's display name. Recognised stems translate; an unrecognised file keeps the
+ *  label assignStems derived from its filename, which is not translatable. */
+function laneLabel(t) {
+  return t.stem ? tr('stem.' + t.stem) : t.label;
+}
+
+/** Stable identity for the mode dropdown — never the label, which changes with language.
+ *  `i` is the track's index in the sorted `tracks` array, the same index 1-6 use. */
+function laneKey(t, i) {
+  return t.stem || `lane:${i}`;
+}
+
 // ---------------------------------------------------------------- helpers
 
 function ensureAudio() {
@@ -191,7 +205,7 @@ function buildTracks(items, title) {
     buffer: t.buffer,
     muted: false,
     volume: 1,
-    gain: null, peaks: null, canvas: null, laneEl: null, layers: null,
+    gain: null, peaks: null, canvas: null, laneEl: null, layers: null, nameEl: null,
   }));
 
   tracks.sort((a, b) => a.order - b.order);
@@ -285,22 +299,31 @@ function mixPeaks() {
 
 // ---------------------------------------------------------------- UI
 
+/* The option VALUE is a stable key, never the label. Labels are translated, so keying on
+ * them would break soloing the moment the language changed — and two unrecognised files
+ * whose filename-derived labels happened to match were already indistinguishable. */
+function buildModeOptions() {
+  el.mode.innerHTML = '';
+  const opts = [['mix', tr('stem.mix')]];
+  tracks.forEach((t, i) => {
+    if (t.stem === 'mix') return;
+    opts.push([laneKey(t, i), tr('mode.only', { name: laneLabel(t) })]);
+  });
+  opts.push(['custom', tr('mode.custom')]);
+  for (const [value, text] of opts) {
+    const o = document.createElement('option');
+    o.value = value; o.textContent = text;
+    el.mode.appendChild(o);
+  }
+}
+
 function buildUI(title) {
   el.dropzone.hidden = true;
   el.player.hidden = false;
   el.title.textContent = title;
   el.tDur.textContent = fmt(duration);
 
-  // mode dropdown
-  el.mode.innerHTML = '';
-  const opts = [['mix', 'Full mix']];
-  tracks.filter(t => t.stem !== 'mix').forEach(t => opts.push([t.label, `${t.label} only`]));
-  opts.push(['custom', 'Custom…']);
-  for (const [value, text] of opts) {
-    const o = document.createElement('option');
-    o.value = value; o.textContent = text;
-    el.mode.appendChild(o);
-  }
+  buildModeOptions();
 
   // lanes
   el.lanes.innerHTML = '';
@@ -311,9 +334,21 @@ function buildUI(title) {
     const name = document.createElement('div');
     name.className = 'lane-name';
     name.style.color = t.color;
-    name.title = 'Click to mute or unmute this track';
-    name.innerHTML = `<span class="dot"></span><span class="txt">${t.label}</span>` +
-                     (i < 10 ? `<span class="kbd">${(i + 1) % 10}</span>` : '');
+    /* Built from nodes rather than innerHTML: t.label can be a filename, and a filename
+     * with markup in it used to be interpolated straight into the DOM. */
+    name.title = tr('lane.tip');
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    const txt = document.createElement('span');
+    txt.className = 'txt';
+    txt.textContent = laneLabel(t);
+    name.append(dot, txt);
+    if (i < 10) {
+      const kbd = document.createElement('span');
+      kbd.className = 'kbd';
+      kbd.textContent = String((i + 1) % 10);
+      name.appendChild(kbd);
+    }
     name.addEventListener('click', () => toggleTrack(t));
 
     const canvas = document.createElement('canvas');
@@ -330,6 +365,7 @@ function buildUI(title) {
     el.lanes.appendChild(lane);
 
     t.canvas = canvas;
+    t.nameEl = name;
     t.laneEl = lane;
     attachSeek(canvas);
   });
@@ -666,7 +702,7 @@ function setMode(mode) {
       t.muted = hasStems ? (t.stem !== 'mix') : false;
     });
   } else if (mode !== 'custom') {
-    tracks.forEach(t => { t.muted = t.label !== mode; });
+    tracks.forEach((t, i) => { t.muted = laneKey(t, i) !== mode; });
   }
   el.mode.value = mode;
   applyGains();

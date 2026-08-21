@@ -109,6 +109,10 @@ out of the project; never commit them.
 
 ## Gotchas that will bite again
 
+- **There are exactly two ways in, and that is the design.** One audio file (a whole song,
+  which is also the separation entry point) via **Load song**, or one `.zip` of stems via
+  **Load zip**. Drop accepts the same two things and nothing else. Don't re-add multi-file
+  loading or folder drop "for convenience" — each extra path was a way to fail silently.
 - **Folder drop is deliberately unsupported — don't add it back.** It needed the directory
   entries API, which Chrome blocks on `file://`, so it only ever worked over http and failed
   silently otherwise. v1.3.0 deleted the recursive walk (`walkEntry`/`fsCall`, ~40 lines); a

@@ -28,7 +28,7 @@ const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
 const $ = (id) => document.getElementById(id);
 const el = {
   dropzone: $('dropzone'), player: $('player'), status: $('status'),
-  fileInput: $('file-input'), zipInput: $('zip-input'),
+  songInput: $('song-input'), zipInput: $('zip-input'),
   play: $('play'), title: $('title'), mainWave: $('main-wave'),
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
@@ -69,7 +69,7 @@ function say(msg, isErr) {
 
 async function loadFiles(fileList) {
   const files = [...fileList].filter(f => AUDIO_RE.test(f.name));
-  if (!files.length) { say('No audio files found in that drop. Supported: wav, flac, m4a, mp3, opus, aiff.', true); return; }
+  if (!files.length) { say('No audio files to load. Supported: wav, flac, m4a, mp3, opus, aiff.', true); return; }
 
   ensureAudio();
   stop(true);
@@ -107,8 +107,8 @@ async function loadFiles(fileList) {
   if (failed.length) {
     say(`Skipped ${failed.join(', ')} — codec not supported by this browser. Re-encode as .m4a.`, true);
   } else if (tracks.length > 1 && tracks.every((t) => !t.stem)) {
-    say('None of these filenames looked like stems, so they are all playing layered on top of ' +
-        'each other. Rename them vocals / guitar / bass / drums to get labelled lanes.');
+    say('None of the filenames in that zip looked like stems, so they are all playing layered ' +
+        'on top of each other. Rename them vocals / guitar / bass / drums to get labelled lanes.');
   } else {
     say('');
   }
@@ -140,6 +140,20 @@ async function loadZip(file) {
     webkitRelativePath: e.webkitRelativePath,
     arrayBuffer: async () => e.bytes.buffer,
   })));
+}
+
+/**
+ * Load one unseparated song. Deliberately single-file: this is the separation entry point,
+ * and a set of loose stem files is what a zip is for. `loadFiles` still takes many, because
+ * loadZip hands it six.
+ */
+function loadSong(file) {
+  if (!file) return;
+  if (!AUDIO_RE.test(file.name)) {
+    say(`${file.name} is not an audio file. Supported: wav, flac, m4a, mp3, opus, aiff.`, true);
+    return;
+  }
+  return loadFiles([file]);
 }
 
 /**
@@ -687,7 +701,7 @@ el.masterVol.addEventListener('input', () => {
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
 });
 
-el.fileInput.addEventListener('change', e => loadFiles(e.target.files));
+el.songInput.addEventListener('change', e => loadSong(e.target.files[0]));
 el.zipInput.addEventListener('change', e => loadZip(e.target.files[0]));
 
 document.addEventListener('keydown', (e) => {
@@ -712,37 +726,42 @@ document.addEventListener('keydown', (e) => {
 ['dragleave', 'drop'].forEach(ev =>
   document.addEventListener(ev, e => { e.preventDefault(); el.dropzone.classList.remove('over'); }));
 
-/* Dropping a FOLDER is deliberately not supported. It needed the directory entries API,
+/* Drop accepts exactly what the two buttons accept: ONE song, or ONE zip of stems.
+ *
+ * Dropping a FOLDER is deliberately not supported. It needed the directory entries API,
  * which Chrome blocks on file:// — so it only ever worked over http://, and the whole
- * recursive walk existed to serve that one case. A zip does the same job everywhere, so
- * the walk is gone. A dropped folder is still *detected*, purely to say what to do about
- * it: degrading that into "no audio files in that drop" would be a worse answer, not a
- * smaller one. */
+ * recursive walk existed to serve that one case. A zip does the same job everywhere.
+ * A dropped folder is still *detected*, purely to say what to do about it: degrading that
+ * into a generic "nothing usable here" would be a worse answer, not a smaller one. */
 document.addEventListener('drop', (e) => {
   e.preventDefault();
   const dt = e.dataTransfer;
   const dropped = [...(dt.files || [])];
 
-  // A zip is a plain file, so it arrives in dt.files even on file://, where the entries
-  // API is blocked. This is what makes zip drag-and-drop work from disk.
-  if (dropped.length === 1 && /\.zip$/i.test(dropped[0].name)) return loadZip(dropped[0]);
+  const isZip = (f) => /\.zip$/i.test(f.name);
 
-  const audio = dropped.filter(f => AUDIO_RE.test(f.name));
-  if (audio.length) return loadFiles(audio);
+  if (dropped.length === 1) {
+    // A zip is a plain file, so it arrives in dt.files even on file://, where the entries
+    // API is blocked. This is what makes zip drag-and-drop work from disk.
+    if (isZip(dropped[0])) return loadZip(dropped[0]);
+    if (AUDIO_RE.test(dropped[0].name)) return loadSong(dropped[0]);
+  }
 
-  // Nothing usable — say precisely why rather than failing silently. webkitGetAsEntry is
-  // used only to ask "was that a directory?"; it returns null on file://, where a folder
-  // still shows up in dt.files with no type and no audio extension.
+  // Nothing usable — say precisely which case it was rather than failing silently.
+  // webkitGetAsEntry is used only to ask "was that a directory?"; it returns null on
+  // file://, where a folder still arrives in dt.files with no type and no extension.
   const looksLikeFolder =
     [...(dt.items || [])].some(i => i.webkitGetAsEntry?.()?.isDirectory) ||
-    dropped.some(f => !f.type && !AUDIO_RE.test(f.name));
+    dropped.some(f => !f.type && !AUDIO_RE.test(f.name) && !isZip(f));
 
   if (looksLikeFolder) {
     say('Dropping a folder is not supported. Zip it first — right-click the folder and ' +
         'choose Compress — then drop the .zip, or use the Load zip button.', true);
+  } else if (dropped.length > 1) {
+    say(`Drop one thing at a time: a single song to separate, or one .zip of stems. ` +
+        `That was ${dropped.length} files — if they are stems, zip them first.`, true);
   } else {
-    say('No audio files in that drop. Drop a .zip of stems, or loose audio files. ' +
-        'Supported: wav, flac, m4a, mp3, opus, aiff.', true);
+    say('That is not a song or a .zip of stems. Audio: wav, flac, m4a, mp3, opus, aiff.', true);
   }
 });
 

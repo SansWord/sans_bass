@@ -12,8 +12,8 @@
   <h1>sans<span>_</span>bass</h1>
   <div class="loadzone">
     <label class="btn">
-      Load files
-      <input type="file" id="file-input" accept="audio/*,.wav,.flac,.m4a,.mp3,.opus,.ogg,.aiff" multiple hidden>
+      Load song
+      <input type="file" id="song-input" accept="audio/*,.wav,.flac,.m4a,.mp3,.opus,.ogg,.aiff" hidden>
     </label>
     <label class="btn ghost">
       Load zip
@@ -25,12 +25,12 @@
 <main id="app">
 
   <section id="dropzone" class="dropzone">
-    <p class="big">Drop a <code>.zip</code> of stems here, or use <strong>Load zip</strong></p>
-    <p class="dim">Zip a folder of stems first &mdash; on macOS, right-click the folder and choose
-      <strong>Compress</strong> &mdash; then drop the <code>.zip</code> anywhere on this page.
-      Loose audio files can be dropped directly. Dropping a <em>folder</em> is not supported.</p>
-    <p class="dim">One file = plain playback. Multiple files named <code>vocals</code>, <code>guitar</code>,
-      <code>bass</code>, <code>drums</code>&hellip; = multitrack stem playback.</p>
+    <p class="big">Drop a song, or a <code>.zip</code> of stems</p>
+    <p class="dim"><strong>One audio file</strong> &mdash; a whole song &mdash; plays as a single track,
+      and can be split into six stems right here in the browser. <strong>A <code>.zip</code></strong>
+      of stems already separated loads them as one lane each.</p>
+    <p class="dim">To make a zip: on macOS, right-click a folder of stems and choose
+      <strong>Compress</strong>. Dropping the folder itself is not supported.</p>
     <p class="dim">Everything is decoded locally in your browser. Nothing is uploaded.</p>
   </section>
 

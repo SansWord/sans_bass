@@ -37,6 +37,9 @@ Running log of what was built and what was learned building it.
   folder loading never could.
 - Folder drop **removed** entirely — the recursive `walkEntry`/`fsCall` directory walk
   (~40 lines) is gone. A dropped folder is still detected, only to say "zip it first".
+- The input surface narrowed to **exactly two things**: **Load song** takes one audio file
+  (and is the separation entry point), **Load zip** takes one `.zip` of stems. Drop accepts
+  the same two. Multi-file loading of loose stems is gone; **Load files** is now **Load song**.
 
 **Key technical learnings:**
 - `[insight]` A zip removes a `file://` limitation instead of adding one. A folder needs the
@@ -80,6 +83,15 @@ Running log of what was built and what was learned building it.
   delete the walk, not keep two paths. Removing it also retired `onFileUrl` and the whole
   `file://` startup hint: with folder drop gone there is no protocol-dependent loading
   behaviour left to warn about.
+- `[insight]` Two buttons that each did a vague thing became two that each do one thing.
+  "Load files" was a shrug — it took one song *or* a pile of stems, and its name said which
+  neither time. Splitting the meaning out ("Load song" = the separation entry point, "Load
+  zip" = stems) made the drop contract fall out for free: whatever the buttons accept, drop
+  accepts. A vague name was hiding a vague contract.
+- `[gotcha]` Narrowing an input means the *rejection* messages carry the design. Refusing six
+  dropped stem files is only defensible if the message says to zip them; otherwise it reads
+  as a regression. Three distinct refusals earn their place here — folder, too many files,
+  and neither-song-nor-zip — where one generic "nothing usable" would not.
 - `[insight]` Deleting a feature is not the same as deleting its *detection*. A dropped
   folder still gets recognised — one `webkitGetAsEntry()?.isDirectory` check, no walk —
   purely so the app can say "zip it first". Letting it fall through to "no audio files in

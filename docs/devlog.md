@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.5.0](#v150--interface-i18n-2026-08-21-1109) | The whole interface speaks zh-TW by default and English when the system language is not Traditional Chinese, with a remembered toggle in the header. Switching re-renders in place — no reload, no re-decode, playback never stops. |
 | [v1.4.0](#v140--the-drop-that-navigated-away-2026-08-21) | Drag & drop on the live site was dead: a stale cached `app.js` threw on an element the new `index.html` no longer had, and every listener below it — drag & drop included — never registered. Versioned asset URLs, null-safe wiring, a loud error path, and an explicit full-window drop overlay. |
 | [v1.3.0](#v130--one-song-or-one-zip-of-stems-2026-08-21-0104) | Loading rework: **Load song** takes one audio file, **Load zip** takes one `.zip` of stems, and drop accepts the same two. Folder drop, multi-file loading and the directory walk are gone; a classic-script zip reader never holds the whole file. |
 | [v1.2.2](#v122--separation-panel-and-lane-toggle-refinements-2026-08-20-2310) | UI refinements: lane clicks toggle instead of solo, separation drops the original track and stops playback, an Unmute all / Restore previous control, and a repaired `[hidden]` rule that had been showing buttons meant to be hidden |
@@ -24,6 +25,83 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.5.0 — Interface i18n (2026-08-21 11:09)
+
+**Review:** not yet
+
+**Design docs:**
+- Interface i18n: [Spec](superpowers/specs/2026-08-21-i18n-design.md) [Plan](superpowers/plans/2026-08-21-i18n.md)
+
+**What was built:**
+
+- `lib/i18n.js` — a classic script owning one dictionary for both locales (69 keys each) plus
+  the runtime: `t` / `has` / `apply` / `detectLocale` / `storedLocale` / `setLocale` /
+  `getLocale` / `init`. `separate.js` is an ES module and cannot share scope with `app.js`,
+  so both reach the single dictionary through `window.SansI18n`.
+- Static copy in `index.html` annotated with three attribute forms: `data-i18n` →
+  `textContent`, `data-i18n-html` → `innerHTML` (our own dictionary values only),
+  `data-i18n-attr="title:key,aria-label:key"` → `setAttribute`.
+- A segmented 中文 / EN toggle in the header. An explicit choice persists; the first visit
+  deliberately does not.
+- `retranslate()` re-renders the five stateful strings **in place** — mode dropdown
+  (selection preserved), lane names, loop badge, all-toggle label, status line — plus the
+  separation panel via its own `langchange` listener. No reload, no re-decode, no waveform
+  re-render.
+- Zip errors translated by the stable `code` `lib/unzip.js` already throws, leaving that
+  file untouched.
+- `tests/i18n.test.js`: 13 tests covering key parity, placeholder parity, the detection
+  table, markup-key coverage, and the stem-filename invariant.
+- `file://` support dropped: `separate.js` now loads as a plain `<script type="module">`
+  with no protocol guard. `CLAUDE.md` and `docs/behaviour.md` updated to match.
+- Everything bumped to `?v=1.5.0` (10 URLs across three files).
+
+**Key technical learnings:**
+
+- `[gotcha]` The mode dropdown keyed its options on the **label** (`opts.push([t.label, …])`)
+  and `setMode` compared `t.label !== mode`. Translating labels would have broken soloing
+  outright the moment the language changed. Any user-visible string doing double duty as an
+  identifier is a latent i18n bug — the fix was a `laneKey()` returning the stem id.
+- `[insight]` Keeping `detectLocale()` **pure** — taking the language list as an argument,
+  with storage read separately by `storedLocale()` — is what made the whole detection table
+  a plain unit test with no stubbing of `navigator` or `localStorage`. Splitting the two
+  cost nothing and bought the entire test.
+- `[insight]` Store `{key, params}`, never rendered text. That one decision is what lets a
+  visible status message, a loop badge and a mid-download progress line all survive a
+  language switch. Anything that renders once and is read later needs to keep its *inputs*,
+  not its output.
+- `[gotcha]` …but a param that is **itself** translated must be stored as a thunk, not a
+  string. `status('sep.workerFailed', { msg: err.message || tr('sep.oom') })` evaluates
+  `tr()` at call time, so re-rendering produced a half-translated line: `worker failed:
+  記憶體不足？ — try a shorter track`. `separate.js` now resolves function-valued params at
+  render time. Storing inputs only helps if the inputs are themselves locale-independent.
+- `[gotcha]` `#all-toggle` carries `data-i18n="btn.unmuteAll"`, so `setLocale`'s `apply()`
+  resets its text on every switch — clobbering "Restore previous". `retranslate()` has to
+  run *after* `apply()`, which is why `setLocale` applies the markup first and dispatches
+  `sansbass:langchange` second. That ordering is load-bearing.
+- `[gotcha]` An automation tab is `visibilityState: 'hidden'`, which pauses
+  `requestAnimationFrame` — so `#t-cur` reads a frozen `0:00` while audio is genuinely
+  playing, and Chrome records no paint timing at all. Verifying "the switch didn't disturb
+  playback" against the clock **text** would have produced a false failure. The honest
+  probe is the audio graph itself: sample `AudioContext.currentTime`, and count
+  `createBufferSource` calls across the switch — it must be zero, or playback restarted.
+- `[insight]` A first visit must not persist the auto-detected locale. Writing it would
+  freeze the user's very first page load into storage, so changing the system language
+  later would silently never take effect again.
+- `[note]` The lane name was built with `innerHTML` interpolating `t.label` — a filename.
+  Rebuilding it from nodes was needed for `retranslate()` to mutate the text in place, and
+  closed a markup-injection path on the way.
+- `[note]` Chinese has no plural agreement, so `status.decodingOne` and `status.decodingMany`
+  carry identical zh-TW text. Two keys is cheaper than a plural framework for the one
+  English string that needs it.
+
+**Process learnings:**
+
+- `[gotcha]` The plan's own audit grep for stray two-argument `say()` calls,
+  `say\([^)]*, *true\)`, matches the *correct* three-argument form too — `[^)]*` happily
+  swallows `'status.crash', null`. `say\([^,)]*, *true\)` is the one that finds only the
+  real thing, and it found exactly the single call the plan had deferred to a later task.
+  A verification command that cannot fail is worse than no command.
 
 ## v1.4.0 — The drop that navigated away (2026-08-21)
 

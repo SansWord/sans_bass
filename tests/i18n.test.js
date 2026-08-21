@@ -93,3 +93,31 @@ test('i18n: the text form escapes, so a key value can never inject markup', () =
   assertEq(root.querySelector('p').textContent, '<img src=x onerror=1>', 'rendered as text');
   delete I18N.DICT.en['test.injection'];
 });
+
+test('i18n: both locales define exactly the same keys', () => {
+  const en = Object.keys(I18N.DICT.en).sort();
+  const zh = Object.keys(I18N.DICT['zh-TW']).sort();
+  const missingZh = en.filter((k) => !(k in I18N.DICT['zh-TW']));
+  const missingEn = zh.filter((k) => !(k in I18N.DICT.en));
+  assertEq(missingZh.join(', '), '', 'keys missing from zh-TW');
+  assertEq(missingEn.join(', '), '', 'keys missing from en');
+});
+
+test('i18n: no value is empty', () => {
+  for (const loc of I18N.LOCALES) {
+    for (const [k, v] of Object.entries(I18N.DICT[loc])) {
+      assert(typeof v === 'string' && v.trim().length > 0, `${loc}/${k} is empty`);
+    }
+  }
+});
+
+test('i18n: each key uses the same {placeholders} in both locales', () => {
+  const tokens = (s) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+  const drift = [];
+  for (const k of Object.keys(I18N.DICT.en)) {
+    const a = tokens(I18N.DICT.en[k]);
+    const b = tokens(I18N.DICT['zh-TW'][k] || '');
+    if (a !== b) drift.push(`${k}: en{${a}} vs zh-TW{${b}}`);
+  }
+  assertEq(drift.join(' | '), '', 'placeholder drift');
+});

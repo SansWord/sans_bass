@@ -121,3 +121,30 @@ test('i18n: each key uses the same {placeholders} in both locales', () => {
   }
   assertEq(drift.join(' | '), '', 'placeholder drift');
 });
+
+test('i18n: every key used in index.html exists in both locales', async () => {
+  const r = await fetch('../index.html', { cache: 'no-store' });
+  assert(r.ok, `could not read index.html (${r.status}) — is serve.sh running?`);
+  const html = await r.text();
+
+  const keys = new Set();
+  // data-i18n="k" and data-i18n-html="k". data-i18n-attr is NOT matched here: the "-attr"
+  // sits between the name and the "=", so this pattern cannot see it.
+  for (const m of html.matchAll(/data-i18n(?:-html)?="([^"]+)"/g)) keys.add(m[1]);
+  // data-i18n-attr="title:k,aria-label:k2"
+  for (const m of html.matchAll(/data-i18n-attr="([^"]+)"/g)) {
+    for (const pair of m[1].split(',')) {
+      const colon = pair.indexOf(':');
+      if (colon >= 0) keys.add(pair.slice(colon + 1).trim());
+    }
+  }
+
+  assert(keys.size >= 15, `only found ${keys.size} annotated keys — did the markup change?`);
+  const missing = [];
+  for (const k of keys) {
+    for (const loc of I18N.LOCALES) {
+      if (I18N.DICT[loc][k] === undefined) missing.push(`${loc}/${k}`);
+    }
+  }
+  assertEq(missing.join(', '), '', 'keys used in markup but absent from the dictionary');
+});

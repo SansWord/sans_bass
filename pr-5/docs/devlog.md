@@ -33,8 +33,10 @@ Running log of what was built and what was learned building it.
 
 **What was built:**
 - `lib/unzip.js` — a classic-script zip reader, `window.SansUnzip.extract`.
-- **Load zip** replaces **Load folder**. Folder *drop* is kept for `http://`.
-- Dropping a `.zip` works on `file://`, which folder loading never could.
+- **Load zip** replaces **Load folder**, and dropping a `.zip` works on `file://`, which
+  folder loading never could.
+- Folder drop **removed** entirely — the recursive `walkEntry`/`fsCall` directory walk
+  (~40 lines) is gone. A dropped folder is still detected, only to say "zip it first".
 
 **Key technical learnings:**
 - `[insight]` A zip removes a `file://` limitation instead of adding one. A folder needs the
@@ -71,6 +73,17 @@ Running log of what was built and what was learned building it.
   escapes with an empty `message` — which is what a broken `DecompressionStream` can reject
   with — renders as a drop that visibly does nothing. Every throw crossing into `loadZip`
   needs a non-empty, user-ready message; that is the whole point of `zipError`.
+- `[insight]` Adding the zip path made the folder path indefensible. Folder drop needed the
+  directory entries API, which Chrome blocks on `file://`, so it worked over http and failed
+  silently everywhere else — and the ~40 lines of `walkEntry`/`fsCall` existed only to serve
+  that one protocol. Once a zip did the same job on every protocol, the right move was to
+  delete the walk, not keep two paths. Removing it also retired `onFileUrl` and the whole
+  `file://` startup hint: with folder drop gone there is no protocol-dependent loading
+  behaviour left to warn about.
+- `[insight]` Deleting a feature is not the same as deleting its *detection*. A dropped
+  folder still gets recognised — one `webkitGetAsEntry()?.isDirectory` check, no walk —
+  purely so the app can say "zip it first". Letting it fall through to "no audio files in
+  that drop" would have been fewer lines and a worse answer.
 - `[insight]` The bug a hand-rolled parser hides is the one where it succeeds. The guards
   that threw were all correct first time; the two real defects both **returned** — wrong
   bytes, and a blank status bar. Fuzzing malformed archives found them; the happy-path

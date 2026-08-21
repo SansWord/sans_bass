@@ -109,12 +109,15 @@ out of the project; never commit them.
 
 ## Gotchas that will bite again
 
-- **Folder drag-and-drop cannot work on `file://`.** Chrome refuses the directory read. The
-  Load zip button, and dragging a `.zip`, both always work — a zip is a plain file, so the
-  directory API is never involved. Don't "fix" the folder drop path.
-- **Callback-pair DOM APIs need their error callback wired.** `fsCall` in `app.js` exists
-  because `new Promise(res => reader.readEntries(res))` hung forever on a blocked read, with
-  no error anywhere. There is a 5 s timeout as a backstop.
+- **Folder drop is deliberately unsupported — don't add it back.** It needed the directory
+  entries API, which Chrome blocks on `file://`, so it only ever worked over http and failed
+  silently otherwise. v1.3.0 deleted the recursive walk (`walkEntry`/`fsCall`, ~40 lines); a
+  zip does the same job on every protocol. A dropped folder is still *detected*, purely to
+  tell the user to zip it — that message is the feature, not a leftover.
+- **Callback-pair DOM APIs need their error callback wired.** No longer live in this repo —
+  `fsCall` went with the folder walk — but the lesson is why that code existed:
+  `new Promise(res => reader.readEntries(res))` hung forever on a blocked read, with no error
+  anywhere. If you ever wrap a `(successCb, errorCb)` API, wire both and add a timeout.
 - **`AudioContext` stays `suspended` until a real user gesture.** Under browser automation,
   synthetic clicks on the play button silently fail to unlock it; a real `space` keypress
   works. If the clock reads 0 while `playing` is true, this is why.

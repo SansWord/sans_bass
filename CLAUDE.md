@@ -60,6 +60,10 @@ A-B repeat / routing / input).
   right lanes untouched. The `mix` pattern is deliberately narrow (`\bmix\b|\bfull\b|…`) —
   a false positive there suppresses every other track.
 
+- **Deployment is CI-owned.** `main` publishes to the root of the Pages site and every pull
+  request gets a live preview at `/pr-<N>/`, both written to the `gh-pages` branch by
+  `.github/workflows/`. Never hand-edit `gh-pages`. See [`docs/deployment.md`](docs/deployment.md).
+
 `scripts/rip-cd.sh` — mounted audio CD (macOS presents it as `.aiff`) → lossless FLAC.
 `scripts/prep-stems.sh` — one FLAC → 6 stems → `.m4a`, with MPS/CPU auto-detection.
 
@@ -72,6 +76,7 @@ lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planni
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 tests/test.html                    units      → window.__testResults
 tests/parity.html                  accuracy   → window.__parity
+.github/workflows/                 Pages deploy + per-PR previews (see docs/deployment.md)
 scripts/serve.sh                   http://localhost:8777 (required for separation)
 scripts/rip-cd.sh                  CD → rips/*.flac
 scripts/prep-stems.sh              one song → stems/<song>/*.m4a
@@ -90,6 +95,10 @@ out of the project; never commit them.
 - [`docs/devlog.md`](docs/devlog.md) — version-by-version log with tagged learnings
   (`[note]` / `[insight]` / `[gotcha]`). **Read the v1.0.0 and v1.1.0 entries before touching
   the transport or the loader** — most of the non-obvious traps are already written down there.
+- [`docs/deployment.md`](docs/deployment.md) — how the site is hosted: GitHub Pages off the
+  `gh-pages` branch, the three CI workflows, per-PR preview URLs, and the rules that keep
+  `rips/`, `stems/` and the model unpublished. **Read this before touching
+  `.github/workflows/`.**
 - [`docs/session-prompts.md`](docs/session-prompts.md) — the prompts that produced the
   original build, timestamped from filesystem evidence.
 
@@ -126,6 +135,11 @@ out of the project; never commit them.
 - **`serve.sh` sends `Cache-Control: no-store`** because Chrome otherwise serves a stale
   ES module after you edit it, and the test page silently checks the old code — which looks
   exactly like a correct fix failing.
+- **Check a workflow's *conclusion*, not that it ran.** Two workflows sharing a concurrency
+  group let GitHub cancel one as "pending"; the v1.2.0 merge deployed nothing and reported
+  no failure anywhere. Same rule as audio here: observe the outcome, not the parameters.
+- **`rsync -a` skips a changed file of the same size** (it compares size + mtime). The deploy
+  workflows use `-c`. Without it the site serves stale content and nothing errors.
 - **Demucs setup:** Python 3.12 (no PyTorch wheels for 3.14), install `numpy` explicitly
   (demucs 4.1.0 doesn't declare it), skip `torchaudio`. Probe for MPS with the venv's own
   interpreter — a bare `python3` is the system one and has no torch, which silently drops

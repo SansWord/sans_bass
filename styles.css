@@ -52,6 +52,16 @@ body { min-height: 100vh; }
 .bar h1 span { color: var(--accent); }
 
 .bar-right { display: flex; align-items: center; gap: 14px; }
+
+/* Sits at --dim so it never competes with the pink Load button, and comes up to --fg on
+   hover. `display: flex` keeps the svg from picking up the inline baseline gap. */
+.repo-link {
+  display: flex;
+  align-items: center;
+  color: var(--dim);
+  transition: color .12s;
+}
+.repo-link:hover { color: var(--fg); }
 .loadzone { display: flex; gap: 8px; }
 
 /* Segmented two-state toggle. Both options are always visible, so switching is one click

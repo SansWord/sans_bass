@@ -14,11 +14,122 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.2.2](#v122--separation-panel-and-lane-toggle-refinements-2026-08-20-2310) | UI refinements: lane clicks toggle instead of solo, separation drops the original track and stops playback, an Unmute all / Restore previous control, and a repaired `[hidden]` rule that had been showing buttons meant to be hidden |
 | [v1.2.1](#v121--github-pages-deployment-with-pr-previews-2026-08-20-2105) | Published to GitHub Pages with per-PR preview deployments; every pull request gets a live URL at `/pr-N/` before it reaches production |
 | [v1.2.0](#v120--in-browser-stem-separation-2026-08-20-2043) | Six-stem separation running entirely in the browser via onnxruntime-web + htdemucs_6s, at ~8x realtime on WebGPU, with stems saveable as one ZIP of WAVs |
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.2.2 — Separation panel and lane toggle refinements (2026-08-20 23:10)
+
+**Review:** not yet
+
+**Behaviour spec:** [`docs/behaviour.md`](behaviour.md) — written this session; it is the
+reference for every item below and is expected to be updated alongside future behaviour changes.
+
+**What was built:**
+
+- **Save stems is disabled while a run is in flight.** The stems it would have written are
+  the *previous* track's, and encoding them competes with the worker for memory.
+- **The Separate button disappears once a song is separated** and returns when a fresh
+  single track is loaded.
+- **Clicking a lane name toggles that lane** instead of soloing it. Soloing moved entirely
+  to the Play dropdown; `soloTrack` is gone.
+- **Removed the "Use a local .onnx" picker.** `separate.worker.js` still accepts a
+  `modelBuffer`, so the capability survives if the UI is ever wanted back.
+- **Separation output drops the original track.** The six stems already sum to it, so
+  keeping it meant either doubled audio or permanent suppression.
+- **Separation stops playback and rewinds.** The mix can still be playing when the stems
+  land; its BufferSources are not in `tracks` and would keep sounding over the new lanes.
+- **Fixed a CSS bug that had been suppressing every `hidden` toggle in the app**, including
+  the two above (see the learnings).
+- **The lane click target now fills the left column**, from the lane's left edge to the
+  number badge, at full lane height. The waveform column still seeks.
+- **An Unmute all button** next to the Play dropdown, doing what `0` does so the behaviour
+  is not hotkey-only. Pressing it again returns to the lanes that were on before, and it
+  relabels itself — **Unmute all** / **Restore previous** — from the live mute state.
+- **The "done" status text is gone.** Six lanes where there was one is the confirmation.
+- **The unmute-all button matches Save stems** (`btn ghost`). Its disabled style was scoped
+  to `.sep .btn[disabled]` and so had never applied outside the separation panel; the rule
+  moved up to `.btn[disabled]`.
+- **[`docs/behaviour.md`](behaviour.md)**, a spec of every expected behaviour as an
+  observable outcome plus the way to observe it, and the browser-test harness that goes with
+  it. `CLAUDE.md` now requires it to be updated in the same commit as a behaviour change.
+
+**Key technical learnings:**
+
+- `[insight]` **Deleting the mix track was the fix for three problems at once.** "All lanes
+  on by default" needed no new code: with no `mix` track, `hasMixPlusStems()` is false, so
+  the existing `setMode('mix')` already leaves every stem unmuted. It also removed the
+  doubled-audio trap from the separation path entirely, and removed the awkward case where
+  a lane is visible but permanently forced silent by `applyGains`. The feature request was
+  phrased as three UI tweaks; one deletion answered all of them.
+- `[insight]` **A per-lane toggle cannot be uniform when one lane is mutually exclusive with
+  the rest.** A full-mix file must never sound over its own stems, so the mix lane keeps
+  mode-switching semantics inside `toggleTrack` while every other lane toggles its own gain.
+  Only reachable now via a folder loaded from disk that genuinely holds both — but that is
+  exactly the case nobody will be testing when they next touch this.
+- `[gotcha]` **A class that sets `display` silently defeats the `hidden` attribute.**
+  `[hidden] { display: none }` lives in the UA stylesheet, so *any* author rule outranks it —
+  `.btn { display: inline-block }` and `.loop-badge { display: inline-flex }` meant Save,
+  Cancel and the loop badge rendered while their `.hidden` property read `true`. This
+  predates this session: the loop badge has shown a stray Clear button since v1.1.0. It also
+  quietly voided the new "hide Separate once done" behaviour. The trap for verification is
+  that `el.hidden` is the *state*, not the *appearance* — asserting on the property passes
+  while the user still sees the button. A screenshot caught what four property assertions
+  had missed. `styles.css` now has a global `[hidden] { display: none !important; }`.
+- `[insight]` **A grid item with `align-items: center` is only as tall as its content.**
+  `.lane-name` was a full-width 128px column but a ~14px strip inside a ~56px lane, so the
+  toggle only really worked on the text. `align-self: stretch` plus negative margins that
+  swallow the lane's own padding make the whole left block clickable.
+- `[insight]` **The undo snapshot is taken when everything is turned on, not when a lane is
+  muted.** That one choice is what makes the sequence behave: mute a lane while all-on, press
+  `0`, press `0` again, and you land back on *that* lane state rather than on whatever was
+  saved two presses earlier. Storing it at mute time instead would strand the older state.
+- `[note]` The unmute-all button relabels itself inside `applyGains` rather than at each
+  call site. Every mute path already routes through there, so the label cannot drift out of
+  sync with the lanes — including mutes triggered by the dropdown or the number keys.
+- `[gotcha]` **A scoped disabled style is invisible until something moves.**
+  `.sep .btn[disabled]` had always been written that way, so it worked for Save stems and
+  silently did nothing for any other button. Worth checking the scope of any state style
+  before reusing the class it hangs off.
+- `[note]` The `1`–`6` keys have always called `toggleTrack`, so lane clicks and the number
+  keys finally agree. The README had described `2` as "mute everything but the guitar",
+  which was never what the key did.
+
+**Process learnings:**
+
+- `[gotcha]` **Chrome throttles `setInterval` to ~1 Hz in a backgrounded tab, and the
+  automation tab is always backgrounded.** `separate.js` polls `refresh()` every 400 ms;
+  under automation it runs about once a second. A verification step waited 1.2 s for the
+  Separate button to reappear, saw it still hidden, and looked exactly like a broken fix.
+  Measured it directly — `document.visibilityState` is `hidden`, and a fresh 400 ms interval
+  ticked twice in two seconds — then waited longer and the behaviour was correct all along.
+  Same family as the rAF-throttling rule this project already knows; it applies to the test
+  harness as much as to the player.
+- `[insight]` **Stub `window.Worker`, not the model.** Replacing the constructor just before
+  clicking Separate exercises every line of `separate.js`'s real message handling —
+  `busy()`, the `result` branch, `loadSeparated` — with no 285 MB download and no minutes of
+  inference. `getWorker()` constructs lazily at click time, which is what makes the seam
+  reachable from the page.
+- `[gotcha]` **A same-URL navigation can reuse the stylesheet from memory cache**, even
+  though `serve.sh` sends `no-store` and `curl` shows the new bytes. The served file had the
+  fix and the loaded `document.styleSheets` did not. Re-pointing the `<link>` at
+  `styles.css?v=<now>` forces it. Same shape as the stale-ES-module trap already documented,
+  but the existing `no-store` header does not cover it.
+- `[insight]` **Verify muting on the gain values, not the CSS class.** Patching
+  `AudioParam.prototype.setTargetAtTime` to record every ramp showed what actually reached
+  the audio graph: clicking Vocals sent it to 1 while Drums stayed at 0. `tracks` is a
+  classic-script local and unreachable from the console, so this is also the only way in.
+- `[insight]` **The harness knowledge was worth more than the fixes.** Five sessions of UI
+  work produced maybe eighty lines of behaviour change and a page of hard-won technique:
+  stub the Worker constructor, read gain ramps, assert on computed `display`, force the
+  stylesheet with a cache-buster, allow for throttled timers, send a real `space`. None of
+  it is discoverable from the code. That is why it lives in
+  [`docs/behaviour.md`](behaviour.md) rather than only here.
 
 ---
 

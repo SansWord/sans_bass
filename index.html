@@ -49,6 +49,7 @@
         <span>Play</span>
         <select id="mode"></select>
       </label>
+      <button id="all-toggle" class="btn ghost" type="button">Unmute all</button>
       <label class="ctl">
         <span>Volume</span>
         <input type="range" id="master-vol" min="0" max="1.5" step="0.01" value="1">
@@ -57,7 +58,7 @@
         <span id="loop-text"></span>
         <button id="loop-clear" class="mini" type="button">Clear</button>
       </span>
-      <span class="hint dim">space play &middot; &larr;&rarr; seek 5s &middot; 1-6 stem &middot; 0 full mix
+      <span class="hint dim">space play &middot; &larr;&rarr; seek 5s &middot; 1-6 stem &middot; 0 unmute all
         &middot; <strong>a</strong>/<strong>b</strong> loop &middot; <strong>c</strong> clear</span>
     </div>
 
@@ -70,10 +71,6 @@
       <div class="sep-row">
         <button id="sep-save" class="btn ghost" hidden>Save stems (.zip)</button>
         <button id="sep-cancel" class="btn ghost" hidden>Cancel</button>
-        <label class="btn ghost">
-          Use a local .onnx
-          <input type="file" id="sep-model" accept=".onnx" hidden>
-        </label>
       </div>
     </section>
 

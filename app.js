@@ -22,6 +22,7 @@ let scrubbing = false;
 let raf = 0;
 let loopA = null;          // A-B repeat start, seconds (null = unset)
 let loopB = null;          // A-B repeat end, seconds
+let muteSnapshot = null;   // lane mutes to return to when "unmute all" is undone
 const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
 
 const $ = (id) => document.getElementById(id);
@@ -32,6 +33,7 @@ const el = {
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
+  allToggle: $('all-toggle'),
 };
 
 // ---------------------------------------------------------------- helpers
@@ -141,6 +143,7 @@ function buildTracks(items, title) {
   });
 
   window.__hasStems = hasMixPlusStems(tracks);
+  muteSnapshot = null;          // a snapshot indexes the old lanes; it cannot survive a load
 
   buildUI(title);
   setMode('mix');
@@ -152,10 +155,11 @@ function buildTracks(items, title) {
  * @param {Object<string, {left: Float32Array, right: Float32Array}>} stems
  */
 function loadSeparated(original, stems) {
-  // The original MUST be tagged 'mix' explicitly. With seven tracks the lone-file rule
-  // does not fire, and a song filename matches none of detectStem's mix patterns — so
-  // without this it would be summed on top of its own stems at double volume.
-  const items = [{ name: original.name, buffer: original.buffer, stem: 'mix' }];
+  // The original is deliberately dropped: the six stems already sum to it, and keeping
+  // it would either double the audio or need permanent suppression. Its name still
+  // becomes the title. (assignStems' explicit-'mix' path still guards the disk case,
+  // where a folder genuinely holds a mix file alongside its stems.)
+  const items = [];
 
   for (const [stem, ch] of Object.entries(stems)) {
     const buf = audio.createBuffer(2, ch.left.length, audio.sampleRate);
@@ -164,8 +168,15 @@ function loadSeparated(original, stems) {
     items.push({ name: `${stem}.wav`, buffer: buf, stem });
   }
 
+  // Separation runs in a worker, so the mix may still be playing when the stems land.
+  // Its BufferSources are not in `tracks` and would keep sounding over the new lanes with
+  // a stale startedAt. stop(false) silences them and returns the playhead to the start.
+  stop(false);
+
   loopA = loopB = null;
   renderLoopBadge();
+  // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks
+  // leaves every stem unmuted — all six lanes on by default.
   buildTracks(items, original.name.replace(AUDIO_RE, ''));
   say('');
 }
@@ -238,10 +249,10 @@ function buildUI(title) {
     const name = document.createElement('div');
     name.className = 'lane-name';
     name.style.color = t.color;
-    name.title = 'Click to solo this track';
+    name.title = 'Click to mute or unmute this track';
     name.innerHTML = `<span class="dot"></span><span class="txt">${t.label}</span>` +
                      (i < 10 ? `<span class="kbd">${(i + 1) % 10}</span>` : '');
-    name.addEventListener('click', () => soloTrack(t));
+    name.addEventListener('click', () => toggleTrack(t));
 
     const canvas = document.createElement('canvas');
     canvas.className = 'wave';
@@ -540,6 +551,49 @@ function applyGains() {
     t.gain.gain.setTargetAtTime(g, now, 0.012);
     t.laneEl?.classList.toggle('muted', !on);
   });
+  // Every mute path routes through here, so the button label can never drift out of sync.
+  // "Restore previous" only when there really is a previous. Everything already on with
+  // nothing saved reads as a disabled "Unmute all" — true, and it explains the disabling.
+  const canRestore = allLanesOn() && !!muteSnapshot;
+  el.allToggle.textContent = canRestore ? 'Restore previous' : 'Unmute all';
+  el.allToggle.disabled = allLanesOn() && !muteSnapshot;
+}
+
+/** Lanes the all-on/all-off button acts on — the stems, never a full-mix file. */
+function stemLanes() {
+  return window.__hasStems ? tracks.filter(t => t.stem !== 'mix') : tracks;
+}
+
+function allLanesOn() {
+  const lanes = stemLanes();
+  return lanes.length > 0 && lanes.every(t => !t.muted);
+}
+
+/**
+ * "Unmute all", and press it again to come back. The snapshot is taken at the moment
+ * everything is turned on, so muting a lane and pressing again returns to *that* state,
+ * not to whatever was saved two presses ago.
+ */
+function toggleAllTracks() {
+  if (allLanesOn()) {
+    if (!muteSnapshot) return;               // already on and nothing saved
+    const snap = muteSnapshot;
+    muteSnapshot = null;
+    stemLanes().forEach((t, i) => { t.muted = snap[i]; });
+    el.mode.value = 'custom';
+    applyGains();
+    return;
+  }
+
+  muteSnapshot = stemLanes().map(t => t.muted);
+  if (window.__hasStems) {
+    // Unmuting the stems is what silences the mix file, via applyGains.
+    stemLanes().forEach(t => { t.muted = false; });
+    el.mode.value = 'custom';
+    applyGains();
+  } else {
+    setMode('mix');   // every lane on *is* the full mix, so keep the dropdown honest
+  }
 }
 
 function setMode(mode) {
@@ -556,13 +610,19 @@ function setMode(mode) {
   applyGains();
 }
 
-function soloTrack(t) {
-  const alreadySolo = !t.muted && tracks.every(o => o === t || o.muted);
-  if (alreadySolo) setMode('mix');
-  else setMode(t.stem === 'mix' ? 'mix' : t.label);
-}
-
 function toggleTrack(t) {
+  // The mix lane is the exception: a full-mix file must never sound on top of its own
+  // stems, so toggling it switches the whole routing instead of just its own gain.
+  if (window.__hasStems && t.stem === 'mix') {
+    if (el.mode.value === 'mix') {
+      tracks.forEach(o => { o.muted = o.stem === 'mix'; });   // hand over to the stems
+      el.mode.value = 'custom';
+      applyGains();
+    } else {
+      setMode('mix');
+    }
+    return;
+  }
   t.muted = !t.muted;
   el.mode.value = 'custom';
   applyGains();
@@ -592,6 +652,7 @@ function attachSeek(canvas) {
 
 el.play.addEventListener('click', toggle);
 el.loopClear.addEventListener('click', clearLoop);
+el.allToggle.addEventListener('click', toggleAllTracks);
 el.mode.addEventListener('change', () => setMode(el.mode.value));
 el.masterVol.addEventListener('input', () => {
   ensureAudio();
@@ -607,7 +668,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === ' ') { e.preventDefault(); toggle(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - 5); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + 5); }
-  else if (e.key === '0') setMode('mix');
+  else if (e.key === '0') toggleAllTracks();
   else if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setLoopPoint('a'); }
   else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setLoopPoint('b'); }
   else if (e.key === 'c' || e.key === 'C' || e.key === 'Escape') { e.preventDefault(); clearLoop(); }

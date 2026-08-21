@@ -45,6 +45,9 @@ Running log of what was built and what was learned building it.
   the two above (see the learnings).
 - **The lane click target now fills the left column**, from the lane's left edge to the
   number badge, at full lane height. The waveform column still seeks.
+- **A Mute all / Unmute all button** next to the Play dropdown, relabelling itself from the
+  live mute state. Anything muted means the next click turns everything on.
+- **The "done" status text is gone.** Six lanes where there was one is the confirmation.
 
 **Key technical learnings:**
 
@@ -72,6 +75,9 @@ Running log of what was built and what was learned building it.
   `.lane-name` was a full-width 128px column but a ~14px strip inside a ~56px lane, so the
   toggle only really worked on the text. `align-self: stretch` plus negative margins that
   swallow the lane's own padding make the whole left block clickable.
+- `[note]` The all-on/all-off button relabels itself inside `applyGains` rather than at each
+  call site. Every mute path already routes through there, so the label cannot drift out of
+  sync with the lanes — including mutes triggered by the dropdown or the number keys.
 - `[note]` The `1`–`6` keys have always called `toggleTrack`, so lane clicks and the number
   keys finally agree. The README had described `2` as "mute everything but the guitar",
   which was never what the key did.

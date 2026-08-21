@@ -32,6 +32,7 @@ const el = {
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
+  allToggle: $('all-toggle'),
 };
 
 // ---------------------------------------------------------------- helpers
@@ -548,6 +549,30 @@ function applyGains() {
     t.gain.gain.setTargetAtTime(g, now, 0.012);
     t.laneEl?.classList.toggle('muted', !on);
   });
+  // Every mute path routes through here, so the button label can never drift out of sync.
+  el.allToggle.textContent = allLanesOn() ? 'Mute all' : 'Unmute all';
+}
+
+/** Lanes the all-on/all-off button acts on — the stems, never a full-mix file. */
+function stemLanes() {
+  return window.__hasStems ? tracks.filter(t => t.stem !== 'mix') : tracks;
+}
+
+function allLanesOn() {
+  const lanes = stemLanes();
+  return lanes.length > 0 && lanes.every(t => !t.muted);
+}
+
+function toggleAllTracks() {
+  const turnOn = !allLanesOn();
+  if (turnOn && !window.__hasStems) {
+    // With no mix file, every lane on *is* the full mix, so keep the dropdown honest.
+    setMode('mix');
+  } else {
+    stemLanes().forEach(t => { t.muted = !turnOn; });
+    el.mode.value = 'custom';
+    applyGains();
+  }
 }
 
 function setMode(mode) {
@@ -606,6 +631,7 @@ function attachSeek(canvas) {
 
 el.play.addEventListener('click', toggle);
 el.loopClear.addEventListener('click', clearLoop);
+el.allToggle.addEventListener('click', toggleAllTracks);
 el.mode.addEventListener('change', () => setMode(el.mode.value));
 el.masterVol.addEventListener('input', () => {
   ensureAudio();

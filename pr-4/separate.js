@@ -106,7 +106,7 @@ el.go.addEventListener('click', () => {
       lastStems = m.stems;
       busy(false);
       setProgress(null);
-      status('done');
+      status('');                      // the six lanes appearing is the confirmation
       el.go.hidden = true;             // this song is separated; nothing left to separate
       el.save.hidden = false;
       window.sansBass.loadSeparated({ name: lastName, buffer: mix.buffer }, m.stems);

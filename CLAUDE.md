@@ -19,9 +19,9 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
 ## Hard constraints — do not break these
 
 - **No build step, no dependencies, no framework.** Vanilla JS, no bundler, no npm, nothing
-  installed. The player core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js`,
-  and it must keep working when opened as `file://` by double-clicking it. Separation adds
-  ES modules that load only over HTTP and never touch that path.
+  installed. The player core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js`
+  and `lib/unzip.js`, and it must keep working when opened as `file://` by double-clicking
+  it. Separation adds ES modules that load only over HTTP and never touch that path.
 - **Nothing leaves the machine.** No uploads, no analytics, no audio egress ever. Inbound
   fetches are allowed and necessary: the ONNX runtime from jsDelivr and the ~285 MB model
   from Hugging Face. Keep the distinction — "no outbound audio", not "no network calls".
@@ -72,6 +72,7 @@ A-B repeat / routing / input).
 ```
 index.html  styles.css  app.js     the player (classic scripts — file:// safe)
 lib/stems.js                       stem identity, classic script, shared with the tests
+lib/unzip.js                       zip reading, classic script — window.SansUnzip.extract
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 tests/test.html                    units      → window.__testResults
@@ -108,11 +109,19 @@ out of the project; never commit them.
 
 ## Gotchas that will bite again
 
-- **Folder drag-and-drop cannot work on `file://`.** Chrome refuses the directory read. The
-  Load folder button (`<input webkitdirectory>`) always works. Don't "fix" the drop path.
-- **Callback-pair DOM APIs need their error callback wired.** `fsCall` in `app.js` exists
-  because `new Promise(res => reader.readEntries(res))` hung forever on a blocked read, with
-  no error anywhere. There is a 5 s timeout as a backstop.
+- **There are exactly two ways in, and that is the design.** One audio file (a whole song,
+  which is also the separation entry point) via **Load song**, or one `.zip` of stems via
+  **Load zip**. Drop accepts the same two things and nothing else. Don't re-add multi-file
+  loading or folder drop "for convenience" — each extra path was a way to fail silently.
+- **Folder drop is deliberately unsupported — don't add it back.** It needed the directory
+  entries API, which Chrome blocks on `file://`, so it only ever worked over http and failed
+  silently otherwise. v1.3.0 deleted the recursive walk (`walkEntry`/`fsCall`, ~40 lines); a
+  zip does the same job on every protocol. A dropped folder is still *detected*, purely to
+  tell the user to zip it — that message is the feature, not a leftover.
+- **Callback-pair DOM APIs need their error callback wired.** No longer live in this repo —
+  `fsCall` went with the folder walk — but the lesson is why that code existed:
+  `new Promise(res => reader.readEntries(res))` hung forever on a blocked read, with no error
+  anywhere. If you ever wrap a `(successCb, errorCb)` API, wire both and add a timeout.
 - **`AudioContext` stays `suspended` until a real user gesture.** Under browser automation,
   synthetic clicks on the play button silently fail to unlock it; a real `space` keypress
   works. If the clock reads 0 while `playing` is true, this is why.

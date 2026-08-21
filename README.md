@@ -8,8 +8,8 @@ machine. In-browser separation fetches a model *in*, but nothing about your audi
 *out*. It is built for learning a part: solo one instrument, set an A–B loop around the
 phrase you keep fluffing, and drill it.
 
-**Already have stems?** `open index.html`, click **Load folder**, pick the folder, and skip
-to [Controls](#controls). Steps 1–3 below are the one-time job of getting stems out of a CD.
+**Already have stems?** Zip the folder, `open index.html`, click **Load zip**, pick the zip, and
+skip to [Controls](#controls). Steps 1–3 below are the one-time job of getting stems out of a CD.
 
 ---
 
@@ -162,8 +162,8 @@ done
 ```
 
 That gives `stems/reborn/<track name>/{vocals,guitar,bass,drums,piano,other}.m4a`, one
-folder per track — which is exactly what the player's **Load folder** button expects. A
-12-track album takes roughly five minutes end to end on Apple Silicon.
+folder per track — zip one of those folders and it is exactly what the player's **Load zip**
+button expects. A 12-track album takes roughly five minutes end to end on Apple Silicon.
 
 ### Which format for the player?
 
@@ -189,11 +189,11 @@ Homebrew and Demucs entirely and let the browser do it.
 ./scripts/serve.sh          # http://localhost:8777
 ```
 
-Open that URL, click **Load files**, pick any audio file, then **Separate into 6 stems**.
+Open that URL, click **Load song**, pick any audio file, then **Separate into 6 stems**.
 The six lanes replace the track you loaded — they sum back to it, so nothing is lost —
 and a **Save stems (.zip)** button appears that writes
-`<song>/{vocals,guitar,bass,drums,piano,other}.wav` — unzip it and it loads with
-**Load folder**.
+`<song>/{vocals,guitar,bass,drums,piano,other}.wav` — that zip loads straight back in with
+**Load zip**, no unzipping needed.
 
 It uses [`kramp/htdemucs-6s-webgpu-onnx`](https://huggingface.co/kramp/htdemucs-6s-webgpu-onnx),
 the same `htdemucs_6s` weights as the local pipeline, exported to ONNX and run through WebGPU.
@@ -243,30 +243,45 @@ Two rules for a public deployment:
 open index.html
 ```
 
-Then click **Load folder** and pick one song's folder — `stems/<song>/`, or
-`stems/<album>/<song>/` if you batched an album. **Load files** is the same thing for a
-hand-picked set of files rather than a whole folder.
+Then zip one song's folder — `stems/<song>/`, or `stems/<album>/<song>/` if you batched an
+album — and click **Load zip** to pick it.
 
-### Dragging a folder in doesn't work when opened from disk
+The two buttons do one thing each: **Load song** takes a single unseparated audio file (and is
+how you start a separation), **Load zip** takes a `.zip` of stems. Dropping onto the page
+accepts exactly the same two things.
 
-This is a Chrome restriction, not a bug in the player. A page opened as `file://…` is
-generally not allowed to read a dropped *folder* — Chrome refuses the directory read, so
-nothing loads. Three ways around it, in order of convenience:
+### Dropping a folder doesn't work
 
-1. **Use the "Load folder" button.** Native file pickers always work, on `file://` too.
-2. **Drag the audio files themselves** rather than the folder containing them. Plain file
-   drops are fine on `file://`; only folders are restricted.
-3. **Serve the directory over http**, where folder drag-and-drop works normally:
+That is deliberate. Reading a dropped folder needs Chrome's directory entries API, which
+Chrome blocks on `file://` — so it only ever worked when the page was served over http,
+and it broke silently the rest of the time. A zip works everywhere, so folder drop was
+removed rather than left as a trap.
 
-   ```bash
-   python3 -c "from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler; \
-   ThreadingHTTPServer(('127.0.0.1',8777), SimpleHTTPRequestHandler).serve_forever()"
-   # then open http://localhost:8777
-   ```
+**Drop a `.zip` instead.** On macOS, right-click the folder → **Compress**, then drag the
+`.zip` onto the page or pick it with **Load zip**. On the command line:
 
-   Use `ThreadingHTTPServer` as above rather than a plain `python3 -m http.server`. The
-   default server is single-threaded, and with files this size the browser can wedge it —
-   `fetch` then hangs forever while `curl` on the same URL returns instantly.
+```bash
+cd stems/<album> && zip -r ~/Desktop/song.zip "<song>"
+```
+
+Both stored (`zip -0`) and compressed (`zip -r`) archives load, as does anything Finder's
+**Compress** produces — its `__MACOSX` sidecars are filtered out.
+
+A set of loose stem files is not a supported drop — zip them. A single audio file is, and is
+read as a whole song to separate rather than as one stem.
+
+### Serving over http
+
+The player itself needs no server — `open index.html` is enough. In-browser separation
+does, because it loads ES modules:
+
+```bash
+./scripts/serve.sh          # http://localhost:8777
+```
+
+Use `ThreadingHTTPServer` (as `serve.sh` does) rather than a plain `python3 -m http.server`.
+The default server is single-threaded, and with files this size the browser can wedge it —
+`fetch` then hangs forever while `curl` on the same URL returns instantly.
 
 ### Controls
 

@@ -128,8 +128,14 @@ code {
   text-align: center;
   transition: border-color .15s, background .15s;
 }
-.dropzone .big { font-size: 19px; font-weight: 600; margin: 0 0 12px; }
-.dropzone p { margin: 6px 0; max-width: 60ch; margin-inline: auto; }
+/* Title, explain and privacy share one column, centred in the panel but ragged-right
+   inside it, so all three hang off the same left edge. Two things this depends on:
+   the width is px, not ch — `ch` scales with each paragraph's own font-size, so the 19px
+   heading would get a wider column and break the shared edge — and `.big` sets its inline
+   margins to `auto` itself, because it outranks `.dropzone p` on specificity and the
+   shorthand would otherwise reset them to 0. */
+.dropzone .big { font-size: 19px; font-weight: 600; margin: 0 auto 12px; }
+.dropzone p { margin: 6px auto; max-width: 540px; text-align: left; }
 
 /* ---------- drag overlay ---------- */
 

@@ -8,8 +8,9 @@ machine. In-browser separation fetches a model *in*, but nothing about your audi
 *out*. It is built for learning a part: solo one instrument, set an A–B loop around the
 phrase you keep fluffing, and drill it.
 
-**Already have stems?** Zip the folder, `open index.html`, click **Load zip**, pick the zip, and
-skip to [Controls](#controls). Steps 1–3 below are the one-time job of getting stems out of a CD.
+**Already have stems?** Zip the folder, start the server with `./scripts/serve.sh`, open
+<http://localhost:8777>, click **Load zip**, pick the zip, and skip to [Controls](#controls).
+Steps 1–3 below are the one-time job of getting stems out of a CD.
 
 ---
 
@@ -213,8 +214,8 @@ Details worth knowing:
 - **First run downloads a 285 MB model**, then caches it in the browser. Later runs start
   immediately.
 - **Requires the local server**, not a `file://` page: browsers block module loading and
-  Cache Storage from disk. The player itself still works double-clicked; only separation
-  needs the server.
+  Cache Storage from disk. As of v1.5.0 this is true of the whole page, not just separation
+  — `file://` is no longer supported at all.
 - **Needs WebGPU** to be quick. Without it the run falls back to CPU and takes many minutes;
   the page tells you which one you got.
 - **Saved stems are WAV, so they are big** — roughly 218 MB per song against 25 MB for the
@@ -240,7 +241,7 @@ Two rules for a public deployment:
 ## Step 4 — Play
 
 ```bash
-open index.html
+./scripts/serve.sh          # then open http://localhost:8777
 ```
 
 Then zip one song's folder — `stems/<song>/`, or `stems/<album>/<song>/` if you batched an
@@ -272,8 +273,8 @@ read as a whole song to separate rather than as one stem.
 
 ### Serving over http
 
-The player itself needs no server — `open index.html` is enough. In-browser separation
-does, because it loads ES modules:
+The page is served over HTTP — there is no `file://` mode. Either use the hosted copy at
+<https://sansword.github.io/sans_bass/>, or run it locally:
 
 ```bash
 ./scripts/serve.sh          # http://localhost:8777

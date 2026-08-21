@@ -33,7 +33,7 @@ const el = {
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
-  allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'),
+  allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'), langToggle: $('lang-toggle'),
 };
 
 /* Null-safe wiring. Every listener in this file is registered from one flat run of
@@ -627,11 +627,11 @@ function renderLoopBadge() {
   if (loopA === null && loopB === null) { badge.hidden = true; return; }
   badge.hidden = false;
   if (loopOn()) {
-    el.loopText.textContent = `A–B ${fmt(loopA)} → ${fmt(loopB)} (${(loopB - loopA).toFixed(1)}s)`;
+    el.loopText.textContent = tr('loop.range',
+      { a: fmt(loopA), b: fmt(loopB), len: (loopB - loopA).toFixed(1) });
     badge.classList.add('armed');
   } else {
-    el.loopText.textContent = loopA !== null ? 'A set — press B to close the loop'
-                                             : 'B set — press A to close the loop';
+    el.loopText.textContent = tr(loopA !== null ? 'loop.aSet' : 'loop.bSet');
     badge.classList.remove('armed');
   }
 }
@@ -659,11 +659,54 @@ function applyGains() {
     t.laneEl?.classList.toggle('muted', !on);
   });
   // Every mute path routes through here, so the button label can never drift out of sync.
-  // "Restore previous" only when there really is a previous. Everything already on with
-  // nothing saved reads as a disabled "Unmute all" — true, and it explains the disabling.
-  const canRestore = allLanesOn() && !!muteSnapshot;
-  el.allToggle.textContent = canRestore ? 'Restore previous' : 'Unmute all';
-  el.allToggle.disabled = allLanesOn() && !muteSnapshot;
+  renderAllToggle();
+}
+
+/* "Restore previous" only when there really is a previous. Everything already on with
+ * nothing saved reads as a disabled "Unmute all" — true, and it explains the disabling.
+ * Split out of applyGains so retranslate() can re-render the label without touching gain. */
+function renderAllToggle() {
+  const on = allLanesOn();
+  el.allToggle.textContent = on && muteSnapshot ? tr('btn.restorePrevious') : tr('btn.unmuteAll');
+  el.allToggle.disabled = on && !muteSnapshot;
+}
+
+/**
+ * Re-render the strings the DOM is already holding, after a language change.
+ *
+ * It must NOT rebuild the lanes. Rebuilding would drop every canvas and force a full
+ * waveform re-render, and it must not touch `tracks`, `sources`, gain nodes or the
+ * playhead — switching language mid-practice has to be completely inaudible. The lane
+ * name's text node is mutated in place for exactly that reason.
+ */
+function retranslate() {
+  if (tracks.length) {
+    const mode = el.mode.value;
+    buildModeOptions();
+    el.mode.value = mode;            // rebuilding the options resets the selection
+    tracks.forEach((t) => {
+      if (!t.nameEl) return;
+      t.nameEl.title = tr('lane.tip');
+      const txt = t.nameEl.querySelector('.txt');
+      if (txt) txt.textContent = laneLabel(t);
+    });
+  }
+  renderLoopBadge();
+  // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
+  // its text — clobbering "Restore previous". This runs after, and must keep doing so:
+  // setLocale applies the markup first and dispatches the event second, in that order.
+  renderAllToggle();
+  if (lastSay) say(lastSay.key, lastSay.params, lastSay.isErr);
+  renderLangToggle();
+}
+
+/** Keep the pressed half of the switcher in step with the active locale. */
+function renderLangToggle() {
+  if (!el.langToggle) return;
+  const active = window.SansI18n.getLocale();
+  el.langToggle.querySelectorAll('button').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.lang === active));
+  });
 }
 
 /** Lanes the all-on/all-off button acts on — the stems, never a full-mix file. */
@@ -761,6 +804,12 @@ on(el.play, 'click', toggle);
 on(el.loopClear, 'click', clearLoop);
 on(el.allToggle, 'click', toggleAllTracks);
 on(el.mode, 'change', () => setMode(el.mode.value));
+on(el.langToggle, 'click', (e) => {
+  const btn = e.target.closest('button[data-lang]');
+  if (btn) window.SansI18n.setLocale(btn.dataset.lang);   // an explicit choice persists
+});
+window.addEventListener('sansbass:langchange', retranslate);
+renderLangToggle();
 on(el.masterVol, 'input', () => {
   ensureAudio();
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);

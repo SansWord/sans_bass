@@ -54,3 +54,42 @@ test('i18n: setLocale rejects an unknown locale rather than blanking the UI', ()
   assertEq(I18N.getLocale(), 'zh-TW', 'falls back to the default locale');
   I18N.setLocale('en', { persist: false });
 });
+
+test('i18n: apply() fills the three attribute forms', () => {
+  I18N.setLocale('en', { persist: false });
+  const root = document.createElement('div');
+  root.innerHTML =
+    '<p data-i18n="stem.bass"></p>' +
+    '<p data-i18n-html="test.markup"></p>' +
+    '<button data-i18n-attr="title:stem.bass,aria-label:stem.bass"></button>';
+  document.body.appendChild(root);
+
+  I18N.DICT.en['test.markup'] = 'a <strong>bold</strong> claim';
+  I18N.DICT['zh-TW']['test.markup'] = '一個<strong>粗體</strong>的說法';
+
+  I18N.apply(root);
+  assertEq(root.querySelector('[data-i18n]').textContent, 'Bass', 'textContent form');
+  assertEq(root.querySelector('[data-i18n-html] strong').textContent, 'bold', 'html form parsed');
+  assertEq(root.querySelector('button').getAttribute('title'), 'Bass', 'attr form: title');
+  assertEq(root.querySelector('button').getAttribute('aria-label'), 'Bass', 'attr form: aria-label');
+
+  I18N.setLocale('zh-TW', { persist: false });
+  I18N.apply(root);
+  assertEq(root.querySelector('[data-i18n]').textContent, '貝斯', 're-applied in the new locale');
+
+  root.remove();
+  delete I18N.DICT.en['test.markup'];
+  delete I18N.DICT['zh-TW']['test.markup'];
+  I18N.setLocale('en', { persist: false });
+});
+
+test('i18n: the text form escapes, so a key value can never inject markup', () => {
+  I18N.setLocale('en', { persist: false });
+  const root = document.createElement('div');
+  root.innerHTML = '<p data-i18n="test.injection"></p>';
+  I18N.DICT.en['test.injection'] = '<img src=x onerror=1>';
+  I18N.apply(root);
+  assertEq(root.querySelector('p').children.length, 0, 'no element was created');
+  assertEq(root.querySelector('p').textContent, '<img src=x onerror=1>', 'rendered as text');
+  delete I18N.DICT.en['test.injection'];
+});

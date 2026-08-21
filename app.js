@@ -171,7 +171,13 @@ async function loadZip(file) {
     entries = await window.SansUnzip.extract(file);
   } catch (err) {
     console.error(err);
-    say(err.message, true);      // already user-ready; see lib/unzip.js zipError()
+    /* lib/unzip.js tags every error with a stable `code` and an English `message`. Keying
+     * on the code translates them without modifying that file. Three different messages
+     * share the code 'not-zip', so the translation is slightly less specific than the
+     * English original — the trade for not reaching into lib/unzip.js. Any code without a
+     * key falls through to the original message rather than printing "zipError.whatever". */
+    const key = `zipError.${err.code}`;
+    say(window.SansI18n.has(key) ? key : err.message, null, true);
     return;
   }
   if (!entries.length) {

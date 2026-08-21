@@ -14,10 +14,69 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.2.1](#v121--github-pages-deployment-with-pr-previews-2026-08-20-2105) | Published to GitHub Pages with per-PR preview deployments; every pull request gets a live URL at `/pr-N/` before it reaches production |
 | [v1.2.0](#v120--in-browser-stem-separation-2026-08-20-2043) | Six-stem separation running entirely in the browser via onnxruntime-web + htdemucs_6s, at ~8x realtime on WebGPU, with stems saveable as one ZIP of WAVs |
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.2.1 — GitHub Pages deployment with PR previews (2026-08-20 21:05)
+
+**Review:** not yet
+
+**What was built:**
+
+- The project is public at <https://sansword.github.io/sans_bass/>, served by GitHub Pages
+  from a `gh-pages` branch with no backend and no build step.
+- Three workflows: `deploy-main.yml` publishes `main` to the site root, `pr-preview.yml`
+  publishes every pull request to `/pr-<N>/` and posts a sticky comment with the links, and
+  `pr-preview-cleanup.yml` removes the directory when the PR closes.
+- [`docs/deployment.md`](deployment.md) documents the whole arrangement.
+- Verified on the real deployment, not just locally: 27/27 unit tests at the deployed URL,
+  the ONNX runtime loading from jsDelivr, all 285 MB of the model fetched from Hugging Face,
+  `ready: webgpu`, and a second load served from Cache Storage in 0.5 s.
+
+**Key technical learnings:**
+
+- `[gotcha]` **Two workflows sharing a concurrency group can silently cancel a deploy.**
+  Merging a pull request fires `deploy-main` (push to `main`) and `pr-preview-cleanup`
+  (PR closed) simultaneously. With both in one group, one ran and the other went pending —
+  and GitHub cancels a pending run the moment another joins the group. On the v1.2.0 merge
+  the casualty was `deploy-main`: production never deployed, the root served a placeholder,
+  and nothing anywhere reported a failure. Each workflow now owns its group. The real
+  protection against concurrent writes was never the shared lock — it is the
+  `git pull --rebase` retry loop plus the fact that the workflows touch disjoint paths.
+- `[gotcha]` **`rsync -a` decides by size and mtime, so it skips a changed file of identical
+  size.** A production sync would have published stale content. Found by fault-injecting the
+  sync against a fixture rather than by watching the site: every other assertion in that test
+  passed while `index.html` quietly stayed at the old version. Both workflows now use `-c`.
+- `[gotcha]` **An orphan branch does not inherit `.gitignore`.** Fresh `gh-pages` did not
+  ignore `rips/` or `stems/`, so a stray `git add -A` while checked out there would have
+  staged ~860 MB of commercial recordings. `.gitignore` is committed on that branch now.
+- `[note]` `.nojekyll` has to be recreated after every sync, because the root sync uses
+  `--delete`. Protecting it with an rsync filter *and* touching it each run makes it
+  impossible to lose.
+- `[note]` GitHub Pages has no native per-branch preview URL — one repository gets one site
+  from one source. Per-PR previews are just subdirectories of the one published branch, with
+  production carefully protected from deleting them (`--filter 'protect pr-*'`).
+- `[insight]` **A hosted preview tests something localhost cannot.** The one thing that
+  genuinely changes between `./scripts/serve.sh` and a public HTTPS origin is cross-origin
+  fetching — jsDelivr for the runtime, Hugging Face for a 285 MB model, both dependent on
+  those hosts' CORS headers. That is the reason a preview deployment earns its complexity
+  here; for a site with no third-party fetches it would not.
+
+**Process learnings:**
+
+- `[insight]` **"The workflow ran" is not "the workflow succeeded."** The deploy was reported
+  as cancelled in a run list that otherwise looked healthy, and the site simply kept serving
+  its previous content. Checking the *conclusion* rather than the existence of a run is the
+  same discipline this project already applies to audio: observe the outcome, not the
+  parameters.
+- `[insight]` The fix for a CI bug is best verified by the event that exposed it. Fixing the
+  concurrency collision on a branch meant the pull request re-tested previews, and merging it
+  re-tested the exact scenario that had failed — `Deploy main [push] completed/success`.
 
 ---
 

@@ -1,0 +1,104 @@
+# Deployment
+
+The site is static, so hosting it needs no backend and no build step. It lives at
+**<https://sansword.github.io/sans_bass/>**, served by GitHub Pages from the `gh-pages`
+branch. Inference runs on the visitor's GPU; the server only ever hands out files.
+
+## The shape of it
+
+```
+main ────────push───────▶ Deploy main ──────┐
+                                            ├──▶ gh-pages ──▶ Pages ──▶ the live site
+PR #N ───────push───────▶ PR preview  ──────┤        │
+     └──────closed──────▶ PR cleanup  ──────┘        │
+                                                     ├── /              ← main
+                                                     └── /pr-N/         ← PR N
+```
+
+One branch holds everything Pages serves. `main` owns the root; every open pull request
+owns a `pr-<N>/` subdirectory. Three workflows in `.github/workflows/` do the writing, and
+nothing on `gh-pages` should ever be edited by hand.
+
+| Workflow | Trigger | Writes | Concurrency group |
+|---|---|---|---|
+| `deploy-main.yml` | push to `main`, or manual dispatch | `gh-pages` root | `gh-pages-main` |
+| `pr-preview.yml` | PR opened / synchronized / reopened | `gh-pages:/pr-<N>/` | `gh-pages-pr-<N>` |
+| `pr-preview-cleanup.yml` | PR closed | removes `/pr-<N>/` | `gh-pages-pr-<N>` |
+
+`pr-preview.yml` also posts a single sticky comment on the PR with the preview links,
+updating it in place rather than commenting on every push.
+
+## Verifying a change before it reaches production
+
+Open a pull request. It gets its own live copy at `/pr-<N>/`, which is a real Pages
+deployment on the real origin — the right place to check anything that behaves differently
+under HTTPS from a public host than it does on `localhost`:
+
+- the ONNX runtime loading from jsDelivr and the ~285 MB model from Hugging Face (both
+  cross-origin, both dependent on those hosts' CORS headers)
+- WebGPU initialising and reporting `webgpu` rather than falling back to `wasm`
+- Cache Storage keeping the model, so a second visit starts in well under a second
+- `tests/test.html`, which runs the full unit suite in the deployed environment
+
+`tests/parity.html` will **not** work on a preview. It compares separation output against
+the native stems in `rips/` and `stems/`, which are deliberately never published. Run it
+locally against `./scripts/serve.sh`.
+
+Merging the PR deletes its preview directory and publishes `main` to the root.
+
+## Rules that keep this safe
+
+- **Never commit audio.** `rips/` and `stems/` are the owner's own recordings — hundreds of
+  megabytes of commercial music. `.gitignore` excludes them on every branch, *including
+  `gh-pages`*, and both deploy workflows exclude them from `rsync` as a second line of
+  defence. Publishing this repo must never publish the recordings.
+- **Never commit the model.** It is 285 MB, over GitHub's 100 MB file limit, and is fetched
+  from Hugging Face at runtime and cached in the browser instead.
+- **Never set `ort.env.wasm.numThreads` above 1.** Threads require SharedArrayBuffer, which
+  requires the COOP and COEP response headers, which GitHub Pages cannot set. Single-threaded
+  is what makes static hosting possible at all — see [`CLAUDE.md`](../CLAUDE.md).
+
+## Gotchas this setup already hit
+
+- **`rsync -a` alone publishes stale content.** Its default check is size plus mtime, so a
+  file that changed but kept its byte count is skipped silently. Both deploy workflows use
+  `-c` to compare checksums. This was caught by fault injection, not in production: a test
+  sync left `index.html` at the old version while every other assertion passed.
+- **Two workflows must not share a concurrency group.** Merging a pull request fires
+  `deploy-main` (push to `main`) and `pr-preview-cleanup` (PR closed) in the same instant.
+  When they shared one group, one ran and the other went pending — and GitHub cancels a
+  pending run as soon as another joins the group. On the v1.2.0 merge that was `deploy-main`,
+  so production never deployed and the root kept serving a placeholder. Each workflow now has
+  its own group. Concurrent writes are safe regardless, because every push retries with
+  `git pull --rebase` and the workflows touch disjoint paths.
+- **`.nojekyll` is required and must be recreated every run.** Without it Pages runs the site
+  through Jekyll, which reprocesses files that need no processing. Because the root sync uses
+  `--delete`, the file is both protected by a filter and re-created after every sync, so it
+  cannot be lost.
+- **An orphan branch does not inherit `.gitignore`.** When `gh-pages` was first created,
+  `rips/` and `stems/` showed as untracked there, so a stray `git add -A` while checked out
+  on that branch would have staged ~860 MB of audio. `.gitignore` is now committed on
+  `gh-pages` too.
+- **Previews do not work for pull requests from forks.** The `pull_request` event gives a
+  fork's workflow a read-only token, so it cannot push to `gh-pages`. This is deliberate: the
+  alternative, `pull_request_target`, runs trusted workflow code against untrusted PR content.
+  Branch pull requests in this repo are unaffected.
+
+## Operating it
+
+```bash
+# Watch what CI is doing
+gh run list --limit 5
+
+# Publish main by hand (the workflow also accepts a manual dispatch)
+gh workflow run deploy-main.yml --ref main
+
+# Ask Pages what it last built
+gh api repos/SansWord/sans_bass/pages/builds/latest --jq '{status, error}'
+
+# Prove no audio is published, from the authoritative source
+git ls-tree -r --name-only origin/gh-pages | grep -iE '\.(flac|m4a|wav|onnx)$' || echo clean
+```
+
+If the root ever serves the wrong thing, check `deploy-main` actually **succeeded** rather
+than assuming it ran — a cancelled run reports no failure anywhere on the site.

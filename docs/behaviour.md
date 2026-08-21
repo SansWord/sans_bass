@@ -86,7 +86,8 @@ only way to see per-lane gain at all. For "did playback actually stop", patch
 | L5 | An undecodable file is skipped with a message naming it; the rest still load. | Status line names the file. |
 | L6 | ⚠ Dropping a **folder** is unsupported on every protocol and must not be "fixed" — it says so and tells the user to zip it. | Status line reads "Dropping a folder is not supported…". |
 | L7 | The `AudioContext` is 44100 Hz regardless of the machine's default. | `audio.sampleRate`. Wrong rate silently produces wrong stems. |
-| L8 | A `.zip` of stems loads to exactly the lanes the same folder would, and the song title comes from the folder name **inside** the zip. | Lane labels, and `#title` reads the inner folder name — not `6 tracks`. |
+| L8 | A `.zip` of stems loads to exactly the lanes the same folder would, and the song title comes from the folder name **inside** the zip. | Lane labels, and `#title` reads the inner folder name — not the zip's own filename, and not `6 tracks`. |
+| L8a | A **flat** zip — stems at the root, no enclosing folder — is titled from the zip's own filename, minus `.zip`. | Zip `我的歌 flat.zip` holding `vocals.wav`… at the root gives `#title` = `我的歌 flat`. The `${n} tracks` count is the last resort only, and is deliberately left in English: it means the loader found neither a folder nor a filename, which is a bug to report, not copy to read. |
 | L9 | Both stored and deflated zips load — the app's own Save stems output and anything from Finder "Compress" or `zip -r`. | `zip -0` and `zip -r` of the same folder give identical lanes. |
 | L10 | Finder's `__MACOSX/._*` sidecars are ignored, so a Finder-made six-stem zip gives six lanes, not twelve. | Lane count is 6. A seventh lane labelled `._bass` means the filter is broken. |
 | L11 | A zip that is unreadable says why: not a zip, a damaged directory, Zip64, encrypted, unsupported compression, truncated, corrupt, or no audio inside. | Status line names the actual cause and is visibly shown. "Codec not supported" for a *read* failure is wrong, and an empty message hides the bar entirely. |
@@ -156,8 +157,9 @@ The button and the `0` key are the same action.
 
 ## Separation panel
 
-Only over HTTP. On `file://` the module is never injected and the panel never appears —
-the player must still work fully.
+Served over HTTP like the rest of the site. `separate.js` loads as a plain
+`<script type="module">` — the `file://` injection guard went with `file://` support
+in v1.5.0.
 
 | # | Expected | How to observe |
 |---|---|---|
@@ -184,6 +186,23 @@ the player must still work fully.
 | Z3 | ⚠ Stems are encoded one at a time so the WAV bytes are never all live at once. | The UI repaints between stems. |
 | Z4 | Save re-enables itself after a failure. | Status shows the error; button usable. |
 
+## Language
+
+| # | Expected | How to observe |
+|---|---|---|
+| N1 | Default is zh-TW. English only when the system language is not Traditional Chinese. | `SansI18n.detectLocale(['ja'])` is `'en'`; `detectLocale(['zh-Hant-TW'])` is `'zh-TW'`. Simplified (`zh-CN`, `zh-Hans`, `zh-SG`) deliberately resolves to `'en'` — the copy is Taiwan terminology. |
+| N2 | A stored choice beats detection; detection never reads storage. | `localStorage['sans_bass.lang']`. `detectLocale()` is pure, which is what makes N1 testable. |
+| N3 | The first visit does **not** persist a locale. Only clicking the switcher does. | Load with a clean profile: `localStorage.getItem('sans_bass.lang')` is `null` but the UI is translated. Otherwise changing the system language later would never take effect. |
+| N4 | ⚠ Switching language never disturbs audio. No reload, no re-decode, no re-render of waveforms. | Play, switch, and sample the AudioContext clock across the switch: it keeps advancing and the context stays `running`. Patch `AudioContext.prototype.createBufferSource` and count calls across the switch — it must be **zero**, or playback was restarted. `document.querySelectorAll('.lane canvas')` must be the same node objects, not just the same count. Audibly there is no gap. Do **not** use `#t-cur` for this: rAF is paused in a backgrounded automation tab, so the clock text reads stale while audio genuinely plays. |
+| N5 | Everything already on screen re-renders: mode dropdown (selection preserved), lane names, loop badge, all-toggle label, status line, separation status. | Set an A–B loop, trigger an error, switch: badge and `#status` both change language; `loopStart`/`loopEnd` are untouched. |
+| N6 | The mode dropdown's option **value** is a stable key (`mix`, a stem id, `lane:<i>`, `custom`), never the label. | `[...document.querySelectorAll('#mode option')].map(o => o.value)`. Keying on labels would break soloing on every switch. |
+| N7 | ⚠ Lane labels translate; **stem ids and filenames never do**. | `tests/i18n.test.js`. A saved zip holds `vocals.wav`, `bass.wav` … in every language. |
+| N8 | Zip errors are translated by their stable `code`; an unknown code falls back to the original English message. | Drop a random file renamed `.zip`. `lib/unzip.js` is not modified — three messages share `not-zip`, so the translation is less specific than the English. |
+| N9 | The switcher is visible and both halves are reachable. | `getComputedStyle(btn).display` on both `#lang-toggle button`s — not `.hidden`, see V1. The active half carries `aria-pressed="true"`. |
+| N10 | `<html lang>` and the tab title follow the locale. | `document.documentElement.lang`, `document.title`. |
+| N11 | A blocked or throwing `localStorage` degrades to detection instead of killing the app. | Block site data, reload: the UI is still translated and `window.sansBass` is still an object. Every access is inside `try/catch` — an uncaught throw during setup kills every listener below it (see G1). |
+| N12 | ⚠ A status param that is itself translated is re-resolved on switch, never stored rendered. | Crash the worker with an empty message so `sep.workerFailed` falls back to `sep.oom`, then switch. The whole line must be in one language — storing the rendered param produced "worker failed: 記憶體不足？ — try a shorter track". `separate.js` passes such params as thunks. |
+
 ## Visibility
 
 | # | Expected | How to observe |
@@ -198,14 +217,14 @@ the player must still work fully.
 | G1 | A missing element does not stop `app.js`. Every top-level listener goes through `on()`, which warns and continues. | Serve a copy of `index.html` with `id="play"` renamed. `window.sansBass` is still an object and drag & drop still works — before v1.4.0 this killed every listener below it. |
 | G2 | An uncaught error puts a message on screen naming the force-reload, instead of leaving a page that looks fine and does nothing. | Throw from the console; `#status` is visible and mentions Cmd-Shift-R. |
 | G3 | Every local asset URL carries `?v=<version>`, and all of them agree. | `tests/versions.test.js`. GitHub Pages pins everything to `max-age=600` with no way to change it, so without this a returning visitor can hold a stale `app.js` against a fresh `index.html` for ten minutes. |
-| G4 | ⚠ `?v=` does not break `file://`. Chrome resolves the query away and loads the file. | Open `index.html` from disk: the stylesheet applies and `window.sansBass` is an object. |
+| G4 | The page is served over HTTP — GitHub Pages, or `./scripts/serve.sh` locally. `file://` is no longer supported (dropped in v1.5.0); opening `index.html` from disk is not expected to work. | `separate.js` now loads as a plain `<script type="module">` with no protocol guard. |
 
 ## Constraints that are not features
 
 Breaking any of these breaks the project, not just a behaviour.
 
-- Opening `index.html` from disk by double-clicking must work: player, loading, transport,
-  A–B repeat, all of it. Only separation is absent.
+- The site is served over HTTP. `file://` support was dropped in v1.5.0 — local use goes
+  through `./scripts/serve.sh`, which separation already required.
 - No build step, no dependencies, no npm, no framework.
 - No audio ever leaves the machine. Inbound fetches (ORT from jsDelivr, model from Hugging
   Face) are fine and necessary.

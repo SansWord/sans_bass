@@ -33,7 +33,7 @@ const el = {
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
-  allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'),
+  allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'), langToggle: $('lang-toggle'),
 };
 
 /* Null-safe wiring. Every listener in this file is registered from one flat run of
@@ -44,6 +44,20 @@ const el = {
 function on(node, ev, fn, opts) {
   if (!node) { console.warn(`sans_bass: no element for the "${ev}" handler — skipped`); return; }
   node.addEventListener(ev, fn, opts);
+}
+
+const tr = (key, params) => window.SansI18n.t(key, params);
+
+/** The lane's display name. Recognised stems translate; an unrecognised file keeps the
+ *  label assignStems derived from its filename, which is not translatable. */
+function laneLabel(t) {
+  return t.stem ? tr('stem.' + t.stem) : t.label;
+}
+
+/** Stable identity for the mode dropdown — never the label, which changes with language.
+ *  `i` is the track's index in the sorted `tracks` array, the same index 1-6 use. */
+function laneKey(t, i) {
+  return t.stem || `lane:${i}`;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -69,10 +83,22 @@ function fmt(t) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function say(msg, isErr) {
+/* What is on the status line right now, as a key rather than rendered text, so a language
+ * switch can re-render it. Without this a visible error would freeze in the old language. */
+let lastSay = null;
+
+/**
+ * Put a message on the status line.
+ * @param {string} key   dictionary key, or '' to clear. An unknown key renders as itself,
+ *                       which is how already-rendered text still works if it ever appears.
+ * @param {Object} [params] interpolation values
+ * @param {boolean} [isErr]
+ */
+function say(key, params, isErr) {
   if (!el.status) return;   // called from the last-resort error handler below
-  el.status.hidden = !msg;
-  el.status.textContent = msg || '';
+  lastSay = key ? { key, params, isErr } : null;
+  el.status.hidden = !key;
+  el.status.textContent = key ? tr(key, params) : '';
   el.status.classList.toggle('err', !!isErr);
 }
 
@@ -81,21 +107,20 @@ function say(msg, isErr) {
  * of failure to debug from the user's side. Name the fix rather than fail mutely. */
 window.addEventListener('error', (e) => {
   console.error('sans_bass:', e.error || e.message);
-  say('Something went wrong in the player. Force-reload the page — Cmd-Shift-R on macOS, ' +
-      'Ctrl-Shift-R elsewhere — to clear a stale cached script.', true);
+  say('status.crash', null, true);
 });
 
 // ---------------------------------------------------------------- loading
 
-async function loadFiles(fileList) {
+async function loadFiles(fileList, fallbackName) {
   const files = [...fileList].filter(f => AUDIO_RE.test(f.name));
-  if (!files.length) { say('No audio files to load. Supported: wav, flac, m4a, mp3, opus, aiff.', true); return; }
+  if (!files.length) { say('status.noAudioFiles', null, true); return; }
 
   ensureAudio();
   stop(true);
   loopA = loopB = null;            // A-B points belong to the previous song
   renderLoopBadge();
-  say(`Decoding ${files.length} file${files.length > 1 ? 's' : ''}…`);
+  say(files.length > 1 ? 'status.decodingMany' : 'status.decodingOne', { n: files.length });
 
   // Decode in parallel: decodeAudioData runs off the main thread, so six stems
   // decode in roughly the time of the slowest one instead of the sum of all six.
@@ -104,7 +129,7 @@ async function loadFiles(fileList) {
   const settled = await Promise.all(files.map(async (file) => {
     try {
       const buf = await audio.decodeAudioData(await file.arrayBuffer());
-      say(`Decoding… ${++done}/${files.length}`);
+      say('status.decodingProgress', { done: ++done, total: files.length });
       return { file, buffer: buf };
     } catch (e) {
       done++;
@@ -116,19 +141,17 @@ async function loadFiles(fileList) {
 
   const loaded = settled.filter(Boolean);
   if (!loaded.length) {
-    say(`Could not decode ${failed.join(', ')} — this browser may not support that codec. ` +
-        `Re-encode as .m4a or .wav.`, true);
+    say('status.decodeFailAll', { names: failed.join(', ') }, true);
     return;
   }
 
   const items = loaded.map((l) => ({ name: l.file.name, buffer: l.buffer }));
-  buildTracks(items, commonName(files));
+  buildTracks(items, commonName(files, fallbackName));
 
   if (failed.length) {
-    say(`Skipped ${failed.join(', ')} — codec not supported by this browser. Re-encode as .m4a.`, true);
+    say('status.decodeSkipped', { names: failed.join(', ') }, true);
   } else if (tracks.length > 1 && tracks.every((t) => !t.stem)) {
-    say('None of the filenames in that zip looked like stems, so they are all playing layered ' +
-        'on top of each other. Rename them vocals / guitar / bass / drums to get labelled lanes.');
+    say('status.noStemNames');
   } else {
     say('');
   }
@@ -142,24 +165,30 @@ async function loadFiles(fileList) {
  */
 async function loadZip(file) {
   if (!file) return;
-  say('Reading zip…');
+  say('status.readingZip');
   let entries;
   try {
     entries = await window.SansUnzip.extract(file);
   } catch (err) {
     console.error(err);
-    say(err.message, true);      // already user-ready; see lib/unzip.js zipError()
+    /* lib/unzip.js tags every error with a stable `code` and an English `message`. Keying
+     * on the code translates them without modifying that file. Three different messages
+     * share the code 'not-zip', so the translation is slightly less specific than the
+     * English original — the trade for not reaching into lib/unzip.js. Any code without a
+     * key falls through to the original message rather than printing "zipError.whatever". */
+    const key = `zipError.${err.code}`;
+    say(window.SansI18n.has(key) ? key : err.message, null, true);
     return;
   }
   if (!entries.length) {
-    say('No audio files in that zip. Supported: wav, flac, m4a, mp3, opus, aiff.', true);
+    say('status.noAudioInZip', null, true);
     return;
   }
   return loadFiles(entries.map((e) => ({
     name: e.name,
     webkitRelativePath: e.webkitRelativePath,
     arrayBuffer: async () => e.bytes.buffer,
-  })));
+  })), file.name.replace(/\.zip$/i, ''));
 }
 
 /**
@@ -170,7 +199,7 @@ async function loadZip(file) {
 function loadSong(file) {
   if (!file) return;
   if (!AUDIO_RE.test(file.name)) {
-    say(`${file.name} is not an audio file. Supported: wav, flac, m4a, mp3, opus, aiff.`, true);
+    say('status.notAudioFile', { name: file.name }, true);
     return;
   }
   return loadFiles([file]);
@@ -191,7 +220,7 @@ function buildTracks(items, title) {
     buffer: t.buffer,
     muted: false,
     volume: 1,
-    gain: null, peaks: null, canvas: null, laneEl: null, layers: null,
+    gain: null, peaks: null, canvas: null, laneEl: null, layers: null, nameEl: null,
   }));
 
   tracks.sort((a, b) => a.order - b.order);
@@ -243,11 +272,18 @@ function loadSeparated(original, stems) {
   say('');
 }
 
-function commonName(files) {
+/**
+ * Title the player. The folder inside the zip is the best name, because that is what
+ * prep-stems.sh names after the song. A flat zip has no folder, so fall back to the zip's
+ * own filename — `fallbackName`, supplied by loadZip. Only if there is neither do we count
+ * files, and that last resort is deliberately not translated: it is a debugging artefact,
+ * not copy a user is meant to read. See docs/behaviour.md.
+ */
+function commonName(files, fallbackName) {
   const paths = files.map(f => f.webkitRelativePath || f.name);
   if (paths.length === 1) return paths[0].replace(AUDIO_RE, '');
   const dir = paths[0].split('/').slice(0, -1).pop();
-  return dir || `${files.length} tracks`;
+  return dir || fallbackName || `${files.length} tracks`;
 }
 
 /** Peak envelope on a fixed time grid so lanes of differing length stay aligned. */
@@ -285,22 +321,31 @@ function mixPeaks() {
 
 // ---------------------------------------------------------------- UI
 
+/* The option VALUE is a stable key, never the label. Labels are translated, so keying on
+ * them would break soloing the moment the language changed — and two unrecognised files
+ * whose filename-derived labels happened to match were already indistinguishable. */
+function buildModeOptions() {
+  el.mode.innerHTML = '';
+  const opts = [['mix', tr('stem.mix')]];
+  tracks.forEach((t, i) => {
+    if (t.stem === 'mix') return;
+    opts.push([laneKey(t, i), tr('mode.only', { name: laneLabel(t) })]);
+  });
+  opts.push(['custom', tr('mode.custom')]);
+  for (const [value, text] of opts) {
+    const o = document.createElement('option');
+    o.value = value; o.textContent = text;
+    el.mode.appendChild(o);
+  }
+}
+
 function buildUI(title) {
   el.dropzone.hidden = true;
   el.player.hidden = false;
   el.title.textContent = title;
   el.tDur.textContent = fmt(duration);
 
-  // mode dropdown
-  el.mode.innerHTML = '';
-  const opts = [['mix', 'Full mix']];
-  tracks.filter(t => t.stem !== 'mix').forEach(t => opts.push([t.label, `${t.label} only`]));
-  opts.push(['custom', 'Custom…']);
-  for (const [value, text] of opts) {
-    const o = document.createElement('option');
-    o.value = value; o.textContent = text;
-    el.mode.appendChild(o);
-  }
+  buildModeOptions();
 
   // lanes
   el.lanes.innerHTML = '';
@@ -311,9 +356,21 @@ function buildUI(title) {
     const name = document.createElement('div');
     name.className = 'lane-name';
     name.style.color = t.color;
-    name.title = 'Click to mute or unmute this track';
-    name.innerHTML = `<span class="dot"></span><span class="txt">${t.label}</span>` +
-                     (i < 10 ? `<span class="kbd">${(i + 1) % 10}</span>` : '');
+    /* Built from nodes rather than innerHTML: t.label can be a filename, and a filename
+     * with markup in it used to be interpolated straight into the DOM. */
+    name.title = tr('lane.tip');
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    const txt = document.createElement('span');
+    txt.className = 'txt';
+    txt.textContent = laneLabel(t);
+    name.append(dot, txt);
+    if (i < 10) {
+      const kbd = document.createElement('span');
+      kbd.className = 'kbd';
+      kbd.textContent = String((i + 1) % 10);
+      name.appendChild(kbd);
+    }
     name.addEventListener('click', () => toggleTrack(t));
 
     const canvas = document.createElement('canvas');
@@ -330,6 +387,7 @@ function buildUI(title) {
     el.lanes.appendChild(lane);
 
     t.canvas = canvas;
+    t.nameEl = name;
     t.laneEl = lane;
     attachSeek(canvas);
   });
@@ -558,7 +616,7 @@ function setLoopPoint(which) {
     const swap = loopA; loopA = loopB; loopB = swap;
   }
   if (loopA !== null && loopB !== null && loopB - loopA < MIN_LOOP) {
-    say(`A and B are less than ${MIN_LOOP}s apart — move the playhead further before setting the second point.`, true);
+    say('status.loopTooShort', { min: MIN_LOOP }, true);
     if (which === 'a') loopA = null; else loopB = null;
   }
 
@@ -582,11 +640,11 @@ function renderLoopBadge() {
   if (loopA === null && loopB === null) { badge.hidden = true; return; }
   badge.hidden = false;
   if (loopOn()) {
-    el.loopText.textContent = `A–B ${fmt(loopA)} → ${fmt(loopB)} (${(loopB - loopA).toFixed(1)}s)`;
+    el.loopText.textContent = tr('loop.range',
+      { a: fmt(loopA), b: fmt(loopB), len: (loopB - loopA).toFixed(1) });
     badge.classList.add('armed');
   } else {
-    el.loopText.textContent = loopA !== null ? 'A set — press B to close the loop'
-                                             : 'B set — press A to close the loop';
+    el.loopText.textContent = tr(loopA !== null ? 'loop.aSet' : 'loop.bSet');
     badge.classList.remove('armed');
   }
 }
@@ -614,11 +672,54 @@ function applyGains() {
     t.laneEl?.classList.toggle('muted', !on);
   });
   // Every mute path routes through here, so the button label can never drift out of sync.
-  // "Restore previous" only when there really is a previous. Everything already on with
-  // nothing saved reads as a disabled "Unmute all" — true, and it explains the disabling.
-  const canRestore = allLanesOn() && !!muteSnapshot;
-  el.allToggle.textContent = canRestore ? 'Restore previous' : 'Unmute all';
-  el.allToggle.disabled = allLanesOn() && !muteSnapshot;
+  renderAllToggle();
+}
+
+/* "Restore previous" only when there really is a previous. Everything already on with
+ * nothing saved reads as a disabled "Unmute all" — true, and it explains the disabling.
+ * Split out of applyGains so retranslate() can re-render the label without touching gain. */
+function renderAllToggle() {
+  const on = allLanesOn();
+  el.allToggle.textContent = on && muteSnapshot ? tr('btn.restorePrevious') : tr('btn.unmuteAll');
+  el.allToggle.disabled = on && !muteSnapshot;
+}
+
+/**
+ * Re-render the strings the DOM is already holding, after a language change.
+ *
+ * It must NOT rebuild the lanes. Rebuilding would drop every canvas and force a full
+ * waveform re-render, and it must not touch `tracks`, `sources`, gain nodes or the
+ * playhead — switching language mid-practice has to be completely inaudible. The lane
+ * name's text node is mutated in place for exactly that reason.
+ */
+function retranslate() {
+  if (tracks.length) {
+    const mode = el.mode.value;
+    buildModeOptions();
+    el.mode.value = mode;            // rebuilding the options resets the selection
+    tracks.forEach((t) => {
+      if (!t.nameEl) return;
+      t.nameEl.title = tr('lane.tip');
+      const txt = t.nameEl.querySelector('.txt');
+      if (txt) txt.textContent = laneLabel(t);
+    });
+  }
+  renderLoopBadge();
+  // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
+  // its text — clobbering "Restore previous". This runs after, and must keep doing so:
+  // setLocale applies the markup first and dispatches the event second, in that order.
+  renderAllToggle();
+  if (lastSay) say(lastSay.key, lastSay.params, lastSay.isErr);
+  renderLangToggle();
+}
+
+/** Keep the pressed half of the switcher in step with the active locale. */
+function renderLangToggle() {
+  if (!el.langToggle) return;
+  const active = window.SansI18n.getLocale();
+  el.langToggle.querySelectorAll('button').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.lang === active));
+  });
 }
 
 /** Lanes the all-on/all-off button acts on — the stems, never a full-mix file. */
@@ -666,7 +767,7 @@ function setMode(mode) {
       t.muted = hasStems ? (t.stem !== 'mix') : false;
     });
   } else if (mode !== 'custom') {
-    tracks.forEach(t => { t.muted = t.label !== mode; });
+    tracks.forEach((t, i) => { t.muted = laneKey(t, i) !== mode; });
   }
   el.mode.value = mode;
   applyGains();
@@ -716,6 +817,12 @@ on(el.play, 'click', toggle);
 on(el.loopClear, 'click', clearLoop);
 on(el.allToggle, 'click', toggleAllTracks);
 on(el.mode, 'change', () => setMode(el.mode.value));
+on(el.langToggle, 'click', (e) => {
+  const btn = e.target.closest('button[data-lang]');
+  if (btn) window.SansI18n.setLocale(btn.dataset.lang);   // an explicit choice persists
+});
+window.addEventListener('sansbass:langchange', retranslate);
+renderLangToggle();
 on(el.masterVol, 'input', () => {
   ensureAudio();
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
@@ -796,13 +903,11 @@ document.addEventListener('drop', (e) => {
     dropped.some(f => !f.type && !AUDIO_RE.test(f.name) && !isZip(f));
 
   if (looksLikeFolder) {
-    say('Dropping a folder is not supported. Zip it first — right-click the folder and ' +
-        'choose Compress — then drop the .zip, or use the Load zip button.', true);
+    say('status.folderDrop', null, true);
   } else if (dropped.length > 1) {
-    say(`Drop one thing at a time: a single song to separate, or one .zip of stems. ` +
-        `That was ${dropped.length} files — if they are stems, zip them first.`, true);
+    say('status.tooManyFiles', { n: dropped.length }, true);
   } else {
-    say('That is not a song or a .zip of stems. Audio: wav, flac, m4a, mp3, opus, aiff.', true);
+    say('status.notSongOrZip', null, true);
   }
 });
 

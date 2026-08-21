@@ -9,7 +9,7 @@ machine. In-browser separation fetches a model *in*, but nothing about your audi
 phrase you keep fluffing, and drill it.
 
 **Already have stems?** Zip the folder, start the server with `./scripts/serve.sh`, open
-<http://localhost:8777>, click **Load zip**, pick the zip, and skip to [Controls](#controls).
+<http://localhost:8777>, click **Load song or zip**, pick the zip, and skip to [Controls](#controls).
 Steps 1–3 below are the one-time job of getting stems out of a CD.
 
 ---
@@ -163,8 +163,8 @@ done
 ```
 
 That gives `stems/reborn/<track name>/{vocals,guitar,bass,drums,piano,other}.m4a`, one
-folder per track — zip one of those folders and it is exactly what the player's **Load zip**
-button expects. A 12-track album takes roughly five minutes end to end on Apple Silicon.
+folder per track — zip one of those folders and it is exactly what the player's
+**Load song or zip** button expects. A 12-track album takes roughly five minutes end to end on Apple Silicon.
 
 ### Which format for the player?
 
@@ -190,11 +190,11 @@ Homebrew and Demucs entirely and let the browser do it.
 ./scripts/serve.sh          # http://localhost:8777
 ```
 
-Open that URL, click **Load song**, pick any audio file, then **Separate into 6 stems**.
+Open that URL, click **Load song or zip**, pick any audio file, then **Separate into 6 stems**.
 The six lanes replace the track you loaded — they sum back to it, so nothing is lost —
 and a **Save stems (.zip)** button appears that writes
-`<song>/{vocals,guitar,bass,drums,piano,other}.wav` — that zip loads straight back in with
-**Load zip**, no unzipping needed.
+`<song>/{vocals,guitar,bass,drums,piano,other}.wav` — that zip loads straight back in through
+the same button, no unzipping needed.
 
 It uses [`kramp/htdemucs-6s-webgpu-onnx`](https://huggingface.co/kramp/htdemucs-6s-webgpu-onnx),
 the same `htdemucs_6s` weights as the local pipeline, exported to ONNX and run through WebGPU.
@@ -245,11 +245,11 @@ Two rules for a public deployment:
 ```
 
 Then zip one song's folder — `stems/<song>/`, or `stems/<album>/<song>/` if you batched an
-album — and click **Load zip** to pick it.
+album — and click **Load song or zip** to pick it.
 
-The two buttons do one thing each: **Load song** takes a single unseparated audio file (and is
-how you start a separation), **Load zip** takes a `.zip` of stems. Dropping onto the page
-accepts exactly the same two things.
+One button takes both: a single unseparated audio file (which is also how you start a
+separation), or a `.zip` of stems. The player decides which from the extension. Dropping onto
+the page accepts exactly the same two things — one file at a time, and not a folder.
 
 ### Dropping a folder doesn't work
 
@@ -259,7 +259,7 @@ and it broke silently the rest of the time. A zip works everywhere, so folder dr
 removed rather than left as a trap.
 
 **Drop a `.zip` instead.** On macOS, right-click the folder → **Compress**, then drag the
-`.zip` onto the page or pick it with **Load zip**. On the command line:
+`.zip` onto the page or pick it with **Load song or zip**. On the command line:
 
 ```bash
 cd stems/<album> && zip -r ~/Desktop/song.zip "<song>"
@@ -396,3 +396,10 @@ not this project's to redistribute. The folders ship with a `.gitkeep` and nothi
 Ripping a CD you own for your own use is generally fine in most places, and separating it
 for practice or study is the same kind of private use. Distributing the stems is a
 different question — those are still the band's recordings.
+
+## Author
+
+Built by **SansWord**.
+
+- Portfolio — <https://sansword.github.io/resume/>
+- LinkedIn — <https://www.linkedin.com/in/sansword/>

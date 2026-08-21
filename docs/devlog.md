@@ -14,11 +14,68 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.2.2](#v122--separation-panel-and-lane-toggle-refinements-2026-08-20-2120) | UI refinements: lane clicks toggle instead of solo, and separation output drops the original track so all six stems start unmuted |
 | [v1.2.1](#v121--github-pages-deployment-with-pr-previews-2026-08-20-2105) | Published to GitHub Pages with per-PR preview deployments; every pull request gets a live URL at `/pr-N/` before it reaches production |
 | [v1.2.0](#v120--in-browser-stem-separation-2026-08-20-2043) | Six-stem separation running entirely in the browser via onnxruntime-web + htdemucs_6s, at ~8x realtime on WebGPU, with stems saveable as one ZIP of WAVs |
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.2.2 — Separation panel and lane toggle refinements (2026-08-20 21:20)
+
+**Review:** not yet
+
+**What was built:**
+
+- **Save stems is disabled while a run is in flight.** The stems it would have written are
+  the *previous* track's, and encoding them competes with the worker for memory.
+- **The Separate button disappears once a song is separated** and returns when a fresh
+  single track is loaded.
+- **Clicking a lane name toggles that lane** instead of soloing it. Soloing moved entirely
+  to the Play dropdown; `soloTrack` is gone.
+- **Removed the "Use a local .onnx" picker.** `separate.worker.js` still accepts a
+  `modelBuffer`, so the capability survives if the UI is ever wanted back.
+- **Separation output drops the original track.** The six stems already sum to it, so
+  keeping it meant either doubled audio or permanent suppression.
+
+**Key technical learnings:**
+
+- `[insight]` **Deleting the mix track was the fix for three problems at once.** "All lanes
+  on by default" needed no new code: with no `mix` track, `hasMixPlusStems()` is false, so
+  the existing `setMode('mix')` already leaves every stem unmuted. It also removed the
+  doubled-audio trap from the separation path entirely, and removed the awkward case where
+  a lane is visible but permanently forced silent by `applyGains`. The feature request was
+  phrased as three UI tweaks; one deletion answered all of them.
+- `[insight]` **A per-lane toggle cannot be uniform when one lane is mutually exclusive with
+  the rest.** A full-mix file must never sound over its own stems, so the mix lane keeps
+  mode-switching semantics inside `toggleTrack` while every other lane toggles its own gain.
+  Only reachable now via a folder loaded from disk that genuinely holds both — but that is
+  exactly the case nobody will be testing when they next touch this.
+- `[note]` The `1`–`6` keys have always called `toggleTrack`, so lane clicks and the number
+  keys finally agree. The README had described `2` as "mute everything but the guitar",
+  which was never what the key did.
+
+**Process learnings:**
+
+- `[gotcha]` **Chrome throttles `setInterval` to ~1 Hz in a backgrounded tab, and the
+  automation tab is always backgrounded.** `separate.js` polls `refresh()` every 400 ms;
+  under automation it runs about once a second. A verification step waited 1.2 s for the
+  Separate button to reappear, saw it still hidden, and looked exactly like a broken fix.
+  Measured it directly — `document.visibilityState` is `hidden`, and a fresh 400 ms interval
+  ticked twice in two seconds — then waited longer and the behaviour was correct all along.
+  Same family as the rAF-throttling rule this project already knows; it applies to the test
+  harness as much as to the player.
+- `[insight]` **Stub `window.Worker`, not the model.** Replacing the constructor just before
+  clicking Separate exercises every line of `separate.js`'s real message handling —
+  `busy()`, the `result` branch, `loadSeparated` — with no 285 MB download and no minutes of
+  inference. `getWorker()` constructs lazily at click time, which is what makes the seam
+  reachable from the page.
+- `[insight]` **Verify muting on the gain values, not the CSS class.** Patching
+  `AudioParam.prototype.setTargetAtTime` to record every ramp showed what actually reached
+  the audio graph: clicking Vocals sent it to 1 while Drums stayed at 0. `tracks` is a
+  classic-script local and unreachable from the console, so this is also the only way in.
 
 ---
 

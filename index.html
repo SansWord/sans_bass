@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>sans_bass — stem player</title>
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=1.4.0">
 </head>
 <body>
 
@@ -83,16 +83,33 @@
   <section id="status" class="status" hidden></section>
 </main>
 
-<script src="lib/stems.js"></script>
-<script src="lib/unzip.js"></script>
-<script src="app.js"></script>
+<!-- The visible drop target. #dropzone above explains the two ways in, but it disappears
+     as soon as a song loads; this covers the window in both states, and is the only thing
+     on screen while a file is being dragged. pointer-events: none — see app.js. -->
+<div id="drag-overlay" class="drag-overlay" hidden aria-hidden="true">
+  <div class="drag-card">
+    <p class="big">Drop to load</p>
+    <p class="dim">One song, or one <code>.zip</code> of stems</p>
+  </div>
+</div>
+
+<!-- ?v= is a cache buster, and it is load-bearing. GitHub Pages serves every file with
+     max-age=600 and no way to change that, so after a deploy a returning visitor can hold a
+     stale app.js against a fresh index.html for ten minutes. That combination is not a
+     degraded page, it is a dead one: app.js throws on the first element index.html no longer
+     has and every listener below it — drag & drop included — never registers.
+     Bump the version in ALL of these on release: index.html (5), separate.js (3),
+     separate.worker.js (1). tests/versions.test.js fails if they drift apart. -->
+<script src="lib/stems.js?v=1.4.0"></script>
+<script src="lib/unzip.js?v=1.4.0"></script>
+<script src="app.js?v=1.4.0"></script>
 <script>
   // separate.js is an ES module and Chrome blocks module scripts on file://. Injecting it
   // conditionally keeps the player working when index.html is opened straight from disk.
   if (location.protocol !== 'file:') {
     const s = document.createElement('script');
     s.type = 'module';
-    s.src = 'separate.js';
+    s.src = 'separate.js?v=1.4.0';
     document.body.appendChild(s);
   }
 </script>

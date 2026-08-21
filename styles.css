@@ -95,9 +95,35 @@ code {
   text-align: center;
   transition: border-color .15s, background .15s;
 }
-.dropzone.over { border-color: var(--accent); background: rgba(255, 46, 99, .05); }
 .dropzone .big { font-size: 19px; font-weight: 600; margin: 0 0 12px; }
 .dropzone p { margin: 6px 0; max-width: 60ch; margin-inline: auto; }
+
+/* ---------- drag overlay ---------- */
+
+/* pointer-events: none is deliberate. The overlay appears under the cursor mid-drag, so if
+   it could receive events it would become the drop target and fire its own
+   dragenter/dragleave pair — the depth count in app.js would never settle at zero. */
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: none;
+  background: rgba(13, 13, 16, .8);
+  backdrop-filter: blur(3px);
+}
+.drag-card {
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 44px 56px;
+  text-align: center;
+}
+.drag-card .big { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+.drag-card p { margin: 0; }
 
 /* ---------- master row ---------- */
 

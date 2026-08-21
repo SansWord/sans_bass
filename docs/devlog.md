@@ -35,7 +35,7 @@ Running log of what was built and what was learned building it.
 
 **What was built:**
 
-- `lib/i18n.js` — a classic script owning one dictionary for both locales (69 keys each) plus
+- `lib/i18n.js` — a classic script owning one dictionary for both locales (68 keys each) plus
   the runtime: `t` / `has` / `apply` / `detectLocale` / `storedLocale` / `setLocale` /
   `getLocale` / `init`. `separate.js` is an ES module and cannot share scope with `app.js`,
   so both reach the single dictionary through `window.SansI18n`.
@@ -54,9 +54,35 @@ Running log of what was built and what was learned building it.
   table, markup-key coverage, and the stem-filename invariant.
 - `file://` support dropped: `separate.js` now loads as a plain `<script type="module">`
   with no protocol guard. `CLAUDE.md` and `docs/behaviour.md` updated to match.
+- A zip's own filename now titles the player when the zip is flat (stems at the root, no
+  enclosing folder), where it previously fell through to an untranslated `6 tracks`. The
+  folder inside the zip still wins when there is one; the count survives only as a last
+  resort, and stays English on purpose — reaching it means the loader found neither.
 - Everything bumped to `?v=1.5.0` (10 URLs across three files).
 
+**Known issues (open):**
+
+- `zipError.not-zip` conflates three different failures, and one of them is a
+  misdiagnosis. `lib/unzip.js:119` throws `not-zip` for a *missing entry* —
+  ``Could not find ${basename(w.path)} inside the zip.`` — which now renders as "that file
+  is not a valid zip, or its directory is damaged". Wrong cause, and the filename the
+  English message carried is gone. The other three `not-zip` sites (`:68`, `:82`, `:94`) are
+  genuinely malformed archives and translate correctly. Fixing it means adding a
+  `missing-entry` code to `lib/unzip.js`, which is the one file this change deliberately
+  did not touch — hence deferred, not decided.
+
 **Key technical learnings:**
+
+- `[gotcha]` **A test that supplies the value it is about to assert on cannot fail.** The
+  stem-filename test — the one pinning this project's hardest i18n rule, that stem ids and
+  filenames never localize — called
+  ``assignStems(ids.map(s => ({ name: `${s}.wav`, stem: s })))``. But `lib/stems.js` is
+  `item.stem ?? detectStem(item.name)`, so passing `stem` short-circuits the very function
+  under test, and the assertion echoed its own input back. It sat green for the whole
+  build. Dropping the `stem:` hint makes `detectStem` do the work; the check that actually
+  bites is the inverse — `detectStem('貝斯.wav')` must be `null`. When a test guards an
+  invariant, feed it only what a user would produce, and confirm it goes red when you break
+  the invariant on purpose.
 
 - `[gotcha]` The mode dropdown keyed its options on the **label** (`opts.push([t.label, …])`)
   and `setMode` compared `t.label !== mode`. Translating labels would have broken soloing

@@ -83,10 +83,22 @@ function fmt(t) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function say(msg, isErr) {
+/* What is on the status line right now, as a key rather than rendered text, so a language
+ * switch can re-render it. Without this a visible error would freeze in the old language. */
+let lastSay = null;
+
+/**
+ * Put a message on the status line.
+ * @param {string} key   dictionary key, or '' to clear. An unknown key renders as itself,
+ *                       which is how already-rendered text still works if it ever appears.
+ * @param {Object} [params] interpolation values
+ * @param {boolean} [isErr]
+ */
+function say(key, params, isErr) {
   if (!el.status) return;   // called from the last-resort error handler below
-  el.status.hidden = !msg;
-  el.status.textContent = msg || '';
+  lastSay = key ? { key, params, isErr } : null;
+  el.status.hidden = !key;
+  el.status.textContent = key ? tr(key, params) : '';
   el.status.classList.toggle('err', !!isErr);
 }
 
@@ -95,21 +107,20 @@ function say(msg, isErr) {
  * of failure to debug from the user's side. Name the fix rather than fail mutely. */
 window.addEventListener('error', (e) => {
   console.error('sans_bass:', e.error || e.message);
-  say('Something went wrong in the player. Force-reload the page — Cmd-Shift-R on macOS, ' +
-      'Ctrl-Shift-R elsewhere — to clear a stale cached script.', true);
+  say('status.crash', null, true);
 });
 
 // ---------------------------------------------------------------- loading
 
 async function loadFiles(fileList) {
   const files = [...fileList].filter(f => AUDIO_RE.test(f.name));
-  if (!files.length) { say('No audio files to load. Supported: wav, flac, m4a, mp3, opus, aiff.', true); return; }
+  if (!files.length) { say('status.noAudioFiles', null, true); return; }
 
   ensureAudio();
   stop(true);
   loopA = loopB = null;            // A-B points belong to the previous song
   renderLoopBadge();
-  say(`Decoding ${files.length} file${files.length > 1 ? 's' : ''}…`);
+  say(files.length > 1 ? 'status.decodingMany' : 'status.decodingOne', { n: files.length });
 
   // Decode in parallel: decodeAudioData runs off the main thread, so six stems
   // decode in roughly the time of the slowest one instead of the sum of all six.
@@ -118,7 +129,7 @@ async function loadFiles(fileList) {
   const settled = await Promise.all(files.map(async (file) => {
     try {
       const buf = await audio.decodeAudioData(await file.arrayBuffer());
-      say(`Decoding… ${++done}/${files.length}`);
+      say('status.decodingProgress', { done: ++done, total: files.length });
       return { file, buffer: buf };
     } catch (e) {
       done++;
@@ -130,8 +141,7 @@ async function loadFiles(fileList) {
 
   const loaded = settled.filter(Boolean);
   if (!loaded.length) {
-    say(`Could not decode ${failed.join(', ')} — this browser may not support that codec. ` +
-        `Re-encode as .m4a or .wav.`, true);
+    say('status.decodeFailAll', { names: failed.join(', ') }, true);
     return;
   }
 
@@ -139,10 +149,9 @@ async function loadFiles(fileList) {
   buildTracks(items, commonName(files));
 
   if (failed.length) {
-    say(`Skipped ${failed.join(', ')} — codec not supported by this browser. Re-encode as .m4a.`, true);
+    say('status.decodeSkipped', { names: failed.join(', ') }, true);
   } else if (tracks.length > 1 && tracks.every((t) => !t.stem)) {
-    say('None of the filenames in that zip looked like stems, so they are all playing layered ' +
-        'on top of each other. Rename them vocals / guitar / bass / drums to get labelled lanes.');
+    say('status.noStemNames');
   } else {
     say('');
   }
@@ -156,7 +165,7 @@ async function loadFiles(fileList) {
  */
 async function loadZip(file) {
   if (!file) return;
-  say('Reading zip…');
+  say('status.readingZip');
   let entries;
   try {
     entries = await window.SansUnzip.extract(file);
@@ -166,7 +175,7 @@ async function loadZip(file) {
     return;
   }
   if (!entries.length) {
-    say('No audio files in that zip. Supported: wav, flac, m4a, mp3, opus, aiff.', true);
+    say('status.noAudioInZip', null, true);
     return;
   }
   return loadFiles(entries.map((e) => ({
@@ -184,7 +193,7 @@ async function loadZip(file) {
 function loadSong(file) {
   if (!file) return;
   if (!AUDIO_RE.test(file.name)) {
-    say(`${file.name} is not an audio file. Supported: wav, flac, m4a, mp3, opus, aiff.`, true);
+    say('status.notAudioFile', { name: file.name }, true);
     return;
   }
   return loadFiles([file]);
@@ -594,7 +603,7 @@ function setLoopPoint(which) {
     const swap = loopA; loopA = loopB; loopB = swap;
   }
   if (loopA !== null && loopB !== null && loopB - loopA < MIN_LOOP) {
-    say(`A and B are less than ${MIN_LOOP}s apart — move the playhead further before setting the second point.`, true);
+    say('status.loopTooShort', { min: MIN_LOOP }, true);
     if (which === 'a') loopA = null; else loopB = null;
   }
 
@@ -832,13 +841,11 @@ document.addEventListener('drop', (e) => {
     dropped.some(f => !f.type && !AUDIO_RE.test(f.name) && !isZip(f));
 
   if (looksLikeFolder) {
-    say('Dropping a folder is not supported. Zip it first — right-click the folder and ' +
-        'choose Compress — then drop the .zip, or use the Load zip button.', true);
+    say('status.folderDrop', null, true);
   } else if (dropped.length > 1) {
-    say(`Drop one thing at a time: a single song to separate, or one .zip of stems. ` +
-        `That was ${dropped.length} files — if they are stems, zip them first.`, true);
+    say('status.tooManyFiles', { n: dropped.length }, true);
   } else {
-    say('That is not a song or a .zip of stems. Audio: wav, flac, m4a, mp3, opus, aiff.', true);
+    say('status.notSongOrZip', null, true);
   }
 });
 

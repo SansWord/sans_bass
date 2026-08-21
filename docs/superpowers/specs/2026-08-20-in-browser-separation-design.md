@@ -256,6 +256,37 @@ transient-dense material.
 Try the raised-cosine window during implementation and re-run the parity harness. If it does
 not close the gap, accept it and note it; it is not audible enough to block the feature.
 
+## Deployment: static hosting works, no backend
+
+The whole feature is static. **GitHub Pages can host it with no server-side component**, and
+that is a direct consequence of the spike's COOP/COEP finding:
+
+- **No custom headers required.** GitHub Pages cannot set response headers. If ORT needed
+  `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` for SharedArrayBuffer, Pages
+  would be ruled out and a self-hosted or header-capable host would be mandatory.
+  `ort.env.wasm.numThreads = 1` removes that requirement, as the spike confirmed with
+  `crossOriginIsolated === false`.
+- **HTTPS gives the secure context** that WebGPU and Cache Storage both require.
+- **Cross-origin fetches are allowed.** Verified against a `https://sansword.github.io` origin:
+  Hugging Face echoes the origin back in `access-control-allow-origin`, jsDelivr returns `*`.
+- **No compute cost.** Inference runs on the visitor's GPU; the host only serves ~50 KB of
+  HTML/CSS/JS.
+
+Rules for a Pages deployment:
+
+- **Do not self-host the model in the repo.** GitHub blocks files over 100 MB, and the model is
+  285 MB. It also would count against Pages' ~100 GB/month bandwidth on every cold visit. Keep
+  fetching it from Hugging Face.
+- **`rips/` and `stems/` must stay gitignored.** Publishing the repo must never publish the
+  recordings; they are the band's, not ours. This is already enforced by `.gitignore`.
+- **Hosting fixes the `file://` caveats for visitors.** Folder drag-and-drop and separation both
+  work on a Pages URL, so `scripts/serve.sh` becomes a local-development convenience rather
+  than the only way to use the feature.
+- **The privacy claim survives, but the wording must change.** Audio still never leaves the
+  machine — separation is entirely client-side. What changes is that the page and the model are
+  inbound fetches from GitHub and Hugging Face. README and `CLAUDE.md` should say "your audio
+  never leaves your machine" rather than "no network calls."
+
 ## Out of scope
 
 - Batch or whole-album separation in the browser — the native pipeline stays the efficient path.

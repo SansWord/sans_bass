@@ -275,6 +275,7 @@ nothing loads. Three ways around it, in order of convenience:
 | Play / pause | Click the big button, or press **space** |
 | Seek | Click or drag anywhere on any waveform |
 | Mute / unmute a lane | Click its name, or press **1**–**6** |
+| Mute / unmute every lane | The **Mute all** / **Unmute all** button |
 | Solo one instrument | Pick it from the **Play** dropdown |
 | Back to the full mix | Press **0** |
 | Nudge 5 seconds | **←** / **→** |

@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.4.0](#v140--the-drop-that-navigated-away-2026-08-21) | Drag & drop on the live site was dead: a stale cached `app.js` threw on an element the new `index.html` no longer had, and every listener below it — drag & drop included — never registered. Versioned asset URLs, null-safe wiring, a loud error path, and an explicit full-window drop overlay. |
 | [v1.3.0](#v130--one-song-or-one-zip-of-stems-2026-08-21-0104) | Loading rework: **Load song** takes one audio file, **Load zip** takes one `.zip` of stems, and drop accepts the same two. Folder drop, multi-file loading and the directory walk are gone; a classic-script zip reader never holds the whole file. |
 | [v1.2.2](#v122--separation-panel-and-lane-toggle-refinements-2026-08-20-2310) | UI refinements: lane clicks toggle instead of solo, separation drops the original track and stops playback, an Unmute all / Restore previous control, and a repaired `[hidden]` rule that had been showing buttons meant to be hidden |
 | [v1.2.1](#v121--github-pages-deployment-with-pr-previews-2026-08-20-2105) | Published to GitHub Pages with per-PR preview deployments; every pull request gets a live URL at `/pr-N/` before it reaches production |
@@ -21,6 +22,66 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.4.0 — The drop that navigated away (2026-08-21)
+
+**Review:** not yet
+
+**What was built:**
+- Diagnosed the reported bug: on the live Pages site, dragging a song or zip made Chrome
+  navigate to the file instead of loading it. The drag & drop code was correct and had been
+  correct all along.
+- Root cause: the browser was running a *cached* `app.js` from v1.2.2 against the freshly
+  deployed v1.3.0 `index.html`. The old script's `el.fileInput.addEventListener` hit a `null`
+  — `#file-input` was removed in v1.3.0 — and threw at the top level, so every listener
+  registered *below* that line never ran. Drag & drop lives below that line.
+- `?v=1.4.0` on every local asset URL: five in `index.html`, three in `separate.js`, one in
+  `separate.worker.js`. Verified that a query string does not break `file://`.
+- `tests/versions.test.js` — reads the three shipped files over HTTP and fails if any local
+  asset is unversioned or if the versions drift apart. Fault-injected to confirm it fails.
+- `on(node, ev, fn)` in `app.js`: all top-level wiring is null-safe, so one missing element
+  warns instead of taking the rest of the app with it.
+- A `window.onerror` handler that puts "force-reload the page" on screen, because the failure
+  mode this whole entry is about looks exactly like a page that works and does nothing.
+- `#drag-overlay`: a full-window drop target, shown on `dragenter`, that answers the actual
+  request. The old highlight was on `#dropzone`, which is hidden the moment a song loads —
+  so dropping a second song, the common case, had no visible target at all.
+
+**Key technical learnings:**
+- `[gotcha]` **GitHub Pages serves everything with `max-age=600` and gives you no way to
+  change it.** After a deploy, a returning visitor can hold a stale subresource against a
+  fresh `index.html` for ten minutes. With no build step there is no content hashing to save
+  you, so the version query string has to be written by hand — hence the test that guards it.
+- `[insight]` **A top-level `TypeError` in a classic script is a silent guillotine.** Everything
+  above the throw is wired, everything below is not. The page renders perfectly, half the app
+  is inert, and nothing on screen says so. Registration order became a load-bearing property
+  of the file by accident. `on()` removes that coupling; the `onerror` notice removes the silence.
+- `[insight]` **"Add a drop zone" was the wrong fix for the right complaint.** There already
+  was one, clearly labelled, occupying most of the page. The user inferred its absence from
+  its behaviour. Reproducing before building meant the console answered in one read what a UI
+  rewrite would not have fixed at all.
+- `[gotcha]` **`transferSize === 0` in a `PerformanceResourceTiming` entry means the browser
+  never went to the network** — not a 304, which still transfers headers. Comparing
+  `decodedBodySize` against the deployed `ETag` length (`"…-6f6e"` is hex bytes) proved the
+  running script was 171 bytes shorter than the one on the server. That is what turned "drag
+  and drop is broken" into "you are running last week's file".
+- `[note]` **Chrome resolves a query string away on `file://` subresources**, for both
+  `<script src>` and `<link href>`. Verified before committing to versioned URLs, since
+  double-clickable `index.html` is a hard constraint. A probe page that writes its result into
+  `document.title` is readable from `osascript` without any JS-from-Apple-Events permission —
+  useful, because browser automation cannot reach `file://` at all.
+- `[gotcha]` **`dragenter`/`dragleave` fire per element crossed, not per window.** Hiding the
+  overlay on any `dragleave` flickers it off at every lane boundary. Count enters and trust
+  zero — and give the overlay `pointer-events: none`, or it becomes the drop target under the
+  cursor and fires its own pair, so the count never settles.
+
+**Process learnings:**
+- `[insight]` **The bug report named a symptom on a deployed site; the fix was three layers
+  down.** Diffing local against deployed said "identical", which was true and useless — the
+  server was fine, the client was stale. Checking the *console of the failing page* was the
+  step that mattered, and it took one call.
 
 ---
 

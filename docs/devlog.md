@@ -39,6 +39,12 @@ Running log of what was built and what was learned building it.
   `modelBuffer`, so the capability survives if the UI is ever wanted back.
 - **Separation output drops the original track.** The six stems already sum to it, so
   keeping it meant either doubled audio or permanent suppression.
+- **Separation stops playback and rewinds.** The mix can still be playing when the stems
+  land; its BufferSources are not in `tracks` and would keep sounding over the new lanes.
+- **Fixed a CSS bug that had been suppressing every `hidden` toggle in the app**, including
+  the two above (see the learnings).
+- **The lane click target now fills the left column**, from the lane's left edge to the
+  number badge, at full lane height. The waveform column still seeks.
 
 **Key technical learnings:**
 
@@ -53,6 +59,19 @@ Running log of what was built and what was learned building it.
   mode-switching semantics inside `toggleTrack` while every other lane toggles its own gain.
   Only reachable now via a folder loaded from disk that genuinely holds both — but that is
   exactly the case nobody will be testing when they next touch this.
+- `[gotcha]` **A class that sets `display` silently defeats the `hidden` attribute.**
+  `[hidden] { display: none }` lives in the UA stylesheet, so *any* author rule outranks it —
+  `.btn { display: inline-block }` and `.loop-badge { display: inline-flex }` meant Save,
+  Cancel and the loop badge rendered while their `.hidden` property read `true`. This
+  predates this session: the loop badge has shown a stray Clear button since v1.1.0. It also
+  quietly voided the new "hide Separate once done" behaviour. The trap for verification is
+  that `el.hidden` is the *state*, not the *appearance* — asserting on the property passes
+  while the user still sees the button. A screenshot caught what four property assertions
+  had missed. `styles.css` now has a global `[hidden] { display: none !important; }`.
+- `[insight]` **A grid item with `align-items: center` is only as tall as its content.**
+  `.lane-name` was a full-width 128px column but a ~14px strip inside a ~56px lane, so the
+  toggle only really worked on the text. `align-self: stretch` plus negative margins that
+  swallow the lane's own padding make the whole left block clickable.
 - `[note]` The `1`–`6` keys have always called `toggleTrack`, so lane clicks and the number
   keys finally agree. The README had described `2` as "mute everything but the guitar",
   which was never what the key did.
@@ -72,6 +91,11 @@ Running log of what was built and what was learned building it.
   `busy()`, the `result` branch, `loadSeparated` — with no 285 MB download and no minutes of
   inference. `getWorker()` constructs lazily at click time, which is what makes the seam
   reachable from the page.
+- `[gotcha]` **A same-URL navigation can reuse the stylesheet from memory cache**, even
+  though `serve.sh` sends `no-store` and `curl` shows the new bytes. The served file had the
+  fix and the loaded `document.styleSheets` did not. Re-pointing the `<link>` at
+  `styles.css?v=<now>` forces it. Same shape as the stale-ES-module trap already documented,
+  but the existing `no-store` header does not cover it.
 - `[insight]` **Verify muting on the gain values, not the CSS class.** Patching
   `AudioParam.prototype.setTargetAtTime` to record every ramp showed what actually reached
   the audio graph: clicking Vocals sent it to 1 while Drums stayed at 0. `tracks` is a

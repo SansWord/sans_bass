@@ -125,6 +125,12 @@ out of the project; never commit them.
   at double volume. Covered by a test in `tests/stems.test.js`. In-browser separation avoids
   the question by dropping the original: `loadSeparated` builds lanes from the six stems
   only, which is also why `__hasStems` is false there and every lane starts unmuted.
+- **A class that sets `display` silently defeats the `hidden` attribute.** `[hidden]` is a
+  UA-stylesheet rule, and *any* author rule beats it — `.btn { display: inline-block }` left
+  Save, Cancel and the loop badge on screen while their `.hidden` property read `true`.
+  Verifying with `el.hidden` or `hasAttribute('hidden')` passes while the user still sees the
+  button; check `getComputedStyle(el).display`. `styles.css` now carries a global
+  `[hidden] { display: none !important; }` that every hidden-toggle in the app depends on.
 - **`numThreads = 1` is load-bearing, not a performance tweak.** It avoids SharedArrayBuffer,
   which avoids COOP/COEP, which is what makes static hosting (GitHub Pages) possible at all.
 - **ZIP filenames need general purpose bit 11 set.** Without it the spec says names are

@@ -165,6 +165,11 @@ function loadSeparated(original, stems) {
     items.push({ name: `${stem}.wav`, buffer: buf, stem });
   }
 
+  // Separation runs in a worker, so the mix may still be playing when the stems land.
+  // Its BufferSources are not in `tracks` and would keep sounding over the new lanes with
+  // a stale startedAt. stop(false) silences them and returns the playhead to the start.
+  stop(false);
+
   loopA = loopB = null;
   renderLoopBadge();
   // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks

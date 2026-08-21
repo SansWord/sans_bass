@@ -49,6 +49,11 @@ body { min-height: 100vh; }
 
 .loadzone { display: flex; gap: 8px; }
 
+/* Any author rule that sets `display` beats the UA stylesheet's `[hidden] { display: none }`,
+   so .btn / .loop-badge / .sep elements stayed visible while their .hidden property read
+   true. Every hidden-attribute toggle in app.js and separate.js depends on this line. */
+[hidden] { display: none !important; }
+
 .btn {
   display: inline-block;
   padding: 7px 14px;
@@ -231,7 +236,16 @@ input[type=range] { width: 110px; }
   cursor: pointer;
   user-select: none;
   overflow: hidden;
+  /* The grid centres its items, which left this only as tall as the text — a ~14px strip
+     in a ~56px lane. Stretch to the full lane height and swallow the lane's left/top/bottom
+     padding, so the whole block up to the number badge toggles the track. The waveform is
+     a separate grid column and keeps its own pointer handlers for seeking. */
+  align-self: stretch;
+  margin: -8px 0 -8px -12px;
+  padding: 8px 0 8px 12px;
+  border-radius: 6px;
 }
+.lane-name:hover { background: var(--panel-2); }
 .lane-name .dot {
   flex: none;
   width: 9px; height: 9px;

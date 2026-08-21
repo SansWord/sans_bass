@@ -73,6 +73,8 @@ body { min-height: 100vh; }
   border-color: var(--line);
 }
 .btn.ghost:hover { background: var(--panel-2); }
+.btn[disabled] { opacity: .5; cursor: default; }
+.btn[disabled]:hover { filter: none; background: transparent; }
 
 /* ---------- layout ---------- */
 
@@ -209,8 +211,6 @@ input[type=range] { width: 110px; }
   cursor: pointer;
 }
 .mini:hover { color: var(--fg); border-color: var(--dim); }
-.mini[disabled] { opacity: .4; cursor: default; }
-.mini[disabled]:hover { color: var(--dim); border-color: var(--line); }
 
 /* ---------- lanes ---------- */
 
@@ -293,4 +293,3 @@ input[type=range] { width: 110px; }
 .sep-row { display: flex; align-items: center; gap: 12px; }
 .sep-bar { height: 6px; background: #23232b; border-radius: 3px; overflow: hidden; }
 .sep-bar > div { height: 100%; width: 0; background: #ff9f1c; transition: width .2s linear; }
-.sep .btn[disabled] { opacity: .5; cursor: default; }

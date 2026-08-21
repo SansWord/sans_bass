@@ -3,18 +3,8 @@
  * because every track is started from one AudioContext clock at the same time.
  */
 
-const STEMS = {
-  vocals: { label: 'Vocals',    color: '#ff2e63', order: 0 },
-  guitar: { label: 'Guitar',    color: '#ffb703', order: 1 },
-  bass:   { label: 'Bass',      color: '#3ddc97', order: 2 },
-  drums:  { label: 'Drums',     color: '#4cc9f0', order: 3 },
-  piano:  { label: 'Piano',     color: '#b388ff', order: 4 },
-  other:  { label: 'Other',     color: '#8d99ae', order: 5 },
-  mix:    { label: 'Full mix',  color: '#e9e9ef', order: 6 },
-};
+const { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } = window.SansStems;
 
-const EXTRA_COLORS = ['#f77f00', '#00b4d8', '#c77dff', '#90be6d', '#f9c74f'];
-const AUDIO_RE = /\.(wav|wave|flac|m4a|mp4|aac|mp3|opus|ogg|oga|aif|aiff|caf|webm)$/i;
 const BUCKETS = 1400;   // waveform resolution
 const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
 
@@ -68,22 +58,6 @@ function say(msg, isErr) {
   el.status.hidden = !msg;
   el.status.textContent = msg || '';
   el.status.classList.toggle('err', !!isErr);
-}
-
-/** Guess which instrument a file holds from its name. */
-function detectStem(filename) {
-  const n = filename.toLowerCase().replace(AUDIO_RE, '');
-  if (/no[-_ ]?vocals?|instrumental|karaoke|backing/.test(n)) return 'other';
-  if (/vocal|vox|voice|sing|lead[-_ ]?v/.test(n)) return 'vocals';
-  if (/guitar|gtr|gitaa?r|rhythm|riff/.test(n)) return 'guitar';
-  if (/\bbass\b|bassline|bs\b/.test(n)) return 'bass';
-  if (/drum|percussion|kick|snare|beat/.test(n)) return 'drums';
-  if (/piano|keys|keyboard|synth|organ/.test(n)) return 'piano';
-  if (/other|residual|accomp/.test(n)) return 'other';
-  // Deliberately narrow: a generic word like "track" must not claim the mix slot,
-  // because the mix slot suppresses every other track when it is filled.
-  if (/\bmix\b|\bfull\b|\bmaster\b|\boriginal\b/.test(n)) return 'mix';
-  return null;
 }
 
 // ---------------------------------------------------------------- loading

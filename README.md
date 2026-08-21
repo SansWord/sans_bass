@@ -190,7 +190,8 @@ Homebrew and Demucs entirely and let the browser do it.
 ```
 
 Open that URL, click **Load files**, pick any audio file, then **Separate into 6 stems**.
-You get the same six lanes, and a **Save stems (.zip)** button that writes
+The six lanes replace the track you loaded — they sum back to it, so nothing is lost —
+and a **Save stems (.zip)** button appears that writes
 `<song>/{vocals,guitar,bass,drums,piano,other}.wav` — unzip it and it loads with
 **Load folder**.
 
@@ -273,8 +274,8 @@ nothing loads. Three ways around it, in order of convenience:
 |---|---|
 | Play / pause | Click the big button, or press **space** |
 | Seek | Click or drag anywhere on any waveform |
-| Solo one instrument | Click a lane name, or pick it from the **Play** dropdown |
-| Mute / unmute a lane | Press **1**–**6** |
+| Mute / unmute a lane | Click its name, or press **1**–**6** |
+| Solo one instrument | Pick it from the **Play** dropdown |
 | Back to the full mix | Press **0** |
 | Nudge 5 seconds | **←** / **→** |
 | Per-instrument level | The slider at the right of each lane |
@@ -287,8 +288,8 @@ Press **a** where a phrase starts and **b** where it ends, and that section repe
 you clear it. The intended workflow is to press **a**, keep listening, and press **b** the
 moment the phrase finishes — the playhead is already at B, so it jumps straight back to A.
 
-Combine it with soloing to drill one part: `2` to mute everything but the guitar, `a`/`b`
-around the solo, and it loops that phrase on the guitar track alone.
+Combine it with soloing to drill one part: pick **guitar only** from the **Play**
+dropdown, `a`/`b` around the solo, and it loops that phrase on the guitar track alone.
 
 Details worth knowing:
 

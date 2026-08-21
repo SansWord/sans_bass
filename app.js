@@ -152,10 +152,11 @@ function buildTracks(items, title) {
  * @param {Object<string, {left: Float32Array, right: Float32Array}>} stems
  */
 function loadSeparated(original, stems) {
-  // The original MUST be tagged 'mix' explicitly. With seven tracks the lone-file rule
-  // does not fire, and a song filename matches none of detectStem's mix patterns — so
-  // without this it would be summed on top of its own stems at double volume.
-  const items = [{ name: original.name, buffer: original.buffer, stem: 'mix' }];
+  // The original is deliberately dropped: the six stems already sum to it, and keeping
+  // it would either double the audio or need permanent suppression. Its name still
+  // becomes the title. (assignStems' explicit-'mix' path still guards the disk case,
+  // where a folder genuinely holds a mix file alongside its stems.)
+  const items = [];
 
   for (const [stem, ch] of Object.entries(stems)) {
     const buf = audio.createBuffer(2, ch.left.length, audio.sampleRate);
@@ -166,6 +167,8 @@ function loadSeparated(original, stems) {
 
   loopA = loopB = null;
   renderLoopBadge();
+  // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks
+  // leaves every stem unmuted — all six lanes on by default.
   buildTracks(items, original.name.replace(AUDIO_RE, ''));
   say('');
 }
@@ -238,10 +241,10 @@ function buildUI(title) {
     const name = document.createElement('div');
     name.className = 'lane-name';
     name.style.color = t.color;
-    name.title = 'Click to solo this track';
+    name.title = 'Click to mute or unmute this track';
     name.innerHTML = `<span class="dot"></span><span class="txt">${t.label}</span>` +
                      (i < 10 ? `<span class="kbd">${(i + 1) % 10}</span>` : '');
-    name.addEventListener('click', () => soloTrack(t));
+    name.addEventListener('click', () => toggleTrack(t));
 
     const canvas = document.createElement('canvas');
     canvas.className = 'wave';
@@ -556,13 +559,19 @@ function setMode(mode) {
   applyGains();
 }
 
-function soloTrack(t) {
-  const alreadySolo = !t.muted && tracks.every(o => o === t || o.muted);
-  if (alreadySolo) setMode('mix');
-  else setMode(t.stem === 'mix' ? 'mix' : t.label);
-}
-
 function toggleTrack(t) {
+  // The mix lane is the exception: a full-mix file must never sound on top of its own
+  // stems, so toggling it switches the whole routing instead of just its own gain.
+  if (window.__hasStems && t.stem === 'mix') {
+    if (el.mode.value === 'mix') {
+      tracks.forEach(o => { o.muted = o.stem === 'mix'; });   // hand over to the stems
+      el.mode.value = 'custom';
+      applyGains();
+    } else {
+      setMode('mix');
+    }
+    return;
+  }
   t.muted = !t.muted;
   el.mode.value = 'custom';
   applyGains();

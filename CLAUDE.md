@@ -119,10 +119,12 @@ out of the project; never commit them.
 - **The AudioContext must be 44.1 kHz.** `decodeAudioData` resamples to the context rate,
   and the separation model requires 44100. A default context is often 48 kHz on macOS,
   which would feed the model stretched audio and produce wrong stems with no error at all.
-- **Separation output must tag the original track `stem: 'mix'` explicitly.** With seven
-  tracks the lone-file rule in `assignStems` does not fire, and a real song title matches
-  none of the deliberately narrow mix patterns — so the original would be summed on top of
-  its own six stems at double volume. Covered by a test in `tests/stems.test.js`.
+- **A mix file alongside stems must carry `stem: 'mix'` explicitly.** With seven tracks the
+  lone-file rule in `assignStems` does not fire, and a real song title matches none of the
+  deliberately narrow mix patterns — so the mix would be summed on top of its own six stems
+  at double volume. Covered by a test in `tests/stems.test.js`. In-browser separation avoids
+  the question by dropping the original: `loadSeparated` builds lanes from the six stems
+  only, which is also why `__hasStems` is false there and every lane starts unmuted.
 - **`numThreads = 1` is load-bearing, not a performance tweak.** It avoids SharedArrayBuffer,
   which avoids COOP/COEP, which is what makes static hosting (GitHub Pages) possible at all.
 - **ZIP filenames need general purpose bit 11 set.** Without it the spec says names are

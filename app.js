@@ -22,6 +22,7 @@ let scrubbing = false;
 let raf = 0;
 let loopA = null;          // A-B repeat start, seconds (null = unset)
 let loopB = null;          // A-B repeat end, seconds
+let muteSnapshot = null;   // lane mutes to return to when "unmute all" is undone
 const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
 
 const $ = (id) => document.getElementById(id);
@@ -142,6 +143,7 @@ function buildTracks(items, title) {
   });
 
   window.__hasStems = hasMixPlusStems(tracks);
+  muteSnapshot = null;          // a snapshot indexes the old lanes; it cannot survive a load
 
   buildUI(title);
   setMode('mix');
@@ -550,7 +552,11 @@ function applyGains() {
     t.laneEl?.classList.toggle('muted', !on);
   });
   // Every mute path routes through here, so the button label can never drift out of sync.
-  el.allToggle.textContent = allLanesOn() ? 'Mute all' : 'Unmute all';
+  // "Restore previous" only when there really is a previous. Everything already on with
+  // nothing saved reads as a disabled "Unmute all" — true, and it explains the disabling.
+  const canRestore = allLanesOn() && !!muteSnapshot;
+  el.allToggle.textContent = canRestore ? 'Restore previous' : 'Unmute all';
+  el.allToggle.disabled = allLanesOn() && !muteSnapshot;
 }
 
 /** Lanes the all-on/all-off button acts on — the stems, never a full-mix file. */
@@ -563,15 +569,30 @@ function allLanesOn() {
   return lanes.length > 0 && lanes.every(t => !t.muted);
 }
 
+/**
+ * "Unmute all", and press it again to come back. The snapshot is taken at the moment
+ * everything is turned on, so muting a lane and pressing again returns to *that* state,
+ * not to whatever was saved two presses ago.
+ */
 function toggleAllTracks() {
-  const turnOn = !allLanesOn();
-  if (turnOn && !window.__hasStems) {
-    // With no mix file, every lane on *is* the full mix, so keep the dropdown honest.
-    setMode('mix');
-  } else {
-    stemLanes().forEach(t => { t.muted = !turnOn; });
+  if (allLanesOn()) {
+    if (!muteSnapshot) return;               // already on and nothing saved
+    const snap = muteSnapshot;
+    muteSnapshot = null;
+    stemLanes().forEach((t, i) => { t.muted = snap[i]; });
     el.mode.value = 'custom';
     applyGains();
+    return;
+  }
+
+  muteSnapshot = stemLanes().map(t => t.muted);
+  if (window.__hasStems) {
+    // Unmuting the stems is what silences the mix file, via applyGains.
+    stemLanes().forEach(t => { t.muted = false; });
+    el.mode.value = 'custom';
+    applyGains();
+  } else {
+    setMode('mix');   // every lane on *is* the full mix, so keep the dropdown honest
   }
 }
 
@@ -647,7 +668,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === ' ') { e.preventDefault(); toggle(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - 5); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + 5); }
-  else if (e.key === '0') setMode('mix');
+  else if (e.key === '0') toggleAllTracks();
   else if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setLoopPoint('a'); }
   else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setLoopPoint('b'); }
   else if (e.key === 'c' || e.key === 'C' || e.key === 'Escape') { e.preventDefault(); clearLoop(); }

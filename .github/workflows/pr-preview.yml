@@ -13,10 +13,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-# Serialize every writer to gh-pages so two concurrent runs cannot clobber each other.
+# Per-PR group: a newer commit supersedes an in-flight preview of the same PR, and one
+# PR can never cancel another's deploy or the production deploy.
 concurrency:
-  group: gh-pages-writer
-  cancel-in-progress: false
+  group: gh-pages-pr-${{ github.event.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: write

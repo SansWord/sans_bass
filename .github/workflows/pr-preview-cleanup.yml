@@ -1,0 +1,43 @@
+# Removes a PR's preview directory once the PR is closed or merged, so gh-pages
+# does not accumulate a directory per PR forever.
+name: PR preview cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+concurrency:
+  group: gh-pages-writer
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+
+      - name: Delete pr-${{ github.event.number }}/
+        run: |
+          set -euo pipefail
+          cd site
+          DEST="pr-${{ github.event.number }}"
+          if [ ! -d "$DEST" ]; then
+            echo "$DEST does not exist — nothing to clean up"
+            exit 0
+          fi
+          rm -rf "$DEST"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "preview: remove PR #${{ github.event.number }}"
+          for i in 1 2 3 4 5; do
+            git push && exit 0
+            git pull --rebase origin gh-pages
+          done
+          exit 1

@@ -1,0 +1,62 @@
+# Publishes main to the root of https://sansword.github.io/sans_bass/
+#
+# Deliberately preserves any pr-<N>/ directories at the root: those belong to the
+# PR preview workflow, and a naive full-root sync would delete live previews.
+name: Deploy main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: gh-pages-writer
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+
+      - name: Sync main to the site root, keeping PR previews
+        run: |
+          set -euo pipefail
+          # -c compares by checksum, not size+mtime, so a same-size edit is never skipped.
+          # --delete makes the root an exact mirror of main, but every pr-* directory
+          # is protected so open previews survive a production deploy.
+          rsync -a -c --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'rips' \
+            --exclude 'stems' \
+            --filter 'protect pr-*' \
+            src/ site/
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          cd site
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no change to publish"
+            exit 0
+          fi
+          git commit -m "deploy: main @ ${GITHUB_SHA::7}"
+          for i in 1 2 3 4 5; do
+            git push && exit 0
+            git pull --rebase origin gh-pages
+          done
+          exit 1

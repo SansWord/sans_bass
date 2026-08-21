@@ -189,7 +189,7 @@ Homebrew and Demucs entirely and let the browser do it.
 ./scripts/serve.sh          # http://localhost:8777
 ```
 
-Open that URL, click **Load files**, pick any audio file, then **Separate into 6 stems**.
+Open that URL, click **Load song**, pick any audio file, then **Separate into 6 stems**.
 The six lanes replace the track you loaded — they sum back to it, so nothing is lost —
 and a **Save stems (.zip)** button appears that writes
 `<song>/{vocals,guitar,bass,drums,piano,other}.wav` — that zip loads straight back in with
@@ -244,8 +244,11 @@ open index.html
 ```
 
 Then zip one song's folder — `stems/<song>/`, or `stems/<album>/<song>/` if you batched an
-album — and click **Load zip** to pick it. **Load files** is the same thing for a hand-picked
-set of loose files rather than a zip.
+album — and click **Load zip** to pick it.
+
+The two buttons do one thing each: **Load song** takes a single unseparated audio file (and is
+how you start a separation), **Load zip** takes a `.zip` of stems. Dropping onto the page
+accepts exactly the same two things.
 
 ### Dropping a folder doesn't work
 
@@ -262,8 +265,10 @@ cd stems/<album> && zip -r ~/Desktop/song.zip "<song>"
 ```
 
 Both stored (`zip -0`) and compressed (`zip -r`) archives load, as does anything Finder's
-**Compress** produces — its `__MACOSX` sidecars are filtered out. Loose audio files can
-still be dragged straight on, and **Load files** picks them from a dialog.
+**Compress** produces — its `__MACOSX` sidecars are filtered out.
+
+A set of loose stem files is not a supported drop — zip them. A single audio file is, and is
+read as a whole song to separate rather than as one stem.
 
 ### Serving over http
 

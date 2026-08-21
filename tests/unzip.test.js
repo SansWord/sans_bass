@@ -206,3 +206,97 @@ test('unzip: encryption on a non-audio entry is ignored', async () => {
   const out = await extract(new Blob([b]));
   assertEq(out.map((e) => e.name).join(','), 'bass.wav', 'stems still load');
 });
+
+/* ---- Review findings: malformed archives must name their cause, not misparse ---- */
+
+/** Byte offsets inside a single-entry buildZip() archive with an `n`-byte name. */
+const cdOffOf = (b) => new DataView(b.buffer).getUint32(b.length - 22 + 16, true);
+
+/**
+ * A stored one-entry zip whose LOCAL header carries an extra field the central directory
+ * does not. Real `zip -r` archives do this (a `UT`/`ux` timestamp field), and lib/zip.js
+ * writes 0 in both, so nothing else in this file exercises it. Computing the data offset
+ * from the central directory's extra length instead of the local header's lands mid-file.
+ */
+function zipWithLocalExtra(name, payload, extraLen) {
+  const nameBytes = enc.encode(name);
+  const n = nameBytes.length;
+
+  const local = new Uint8Array(30 + n + extraLen);
+  const lv = new DataView(local.buffer);
+  lv.setUint32(0, 0x04034b50, true);
+  lv.setUint16(4, 20, true);
+  lv.setUint16(6, 0x800, true);
+  lv.setUint32(18, payload.length, true);
+  lv.setUint32(22, payload.length, true);
+  lv.setUint16(26, n, true);
+  lv.setUint16(28, extraLen, true);          // present locally...
+  local.set(nameBytes, 30);
+
+  const cd = new Uint8Array(46 + n);
+  const cv = new DataView(cd.buffer);
+  cv.setUint32(0, 0x02014b50, true);
+  cv.setUint16(4, 20, true);
+  cv.setUint16(6, 20, true);
+  cv.setUint16(8, 0x800, true);
+  cv.setUint32(20, payload.length, true);
+  cv.setUint32(24, payload.length, true);
+  cv.setUint16(28, n, true);
+  cv.setUint16(30, 0, true);                 // ...absent from the central directory
+  cv.setUint32(42, 0, true);
+  cd.set(nameBytes, 46);
+
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, 1, true);
+  ev.setUint16(10, 1, true);
+  ev.setUint32(12, cd.length, true);
+  ev.setUint32(16, local.length + payload.length, true);
+  return new Blob([local, payload, cd, eocd]);
+}
+
+test('unzip: the data offset comes from the LOCAL extra length, not the central one', async () => {
+  // The headline gotcha of this feature. Using the CD's extra length (0) here would read
+  // 9 bytes early and return the extra field's bytes as audio, with no error anywhere.
+  const payload = enc.encode('REAL-AUDIO-BYTES');
+  const out = await extract(zipWithLocalExtra('S/bass.wav', payload, 9));
+  assertEq(out.length, 1, 'entry count');
+  assertEq(new TextDecoder().decode(out[0].bytes), 'REAL-AUDIO-BYTES', 'payload, not the extra field');
+});
+
+test('unzip: a truncated entry reports a read failure instead of returning wrong bytes', async () => {
+  // blob.slice() CLAMPS an out-of-range end rather than throwing, so without a length
+  // check this resolves with the central directory glued onto the payload — and then
+  // fails downstream as "codec not supported", which is the wrong diagnosis.
+  const blob = buildZip([{ name: 'S/bass.wav', bytes: enc.encode('0123456789') }]);
+  const b = new Uint8Array(await blob.arrayBuffer());
+  new DataView(b.buffer).setUint32(cdOffOf(b) + 20, 999999, true);   // cSize far past EOF
+  let err = null;
+  try { await extract(new Blob([b])); } catch (e) { err = e; }
+  assertEq(err && err.code, 'read', 'error code');
+  assert(err.message.includes('bass.wav'), 'names the offending file');
+});
+
+test('unzip: a corrupt deflate stream reports a coded error with a usable message', async () => {
+  // say() hides the status bar entirely when handed an empty string, so an error that
+  // escapes with a blank message is a silent no-op for the user.
+  const blob = buildZip([{ name: 'S/bass.wav', bytes: enc.encode('not deflate data at all') }]);
+  const b = new Uint8Array(await blob.arrayBuffer());
+  new DataView(b.buffer).setUint16(cdOffOf(b) + 10, 8, true);        // claim deflate
+  let err = null;
+  try { await extract(new Blob([b])); } catch (e) { err = e; }
+  assertEq(err && err.code, 'corrupt', 'error code');
+  assert(err.message.length > 0, 'message is not empty');
+  assert(err.message.includes('bass.wav'), 'names the offending file');
+});
+
+test('unzip: a name length running past the central directory reports a damaged zip', async () => {
+  const blob = buildZip([{ name: 'S/bass.wav', bytes: enc.encode('data') }]);
+  const b = new Uint8Array(await blob.arrayBuffer());
+  new DataView(b.buffer).setUint16(cdOffOf(b) + 28, 60000, true);    // nameLen overruns
+  let err = null;
+  try { await extract(new Blob([b])); } catch (e) { err = e; }
+  assertEq(err && err.code, 'not-zip', 'error code');
+  assert(!/typed array/i.test(err.message), 'not a raw RangeError message');
+});

@@ -62,6 +62,19 @@ Running log of what was built and what was learned building it.
 - `[gotcha]` The play button's state lives in a `.playing` class on the *button*; the inner
   `<span>` keeps `class="ico-play"` and CSS swaps the glyph. Probing the span to ask "is it
   playing?" reads as paused forever — check `#play.classList.contains('playing')`.
+- `[gotcha]` `blob.slice(start, end)` **clamps** an out-of-range `end` instead of throwing.
+  A truncated archive therefore resolved with the central directory glued onto the payload
+  and no error at all — surfacing downstream as "codec not supported", the wrong diagnosis.
+  Comparing `raw.byteLength` against the central directory's size is what catches it; the
+  `try/catch` around `.arrayBuffer()` never fires for this case.
+- `[gotcha]` `say('')` **hides** the status bar (`el.status.hidden = !msg`). So an error that
+  escapes with an empty `message` — which is what a broken `DecompressionStream` can reject
+  with — renders as a drop that visibly does nothing. Every throw crossing into `loadZip`
+  needs a non-empty, user-ready message; that is the whole point of `zipError`.
+- `[insight]` The bug a hand-rolled parser hides is the one where it succeeds. The guards
+  that threw were all correct first time; the two real defects both **returned** — wrong
+  bytes, and a blank status bar. Fuzzing malformed archives found them; the happy-path
+  tests never could.
 - `[note]` `DecompressionStream('deflate-raw')` handles method 8 with no library. Store-only
   zips must still load where it is unavailable, so feature-detect per entry, not up front.
 

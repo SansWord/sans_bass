@@ -14,5 +14,13 @@ echo "==> http://localhost:$PORT   (Ctrl-C to stop)"
 exec python3 -c "
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import sys
-ThreadingHTTPServer(('127.0.0.1', int(sys.argv[1])), SimpleHTTPRequestHandler).serve_forever()
+
+class Handler(SimpleHTTPRequestHandler):
+    # No-store, or Chrome serves a stale module after you edit it and the test page
+    # silently checks the old code. That looked exactly like a failing fix.
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store, must-revalidate')
+        super().end_headers()
+
+ThreadingHTTPServer(('127.0.0.1', int(sys.argv[1])), Handler).serve_forever()
 " "$PORT"

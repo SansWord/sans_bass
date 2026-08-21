@@ -3,18 +3,8 @@
  * because every track is started from one AudioContext clock at the same time.
  */
 
-const STEMS = {
-  vocals: { label: 'Vocals',    color: '#ff2e63', order: 0 },
-  guitar: { label: 'Guitar',    color: '#ffb703', order: 1 },
-  bass:   { label: 'Bass',      color: '#3ddc97', order: 2 },
-  drums:  { label: 'Drums',     color: '#4cc9f0', order: 3 },
-  piano:  { label: 'Piano',     color: '#b388ff', order: 4 },
-  other:  { label: 'Other',     color: '#8d99ae', order: 5 },
-  mix:    { label: 'Full mix',  color: '#e9e9ef', order: 6 },
-};
+const { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } = window.SansStems;
 
-const EXTRA_COLORS = ['#f77f00', '#00b4d8', '#c77dff', '#90be6d', '#f9c74f'];
-const AUDIO_RE = /\.(wav|wave|flac|m4a|mp4|aac|mp3|opus|ogg|oga|aif|aiff|caf|webm)$/i;
 const BUCKETS = 1400;   // waveform resolution
 const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
 
@@ -48,7 +38,10 @@ const el = {
 
 function ensureAudio() {
   if (!audio) {
-    audio = new (window.AudioContext || window.webkitAudioContext)();
+    // MUST be 44100: decodeAudioData resamples to the context rate, and the separation
+    // model requires 44.1 kHz. A default 48 kHz context on macOS would feed it stretched
+    // audio and produce quietly wrong stems with no error anywhere.
+    audio = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
     master = audio.createGain();
     master.gain.value = parseFloat(el.masterVol.value);
     master.connect(audio.destination);
@@ -68,22 +61,6 @@ function say(msg, isErr) {
   el.status.hidden = !msg;
   el.status.textContent = msg || '';
   el.status.classList.toggle('err', !!isErr);
-}
-
-/** Guess which instrument a file holds from its name. */
-function detectStem(filename) {
-  const n = filename.toLowerCase().replace(AUDIO_RE, '');
-  if (/no[-_ ]?vocals?|instrumental|karaoke|backing/.test(n)) return 'other';
-  if (/vocal|vox|voice|sing|lead[-_ ]?v/.test(n)) return 'vocals';
-  if (/guitar|gtr|gitaa?r|rhythm|riff/.test(n)) return 'guitar';
-  if (/\bbass\b|bassline|bs\b/.test(n)) return 'bass';
-  if (/drum|percussion|kick|snare|beat/.test(n)) return 'drums';
-  if (/piano|keys|keyboard|synth|organ/.test(n)) return 'piano';
-  if (/other|residual|accomp/.test(n)) return 'other';
-  // Deliberately narrow: a generic word like "track" must not claim the mix slot,
-  // because the mix slot suppresses every other track when it is filled.
-  if (/\bmix\b|\bfull\b|\bmaster\b|\boriginal\b/.test(n)) return 'mix';
-  return null;
 }
 
 // ---------------------------------------------------------------- loading
@@ -122,55 +99,75 @@ async function loadFiles(fileList) {
     return;
   }
 
-  // Assign stem identities. Unknown names fall back to generic extra tracks.
-  const used = new Set();
-  tracks = loaded.map((item, i) => {
-    let stem = detectStem(item.file.name);
-    if (stem && used.has(stem)) stem = null;            // no duplicate stem slots
-    if (stem) used.add(stem);
-    const meta = stem ? STEMS[stem] : null;
-    return {
-      stem,
-      label: meta ? meta.label : item.file.name.replace(AUDIO_RE, ''),
-      color: meta ? meta.color : EXTRA_COLORS[i % EXTRA_COLORS.length],
-      order: meta ? meta.order : 10 + i,
-      buffer: item.buffer,
-      muted: false,
-      volume: 1,
-      gain: null, peaks: null, canvas: null, laneEl: null, layers: null,
-    };
-  });
-
-  // A single unlabelled file is simply the full song.
-  if (tracks.length === 1) { tracks[0].stem = 'mix'; tracks[0].label = STEMS.mix.label; }
-
-  tracks.sort((a, b) => a.order - b.order);
-  duration = Math.max(...tracks.map(t => t.buffer.duration));
-  offset = 0;
-
-  tracks.forEach(t => {
-    t.gain = audio.createGain();
-    t.gain.connect(master);
-    t.peaks = computePeaks(t.buffer, duration);
-  });
-
-  // If real stems are present, a full-mix file would double the audio —
-  // keep it as an alternative source rather than an additive layer.
-  const stemTracks = tracks.filter(t => t.stem !== 'mix');
-  const mixTrack = tracks.find(t => t.stem === 'mix');
-  window.__hasStems = stemTracks.length > 0 && !!mixTrack;
-
-  buildUI(files);
-  setMode('mix');
+  const items = loaded.map((l) => ({ name: l.file.name, buffer: l.buffer }));
+  buildTracks(items, commonName(files));
 
   if (failed.length) {
     say(`Skipped ${failed.join(', ')} — codec not supported by this browser. Re-encode as .m4a.`, true);
-  } else if (tracks.length > 1 && tracks.every(t => !t.stem)) {
+  } else if (tracks.length > 1 && tracks.every((t) => !t.stem)) {
     say('None of these filenames looked like stems, so they are all playing layered on top of ' +
         'each other. Rename them vocals / guitar / bass / drums to get labelled lanes.');
   } else {
     say('');
   }
+}
+
+/**
+ * Build lanes from decoded audio, whatever its origin.
+ * @param {{name: string, buffer: AudioBuffer, stem?: string}[]} items
+ * @param {string} title
+ */
+function buildTracks(items, title) {
+  tracks = assignStems(items).map((t) => ({
+    name: t.name,          // source filename — the ZIP folder name is derived from it
+    stem: t.stem,
+    label: t.label,
+    color: t.color,
+    order: t.order,
+    buffer: t.buffer,
+    muted: false,
+    volume: 1,
+    gain: null, peaks: null, canvas: null, laneEl: null, layers: null,
+  }));
+
+  tracks.sort((a, b) => a.order - b.order);
+  duration = Math.max(...tracks.map((t) => t.buffer.duration));
+  offset = 0;
+
+  tracks.forEach((t) => {
+    t.gain = audio.createGain();
+    t.gain.connect(master);
+    t.peaks = computePeaks(t.buffer, duration);
+  });
+
+  window.__hasStems = hasMixPlusStems(tracks);
+
+  buildUI(title);
+  setMode('mix');
+}
+
+/**
+ * Entry point for stems produced in-browser rather than loaded from disk.
+ * @param {{name: string, buffer: AudioBuffer}} original
+ * @param {Object<string, {left: Float32Array, right: Float32Array}>} stems
+ */
+function loadSeparated(original, stems) {
+  // The original MUST be tagged 'mix' explicitly. With seven tracks the lone-file rule
+  // does not fire, and a song filename matches none of detectStem's mix patterns — so
+  // without this it would be summed on top of its own stems at double volume.
+  const items = [{ name: original.name, buffer: original.buffer, stem: 'mix' }];
+
+  for (const [stem, ch] of Object.entries(stems)) {
+    const buf = audio.createBuffer(2, ch.left.length, audio.sampleRate);
+    buf.copyToChannel(ch.left, 0);
+    buf.copyToChannel(ch.right, 1);
+    items.push({ name: `${stem}.wav`, buffer: buf, stem });
+  }
+
+  loopA = loopB = null;
+  renderLoopBadge();
+  buildTracks(items, original.name.replace(AUDIO_RE, ''));
+  say('');
 }
 
 function commonName(files) {
@@ -215,10 +212,10 @@ function mixPeaks() {
 
 // ---------------------------------------------------------------- UI
 
-function buildUI(files) {
+function buildUI(title) {
   el.dropzone.hidden = true;
   el.player.hidden = false;
-  el.title.textContent = commonName(files);
+  el.title.textContent = title;
   el.tDur.textContent = fmt(duration);
 
   // mode dropdown
@@ -712,3 +709,19 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(renderAll, 120);
 });
+
+/* Interface for separate.js, which is an ES module and cannot share scope with this
+ * classic script. Kept deliberately small. */
+window.sansBass = {
+  loadSeparated,
+  /** The currently loaded full-mix track, or null. */
+  currentMix: () => {
+    const t = tracks.find((x) => x.stem === 'mix');
+    // t.name, not t.label: assignStems relabels a lone file to "Full mix", which would
+    // then become the ZIP's folder name.
+    return t ? { name: t.name, buffer: t.buffer } : null;
+  },
+  /** True when exactly one track is loaded — i.e. an unseparated song. */
+  isSingleTrack: () => tracks.length === 1,
+  say,
+};

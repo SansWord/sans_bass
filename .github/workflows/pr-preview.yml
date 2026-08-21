@@ -1,0 +1,115 @@
+# Deploys every pull request to https://sansword.github.io/sans_bass/pr-<N>/
+#
+# The site is plain static files, so "building" is a copy. Everything lands on the
+# gh-pages branch: production at the root, each PR in its own pr-<N> subdirectory.
+#
+# NOTE: this uses the `pull_request` event, so a PR opened from a FORK gets a
+# read-only token and this job will fail to push. That is deliberate — the safe
+# alternative (`pull_request_target`) would run trusted workflow code against
+# untrusted PR content. For a single-maintainer repo, branch PRs are the norm.
+name: PR preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Serialize every writer to gh-pages so two concurrent runs cannot clobber each other.
+concurrency:
+  group: gh-pages-writer
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the PR's code
+        uses: actions/checkout@v4
+        with:
+          path: src
+
+      - name: Check out the gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+
+      - name: Copy the PR into pr-${{ github.event.number }}/
+        run: |
+          set -euo pipefail
+          DEST="site/pr-${{ github.event.number }}"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+          # -c compares by checksum: rsync's default size+mtime check silently skips a
+          # changed file that happens to be the same size, publishing stale content.
+          # --delete keeps the preview an exact mirror of the PR.
+          # rips/ and stems/ are gitignored so they are never in the checkout at all;
+          # excluded here as a second line of defence. They are the user's own audio.
+          rsync -a -c --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'rips' \
+            --exclude 'stems' \
+            src/ "$DEST/"
+          # Plain static site: Jekyll would reprocess it and silently skip some files
+          # (anything under a leading-underscore path, for one). Recreated on every run
+          # so it survives the --delete sync above.
+          touch site/.nojekyll
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          cd site
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no change to publish"
+            exit 0
+          fi
+          git commit -m "preview: PR #${{ github.event.number }} @ ${GITHUB_SHA::7}"
+          # Another PR may have pushed between our checkout and now.
+          for i in 1 2 3 4 5; do
+            git push && exit 0
+            echo "push rejected, rebasing (attempt $i)"
+            git pull --rebase origin gh-pages
+          done
+          echo "could not push after 5 attempts" >&2
+          exit 1
+
+      - name: Comment the preview URL on the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          MARKER="<!-- pr-preview-url -->"
+          URL="https://sansword.github.io/sans_bass/pr-${PR}/"
+          BODY="${MARKER}
+          ### Preview
+
+          | | |
+          |---|---|
+          | Player | [${URL}](${URL}) |
+          | Unit tests | [${URL}tests/test.html](${URL}tests/test.html) |
+
+          Updated for \`${GITHUB_SHA::7}\`. Pages can take a minute to serve a fresh deploy.
+
+          Separation needs WebGPU and downloads a 285 MB model on first run.
+          \`tests/parity.html\` will not work here — it needs the local \`rips/\` and
+          \`stems/\` audio, which is deliberately never published."
+
+          # Update the existing comment instead of posting a new one on every push.
+          ID=$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
+                 --jq "[.[] | select(.body | startswith(\"${MARKER}\"))] | first | .id // empty")
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${ID}" -f body="$BODY" >/dev/null
+            echo "updated comment $ID"
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR}/comments" -f body="$BODY" >/dev/null
+            echo "created comment"
+          fi

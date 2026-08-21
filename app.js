@@ -112,7 +112,7 @@ window.addEventListener('error', (e) => {
 
 // ---------------------------------------------------------------- loading
 
-async function loadFiles(fileList) {
+async function loadFiles(fileList, fallbackName) {
   const files = [...fileList].filter(f => AUDIO_RE.test(f.name));
   if (!files.length) { say('status.noAudioFiles', null, true); return; }
 
@@ -146,7 +146,7 @@ async function loadFiles(fileList) {
   }
 
   const items = loaded.map((l) => ({ name: l.file.name, buffer: l.buffer }));
-  buildTracks(items, commonName(files));
+  buildTracks(items, commonName(files, fallbackName));
 
   if (failed.length) {
     say('status.decodeSkipped', { names: failed.join(', ') }, true);
@@ -188,7 +188,7 @@ async function loadZip(file) {
     name: e.name,
     webkitRelativePath: e.webkitRelativePath,
     arrayBuffer: async () => e.bytes.buffer,
-  })));
+  })), file.name.replace(/\.zip$/i, ''));
 }
 
 /**
@@ -272,11 +272,18 @@ function loadSeparated(original, stems) {
   say('');
 }
 
-function commonName(files) {
+/**
+ * Title the player. The folder inside the zip is the best name, because that is what
+ * prep-stems.sh names after the song. A flat zip has no folder, so fall back to the zip's
+ * own filename — `fallbackName`, supplied by loadZip. Only if there is neither do we count
+ * files, and that last resort is deliberately not translated: it is a debugging artefact,
+ * not copy a user is meant to read. See docs/behaviour.md.
+ */
+function commonName(files, fallbackName) {
   const paths = files.map(f => f.webkitRelativePath || f.name);
   if (paths.length === 1) return paths[0].replace(AUDIO_RE, '');
   const dir = paths[0].split('/').slice(0, -1).pop();
-  return dir || `${files.length} tracks`;
+  return dir || fallbackName || `${files.length} tracks`;
 }
 
 /** Peak envelope on a fixed time grid so lanes of differing length stay aligned. */

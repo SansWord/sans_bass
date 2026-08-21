@@ -40,8 +40,12 @@ jobs:
             --exclude '.github' \
             --exclude 'rips' \
             --exclude 'stems' \
-            --filter 'protect pr-*' \
+            --filter 'protect pr-*' --filter 'protect .nojekyll' \
             src/ site/
+          # Plain static site: Jekyll would reprocess it and silently skip some files
+          # (anything under a leading-underscore path, for one). Recreated on every run
+          # so it survives the --delete sync above.
+          touch site/.nojekyll
 
       - name: Commit and push
         run: |

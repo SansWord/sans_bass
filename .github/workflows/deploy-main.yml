@@ -9,8 +9,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Its OWN group. Sharing one group with the PR workflows meant that merging a PR --
+# which fires this (push to main) and the cleanup (pull_request closed) at the same
+# instant -- left one of them pending, and GitHub cancels a pending run when another
+# joins the group. Production silently did not deploy. Cross-workflow safety comes from
+# the rebase-and-retry push loop below, not from a shared lock.
 concurrency:
-  group: gh-pages-writer
+  group: gh-pages-main
   cancel-in-progress: false
 
 permissions:

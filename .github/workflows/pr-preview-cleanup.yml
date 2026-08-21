@@ -6,8 +6,10 @@ on:
   pull_request:
     types: [closed]
 
+# Same group as that PR's preview so cleanup cannot race its own deploy, but a
+# different group from production so it can never cancel it.
 concurrency:
-  group: gh-pages-writer
+  group: gh-pages-pr-${{ github.event.number }}
   cancel-in-progress: false
 
 permissions:

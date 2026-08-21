@@ -24,7 +24,30 @@ function setProgress(frac) {
   if (frac !== null) el.fill.style.width = `${Math.round(frac * 100)}%`;
 }
 
-function status(msg) { el.status.textContent = msg; }
+const tr = (key, params) => window.SansI18n.t(key, params);
+
+/* Same shape as app.js's say(): remember the key, not the rendered text, so a language
+ * switch mid-separation re-renders the progress line instead of freezing it. */
+let lastStatus = null;
+
+/* A param whose value is ITSELF translated must be passed as a thunk and resolved at
+ * render time. Resolving at call time stores the old locale's string, and the re-render
+ * below then mixes the two — "worker failed: 記憶體不足？ — try a shorter track". */
+function resolve(params) {
+  if (!params) return params;
+  const out = {};
+  for (const [k, v] of Object.entries(params)) out[k] = typeof v === 'function' ? v() : v;
+  return out;
+}
+
+function status(key, params) {
+  lastStatus = key ? { key, params } : null;
+  el.status.textContent = key ? tr(key, resolve(params)) : '';
+}
+
+window.addEventListener('sansbass:langchange', () => {
+  if (lastStatus) el.status.textContent = tr(lastStatus.key, resolve(lastStatus.params));
+});
 
 function busy(on) {
   el.go.disabled = on;
@@ -62,8 +85,7 @@ el.go.addEventListener('click', () => {
 
   const dur = mix.buffer.duration;
   if (dur > 8 * 60 &&
-      !confirm(`This track is ${Math.round(dur / 60)} minutes long. Separation holds every ` +
-               `stem in memory and may exhaust it. Continue?`)) {
+      !confirm(tr('sep.confirmLong', { min: Math.round(dur / 60) }))) {
     return;
   }
 
@@ -75,7 +97,7 @@ el.go.addEventListener('click', () => {
 
   const w = getWorker();
   busy(true);
-  status('loading model…');
+  status('sep.loadingModel');
   setProgress(0);
 
   // A worker killed by the OOM reaper never posts anything. Without this the UI
@@ -83,22 +105,21 @@ el.go.addEventListener('click', () => {
   w.onerror = (err) => {
     busy(false);
     setProgress(null);
-    status(`worker failed: ${err.message || 'out of memory?'} — try a shorter track`);
+    status('sep.workerFailed', { msg: err.message || (() => tr('sep.oom')) });
     worker = null;
   };
 
   w.onmessage = (e) => {
     const m = e.data;
     if (m.type === 'download') {
-      status(`downloading model ${(m.loaded / MB).toFixed(0)} / ${(m.total / MB).toFixed(0)} MB`);
+      status('sep.downloading', {
+        loaded: (m.loaded / MB).toFixed(0), total: (m.total / MB).toFixed(0) });
       setProgress(m.total ? m.loaded / m.total : 0);
     } else if (m.type === 'ready') {
-      status(m.backend === 'webgpu'
-        ? 'separating on GPU…'
-        : 'separating on CPU — no WebGPU here, so this will take many minutes');
+      status(m.backend === 'webgpu' ? 'sep.gpu' : 'sep.cpu');
       setProgress(0);
     } else if (m.type === 'progress') {
-      status(`segment ${m.segment}/${m.total} — about ${Math.ceil(m.etaSec)}s left`);
+      status('sep.progress', { segment: m.segment, total: m.total, eta: Math.ceil(m.etaSec) });
       setProgress(m.segment / m.total);
     } else if (m.type === 'log') {
       console.log('[separate]', m.message);
@@ -114,7 +135,7 @@ el.go.addEventListener('click', () => {
     } else if (m.type === 'error') {
       busy(false);
       setProgress(null);
-      status(m.message === 'cancelled' ? 'cancelled' : `failed: ${m.message}`);
+      status(m.message === 'cancelled' ? 'sep.cancelled' : 'sep.failed', { msg: m.message });
     }
   };
 
@@ -123,13 +144,13 @@ el.go.addEventListener('click', () => {
 
 el.cancel.addEventListener('click', () => {
   worker?.postMessage({ type: 'cancel' });
-  status('cancelling…');
+  status('sep.cancelling');
 });
 
 el.save.addEventListener('click', async () => {
   if (!lastStems) return;
   el.save.disabled = true;
-  status('encoding WAVs…');
+  status('sep.encoding');
   try {
     // Encode one stem at a time and hand each straight to the ZIP builder, so the WAV
     // bytes are never all live at once on top of the stems themselves.
@@ -145,9 +166,9 @@ el.save.addEventListener('click', async () => {
     a.download = `${lastName}-stems.zip`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    status(`saved ${(blob.size / MB).toFixed(0)} MB`);
+    status('sep.saved', { mb: (blob.size / MB).toFixed(0) });
   } catch (e) {
-    status(`save failed: ${e.message}`);
+    status('sep.saveFailed', { msg: e.message });
   } finally {
     el.save.disabled = false;
   }

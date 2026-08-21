@@ -251,7 +251,26 @@ select {
 
 input[type=range] { width: 110px; }
 
-.hint { font-size: 11px; font-family: var(--mono); margin-left: auto; }
+/* `flex: 1 0 100%` forces the hint onto its own full-width row inside the wrapping
+   .controls flexbox, so it is read left-to-right from the same edge as everything else
+   instead of being squeezed right-aligned into whatever space was left over.
+   The colour is a deliberate override of `.dim` (hence the doubled class, so it wins on
+   specificity rather than on source order): --dim is ~4.7:1 on the background, which is
+   thin for 11px text that is the only place the keyboard map is written down. #a3a3b2 is
+   ~7.8:1, and the size goes 11px → 12.5px. */
+.hint.dim {
+  flex: 1 0 100%;
+  order: 9;
+  margin: 2px 0 0;
+  font: 12.5px/1.7 var(--mono);
+  color: #a3a3b2;
+  /* Stacked, not side by side. Laid out in a row the two halves ran together into one
+     unreadable sentence — a gap is not a separator when both halves are the same colour
+     and the same monospace face. One instruction per line. */
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
 .hint strong { color: var(--fg); font-weight: 600; }
 
 .loop-badge {
@@ -309,10 +328,20 @@ input[type=range] { width: 110px; }
      a separate grid column and keeps its own pointer handlers for seeking. */
   align-self: stretch;
   margin: -8px 0 -8px -12px;
-  padding: 8px 0 8px 12px;
-  border-radius: 6px;
+  padding: 8px 10px 8px 12px;
 }
-.lane-name:hover { background: var(--panel-2); }
+/* The click target has to *look* like one. It carries its own panel tint and a divider
+   against the waveform, so the boundary between "click here to mute" and "click here to
+   seek" is visible without hovering — hover-only affordance is invisible on touch, and
+   was the thing beta testers did not find. */
+.lane-name {
+  background: var(--panel-2);
+  border-right: 1px solid var(--line);
+  border-radius: 7px 0 0 7px;
+  transition: background .12s;
+}
+.lane-name:hover { background: #2b2b36; }
+.lane-name:active { background: #34343f; }
 .lane-name .dot {
   flex: none;
   width: 9px; height: 9px;
@@ -346,7 +375,9 @@ input[type=range] { width: 110px; }
 @media (max-width: 640px) {
   .lane { grid-template-columns: 96px 1fr; }
   .lane-vol { display: none; }
-  .hint { display: none; }
+  /* The keyboard map is meaningless without a keyboard; the tap hint is the one thing a
+     first-time user on a phone actually needs. Only the keys half goes. */
+  .hint-keys { display: none; }
 }
 
 /* ---- separation panel ---- */

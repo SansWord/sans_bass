@@ -112,9 +112,12 @@ out of the project; never commit them.
 ## Gotchas that will bite again
 
 - **There are exactly two ways in, and that is the design.** One audio file (a whole song,
-  which is also the separation entry point) via **Load song**, or one `.zip` of stems via
-  **Load zip**. Drop accepts the same two things and nothing else. Don't re-add multi-file
-  loading or folder drop "for convenience" — each extra path was a way to fail silently.
+  which is also the separation entry point), or one `.zip` of stems. Since v1.6.0 both go
+  through a single **Load song or zip** button and a single `#file-input`; `loadAny()`
+  dispatches on the extension. Drop accepts the same two things and nothing else. Don't
+  re-add multi-file loading or folder drop "for convenience" — each extra path was a way to
+  fail silently. And keep `#file-input` clearing its own `value` on change, or picking the
+  same file twice in a row is a silent no-op.
 - **Folder drop is deliberately unsupported — don't add it back.** It needed the directory
   entries API, which Chrome blocks on `file://`, so it only ever worked over http and failed
   silently otherwise. v1.3.0 deleted the recursive walk (`walkEntry`/`fsCall`, ~40 lines); a
@@ -146,7 +149,8 @@ out of the project; never commit them.
   degraded page — the old script throws on an element the new markup dropped, and because
   `app.js` wires everything from one flat run of top-level statements, every listener *below*
   the throw silently never registers. Bump the version in `index.html` (6), `separate.js` (3)
-  and `separate.worker.js` (1); `tests/versions.test.js` fails if they drift.
+  and `separate.worker.js` (1); `tests/versions.test.js` fails if they drift. Currently
+  `v1.6.0`.
 - **UI strings live in `lib/i18n.js`, and both locales must move together.** `data-i18n`
   sets `textContent`, `data-i18n-html` sets `innerHTML` (our own dictionary values only,
   never user data), `data-i18n-attr` sets attributes. Adding a key to one locale and

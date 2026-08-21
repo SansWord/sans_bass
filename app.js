@@ -28,7 +28,7 @@ const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
 const $ = (id) => document.getElementById(id);
 const el = {
   dropzone: $('dropzone'), player: $('player'), status: $('status'),
-  songInput: $('song-input'), zipInput: $('zip-input'),
+  fileInput: $('file-input'),
   play: $('play'), title: $('title'), mainWave: $('main-wave'),
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
@@ -189,6 +189,18 @@ async function loadZip(file) {
     webkitRelativePath: e.webkitRelativePath,
     arrayBuffer: async () => e.bytes.buffer,
   })), file.name.replace(/\.zip$/i, ''));
+}
+
+const isZip = (f) => /\.zip$/i.test(f.name);
+
+/**
+ * The one entry point behind the single Load button and behind a drop of one file.
+ * There is still exactly one question — song or zip — but the extension answers it, so the
+ * user is never asked to classify the file before the file dialog even opens.
+ */
+function loadAny(file) {
+  if (!file) return;
+  return isZip(file) ? loadZip(file) : loadSong(file);
 }
 
 /**
@@ -675,13 +687,19 @@ function applyGains() {
   renderAllToggle();
 }
 
-/* "Restore previous" only when there really is a previous. Everything already on with
- * nothing saved reads as a disabled "Unmute all" — true, and it explains the disabling.
- * Split out of applyGains so retranslate() can re-render the label without touching gain. */
+/* Three states, and the label is the only thing that says which one you are in:
+ *   something muted            → "Unmute all"
+ *   everything on, snapshot    → "Restore previous"
+ *   everything on, no snapshot → "Mute all"   (the fresh-load state)
+ * The button used to be disabled in that last case, which is what a beta tester read as
+ * the 0 key being broken: on a separated song every lane starts on, so the very first
+ * press was always the dead one. Split out of applyGains so retranslate() can re-render
+ * the label without touching gain. */
 function renderAllToggle() {
   const on = allLanesOn();
-  el.allToggle.textContent = on && muteSnapshot ? tr('btn.restorePrevious') : tr('btn.unmuteAll');
-  el.allToggle.disabled = on && !muteSnapshot;
+  el.allToggle.textContent =
+    !on ? tr('btn.unmuteAll') : muteSnapshot ? tr('btn.restorePrevious') : tr('btn.muteAll');
+  el.allToggle.disabled = false;
 }
 
 /**
@@ -732,23 +750,44 @@ function allLanesOn() {
   return lanes.length > 0 && lanes.every(t => !t.muted);
 }
 
+function allLanesOff() {
+  const lanes = stemLanes();
+  return lanes.length > 0 && lanes.every(t => t.muted);
+}
+
 /**
- * "Unmute all", and press it again to come back. The snapshot is taken at the moment
- * everything is turned on, so muting a lane and pressing again returns to *that* state,
- * not to whatever was saved two presses ago.
+ * The `0` key and the button beside the dropdown. One control, three moves:
+ *
+ *   something muted            → turn everything on, remembering what was off
+ *   everything on + snapshot   → put back exactly those lanes
+ *   everything on, no snapshot → turn everything OFF
+ *
+ * That last move is what makes the key work on the very first press. A freshly separated
+ * song has all six lanes on and nothing saved, so "unmute all" had nothing to do and the
+ * control sat disabled — indistinguishable, from the user's side, from a dead key.
+ * Muting everything is the useful move there: it is how you build a mix back up one lane
+ * at a time, and pressing again returns you to all-on.
+ *
+ * The snapshot is taken at the moment everything is turned on, so muting a lane and
+ * pressing again returns to *that* state, not to whatever was saved two presses ago. It is
+ * deliberately NOT taken when every lane is already off: "restore previous" meaning
+ * "silence again" is a worse answer than simply offering "Mute all" once more.
  */
 function toggleAllTracks() {
   if (allLanesOn()) {
-    if (!muteSnapshot) return;               // already on and nothing saved
-    const snap = muteSnapshot;
-    muteSnapshot = null;
-    stemLanes().forEach((t, i) => { t.muted = snap[i]; });
+    if (muteSnapshot) {
+      const snap = muteSnapshot;
+      muteSnapshot = null;
+      stemLanes().forEach((t, i) => { t.muted = snap[i]; });
+    } else {
+      stemLanes().forEach(t => { t.muted = true; });
+    }
     el.mode.value = 'custom';
     applyGains();
     return;
   }
 
-  muteSnapshot = stemLanes().map(t => t.muted);
+  muteSnapshot = allLanesOff() ? null : stemLanes().map(t => t.muted);
   if (window.__hasStems) {
     // Unmuting the stems is what silences the mix file, via applyGains.
     stemLanes().forEach(t => { t.muted = false; });
@@ -816,7 +855,11 @@ function attachSeek(canvas) {
 on(el.play, 'click', toggle);
 on(el.loopClear, 'click', clearLoop);
 on(el.allToggle, 'click', toggleAllTracks);
-on(el.mode, 'change', () => setMode(el.mode.value));
+/* Hand focus back after a choice. The global keydown handler ignores events aimed at a
+ * <select> — it has to, or ArrowLeft/Right would seek instead of moving the selection —
+ * so a select that keeps focus after being used silently disables every hotkey until the
+ * user happens to click elsewhere. Blurring on `change` is the whole fix. */
+on(el.mode, 'change', () => { setMode(el.mode.value); el.mode.blur(); });
 on(el.langToggle, 'click', (e) => {
   const btn = e.target.closest('button[data-lang]');
   if (btn) window.SansI18n.setLocale(btn.dataset.lang);   // an explicit choice persists
@@ -828,8 +871,14 @@ on(el.masterVol, 'input', () => {
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
 });
 
-on(el.songInput, 'change', e => loadSong(e.target.files[0]));
-on(el.zipInput, 'change', e => loadZip(e.target.files[0]));
+/* The value is cleared after dispatching so picking the *same* file twice in a row still
+ * fires `change`. With two inputs that was rare; with one it is the obvious retry after a
+ * decode error, and a silent no-op there looks like the button is broken. */
+on(el.fileInput, 'change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  loadAny(file);
+});
 
 document.addEventListener('keydown', (e) => {
   if (/input|select|textarea/i.test(e.target.tagName) && e.key !== ' ') return;
@@ -886,13 +935,10 @@ document.addEventListener('drop', (e) => {
   const dt = e.dataTransfer;
   const dropped = [...(dt.files || [])];
 
-  const isZip = (f) => /\.zip$/i.test(f.name);
-
   if (dropped.length === 1) {
-    // A zip is a plain file, so it arrives in dt.files even on file://, where the entries
-    // API is blocked. This is what makes zip drag-and-drop work from disk.
-    if (isZip(dropped[0])) return loadZip(dropped[0]);
-    if (AUDIO_RE.test(dropped[0].name)) return loadSong(dropped[0]);
+    // A zip is a plain file, so it arrives in dt.files whatever else is blocked. This is
+    // what makes zip drag-and-drop work from disk.
+    if (isZip(dropped[0]) || AUDIO_RE.test(dropped[0].name)) return loadAny(dropped[0]);
   }
 
   // Nothing usable — say precisely which case it was rather than failing silently.

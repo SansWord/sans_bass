@@ -14,9 +14,100 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.2.0](#v120--in-browser-stem-separation-2026-08-20) | Six-stem separation running entirely in the browser via onnxruntime-web + htdemucs_6s, at ~8x realtime on WebGPU, with stems saveable as one ZIP of WAVs |
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.2.0 — In-browser stem separation (2026-08-20)
+
+**Review:** not yet
+
+**Design docs:**
+- In-browser separation: [Spec](superpowers/specs/2026-08-20-in-browser-separation-design.md) [Plan](superpowers/plans/2026-08-20-in-browser-separation.md)
+
+**What was built:**
+
+- Six-stem separation running entirely in the browser via `onnxruntime-web` and
+  `kramp/htdemucs-6s-webgpu-onnx`, at parity with the native pipeline on speed and close
+  to it on output.
+- `separate.worker.js` (inference), `separate.js` (panel), `lib/overlap.js`, `lib/wav.js`,
+  `lib/zip.js`, and `lib/stems.js` extracted from `app.js`.
+- Save stems as one ZIP of WAVs, laid out so unzipping gives a folder **Load folder** accepts.
+- First dependency-free test harness for the project: `tests/test.html` (27 unit tests) and
+  `tests/parity.html`.
+
+**Measured results** (Apple Silicon, WebGPU, `htdemucs_6s`, trapezoid window):
+
+| Track | Time | vocals | bass | guitar | drums |
+|-------|------|--------|------|--------|-------|
+| `1 基隆路` (200.4 s) | 23.9 s (8.4x) | 0.996 / 0 dB | 0.997 / 0 dB | 0.993 / +1.4 dB | 0.984 / +2.9 dB |
+| `2 最後兩禮拜` (205.8 s) | 26.7 s (7.7x) | 0.997 / 0 dB | 0.997 / 0 dB | 0.992 / +1.6 dB | 0.985 / +0.6 dB |
+
+Correlation / level delta against the native stems in `stems/reborn/`, at **zero sample lag
+on every stem**. Note the ground truth is 160 kbps AAC: round-tripping our own WAV output
+through the same encode caps correlation at 0.995 (drums), 0.996 (guitar), 0.999 (vocals),
+1.000 (bass), so most of the drums and guitar gap is the measurement, not the separation.
+
+**Key technical learnings:**
+
+- `[insight]` **Picking the right model mattered more than the integration.** The obvious
+  starting point (`timcsy/demucs-web`) strips STFT out of the ONNX graph and reimplements it
+  in JS, which locks you to a 4-stem model with no guitar and to a WASM path running at
+  0.1–0.3x realtime. A model with STFT baked in as Conv1d — contract `mix [1,2,343980]` →
+  `stems [1,6,2,343980]` — deleted the entire spectrogram layer from our code and ran 30x
+  faster. Check what the model's I/O contract lets you *delete* before adopting a library.
+- `[insight]` `numThreads = 1` is an architectural decision, not a tuning knob. It avoids
+  SharedArrayBuffer, which avoids COOP/COEP, which is the only reason this can be hosted on
+  GitHub Pages — a host that cannot set response headers.
+- `[insight]` **The overlap window question was a red herring, and measuring it said so.**
+  The spec flagged native Demucs' raised-cosine cross-fade as the likely cause of guitar
+  running hot. Both windows measured *identical to three decimal places* on every stem.
+  Fault injection proved the parameter was really wired — exactly 25% of samples differed,
+  precisely the overlap fraction — but by at most 0.0017. Overlap-add normalises by the sum
+  of weights, so the output is a weighted average of near-identical predictions and the
+  window shape barely survives it. Guitar is still ~+1.5 dB; the cause lies elsewhere.
+- `[gotcha]` `decodeAudioData` resamples to the AudioContext's rate. A default 48 kHz context
+  on macOS silently feeds the model stretched audio: no error, just subtly wrong stems.
+- `[gotcha]` After separation there are seven tracks, so the lone-file "this is the mix" rule
+  never fires and a real song title matches none of the mix filename patterns. The original
+  would have been summed on top of its own stems at double volume. Caught by spec review
+  before any code existed, and now pinned by a test.
+- `[gotcha]` **A ZIP with UTF-8 filenames must set general purpose bit 11.** We wrote UTF-8
+  bytes and left the flag clear, so per spec the names are CP437 and every Chinese song title
+  extracted as mojibake — `unzip` then failed outright with "Illegal byte sequence". Worse,
+  macOS's bundled Info-ZIP `unzip` ignores the bit even when set, so it *still* prints
+  garbage and looks unfixed. Verify with `ditto -xk`, `bsdtar`, or Python's `zipfile`.
+- `[gotcha]` **A dev server with no cache headers will lie to you.** After fixing the ZIP flag,
+  the test kept failing while the file on disk and the server response were both correct —
+  Chrome was serving a cached ES module to the test page. `serve.sh` now sends
+  `Cache-Control: no-store`. A "correct fix that still fails" is a caching question first.
+- `[insight]` Ground truth we already had made verification trivial. `stems/reborn/` is native
+  `htdemucs_6s` output, so correctness became a correlation measurement rather than a
+  listening opinion — and quantifying the AAC ceiling separated real error from measurement
+  error.
+- `[note]` The plan's parity gate (all stems ≥ 0.99) does **not** pass: drums lands at
+  0.984–0.985 on both tracks. Against a 0.995 AAC ceiling the real shortfall is ~0.01. Left
+  as measured rather than moving the threshold to make it green.
+- `[note]` WebGPU only works here because the model was constant-folded to remove a
+  `ConstantOfShape` op that ORT's WebGPU backend cannot run. The same weights unfolded fall
+  back to WASM and are ~30x slower.
+
+**Process learnings:**
+
+- `[insight]` The spike was worth more than the estimate it replaced. Published figures said
+  10–30 minutes per song; measurement said 24 seconds. Both were "true" — of different
+  models on different backends. One afternoon of measurement changed the feature from
+  not-worth-building to at-parity-with-native.
+- `[gotcha]` Computing a segment count with a formula separate from the loop that consumes it
+  produced `segment 35/34` in the spike. `segmentStarts()` is now the single source of truth
+  and a test asserts the two agree.
+- `[gotcha]` A unit test can probe the one input where two different things agree. The
+  "these two windows differ" test sampled `i = OVERLAP/2` — exactly where the trapezoid and
+  the raised cosine both equal 0.5 by construction — and failed against correct code. Scan a
+  range, don't probe a point.
 
 ---
 

@@ -3,9 +3,10 @@
 A local HTML/JS player for punk rock stems. Load a song, see its waveform, and play the
 full mix or solo the vocals, guitar, bass and drums.
 
-Everything runs in the browser. No server, no upload, no build step — the audio never
-leaves your Mac. It is built for learning a part: solo one instrument, set an A–B loop
-around the phrase you keep fluffing, and drill it.
+Everything runs in the browser. No build step and no upload — your audio never leaves your
+machine. In-browser separation fetches a model *in*, but nothing about your audio ever goes
+*out*. It is built for learning a part: solo one instrument, set an A–B loop around the
+phrase you keep fluffing, and drill it.
 
 **Already have stems?** `open index.html`, click **Load folder**, pick the folder, and skip
 to [Controls](#controls). Steps 1–3 below are the one-time job of getting stems out of a CD.
@@ -179,6 +180,62 @@ you pick.
 
 ---
 
+## Step 3b — or skip all that: separate in the browser
+
+Steps 2 and 3 are the fast path for a whole album. For a single song you can skip Python,
+Homebrew and Demucs entirely and let the browser do it.
+
+```bash
+./scripts/serve.sh          # http://localhost:8777
+```
+
+Open that URL, click **Load files**, pick any audio file, then **Separate into 6 stems**.
+You get the same six lanes, and a **Save stems (.zip)** button that writes
+`<song>/{vocals,guitar,bass,drums,piano,other}.wav` — unzip it and it loads with
+**Load folder**.
+
+It uses [`kramp/htdemucs-6s-webgpu-onnx`](https://huggingface.co/kramp/htdemucs-6s-webgpu-onnx),
+the same `htdemucs_6s` weights as the local pipeline, exported to ONNX and run through WebGPU.
+
+Details worth knowing:
+
+- **It is as fast as the native pipeline.** Measured on Apple Silicon: 23.9 s for a 200 s
+  song and 26.7 s for a 206 s song — roughly 8x realtime, against ~22 s for `prep-stems.sh`.
+- **It closely matches the native output**, at zero sample lag on every stem measured.
+  Correlation against locally produced stems: vocals 0.996–0.997, bass 0.997,
+  guitar 0.992–0.993, drums 0.984–0.985. Note the ground truth is 160 kbps AAC, which by
+  itself caps correlation at about 0.995 for drums and 0.996 for guitar, so most of that
+  gap is the comparison, not the separation.
+- **Guitar comes out about 1.5 dB hotter** than the native pipeline (drums vary by song).
+  Not audible as wrong, but if you are matching levels against `prep-stems.sh` output, know
+  it is there.
+- **First run downloads a 285 MB model**, then caches it in the browser. Later runs start
+  immediately.
+- **Requires the local server**, not a `file://` page: browsers block module loading and
+  Cache Storage from disk. The player itself still works double-clicked; only separation
+  needs the server.
+- **Needs WebGPU** to be quick. Without it the run falls back to CPU and takes many minutes;
+  the page tells you which one you got.
+- **Saved stems are WAV, so they are big** — roughly 218 MB per song against 25 MB for the
+  `.m4a` files `prep-stems.sh` writes. Re-encode with ffmpeg if that matters.
+- **Whole albums still belong in `prep-stems.sh`.** The browser does one song at a time.
+
+### Hosting it
+
+The whole thing is static, so GitHub Pages serves it with no backend and no build step —
+push the repo and enable Pages. Inference runs on the visitor's GPU.
+
+This works only because `numThreads = 1` avoids SharedArrayBuffer and therefore COOP/COEP,
+which Pages cannot set. Do not "optimise" that setting without re-reading
+[`CLAUDE.md`](CLAUDE.md).
+
+Two rules for a public deployment:
+
+- **Never commit the model.** GitHub rejects files over 100 MB and it is 285 MB. It is
+  fetched from Hugging Face at runtime and cached in the browser.
+- **`rips/` and `stems/` stay gitignored.** Publishing the repo must not publish the
+  recordings.
+
 ## Step 4 — Play
 
 ```bash
@@ -286,6 +343,15 @@ song is roughly 380 MB of RAM. Fine for one song at a time, which is what this i
 index.html                markup
 styles.css                styling
 app.js                    player: decode, waveform render, transport, mixing
+lib/stems.js              stem identity (classic script — shared with app.js and tests)
+lib/wav.js                Float32 → 16-bit PCM WAV
+lib/zip.js                CRC-32 + store-method ZIP writer
+lib/overlap.js            segment planning + overlap-add windows
+separate.js               in-browser separation panel
+separate.worker.js        ONNX Runtime + htdemucs_6s inference loop
+tests/test.html           unit tests   (read window.__testResults)
+tests/parity.html         separation accuracy vs native stems (read window.__parity)
+scripts/serve.sh          serve over http://localhost:8777
 scripts/rip-cd.sh         mounted audio CD  → lossless FLAC
 scripts/prep-stems.sh     one song          → separated, web-ready stems
 rips/                     your ripped tracks; one subfolder per album

@@ -18,11 +18,16 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
 
 ## Hard constraints — do not break these
 
-- **No build step, no dependencies, no framework.** Three files: `index.html`, `styles.css`,
-  `app.js`. Vanilla JS, no bundler, no npm. The page must keep working when opened as
-  `file://` by double-clicking it.
-- **Nothing leaves the machine.** No uploads, no CDN, no analytics, no network calls at all.
-  Audio is decoded locally via Web Audio.
+- **No build step, no dependencies, no framework.** Vanilla JS, no bundler, no npm, nothing
+  installed. The player core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js`,
+  and it must keep working when opened as `file://` by double-clicking it. Separation adds
+  ES modules that load only over HTTP and never touch that path.
+- **Nothing leaves the machine.** No uploads, no analytics, no audio egress ever. Inbound
+  fetches are allowed and necessary: the ONNX runtime from jsDelivr and the ~285 MB model
+  from Hugging Face. Keep the distinction — "no outbound audio", not "no network calls".
+- **Deployable as a static site.** GitHub Pages hosts it with no backend. This depends on
+  `ort.env.wasm.numThreads = 1` (no SharedArrayBuffer → no COOP/COEP, which Pages cannot
+  set). Never commit the 285 MB model; it is fetched at runtime.
 - **Audio never touches the main thread's timing.** See below.
 
 ## Architecture in one pass
@@ -44,6 +49,13 @@ A-B repeat / routing / input).
   different lengths stay aligned. Each lane is normalised to its own peak (capped at 8×),
   because a bass stem at natural level draws as a flat line; the overview keeps true dynamics.
   Idle and active versions are pre-rendered offscreen, so a frame is a blit plus a clip.
+- **In-browser separation** (`separate.js`, `separate.worker.js`) is additive and optional.
+  The worker owns ONNX Runtime and `htdemucs_6s`; `lib/overlap.js` plans the segments;
+  `lib/wav.js` and `lib/zip.js` handle saving. It is loaded **only over HTTP** — `index.html`
+  injects the module conditionally, because Chrome blocks `<script type="module">` on
+  `file://` and the player must survive being double-clicked. `app.js` therefore stays a
+  classic script, and `lib/stems.js` is a classic script too so both it and the tests can
+  use it.
 - **Stem identity comes from the filename** (`detectStem`). Demucs' output names land in the
   right lanes untouched. The `mix` pattern is deliberately narrow (`\bmix\b|\bfull\b|…`) —
   a false positive there suppresses every other track.
@@ -54,7 +66,13 @@ A-B repeat / routing / input).
 ## Repo layout
 
 ```
-index.html  styles.css  app.js     the player
+index.html  styles.css  app.js     the player (classic scripts — file:// safe)
+lib/stems.js                       stem identity, classic script, shared with the tests
+lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
+separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
+tests/test.html                    units      → window.__testResults
+tests/parity.html                  accuracy   → window.__parity
+scripts/serve.sh                   http://localhost:8777 (required for separation)
 scripts/rip-cd.sh                  CD → rips/*.flac
 scripts/prep-stems.sh              one song → stems/<song>/*.m4a
 rips/    <track>.flac, <album>/<track>.flac      ~560 MB, local only
@@ -89,6 +107,25 @@ out of the project; never commit them.
   `!src.loop`.
 - **Serve with `ThreadingHTTPServer`, not `python3 -m http.server`.** The single-threaded
   default wedges on files this size: browser `fetch` hangs forever while `curl` returns instantly.
+- **The AudioContext must be 44.1 kHz.** `decodeAudioData` resamples to the context rate,
+  and the separation model requires 44100. A default context is often 48 kHz on macOS,
+  which would feed the model stretched audio and produce wrong stems with no error at all.
+- **Separation output must tag the original track `stem: 'mix'` explicitly.** With seven
+  tracks the lone-file rule in `assignStems` does not fire, and a real song title matches
+  none of the deliberately narrow mix patterns — so the original would be summed on top of
+  its own six stems at double volume. Covered by a test in `tests/stems.test.js`.
+- **`numThreads = 1` is load-bearing, not a performance tweak.** It avoids SharedArrayBuffer,
+  which avoids COOP/COEP, which is what makes static hosting (GitHub Pages) possible at all.
+- **ZIP filenames need general purpose bit 11 set.** Without it the spec says names are
+  CP437, and every Chinese song title extracts as mojibake. macOS's bundled Info-ZIP
+  `unzip` ignores the bit anyway and still displays garbage — verify with `ditto -xk`,
+  `bsdtar` or Python's `zipfile`, not `unzip -l`.
+- **The overlap window barely matters.** Overlap-add normalises by the weight sum, so the
+  output is a weighted average of near-identical predictions. Trapezoid and raised cosine
+  measured identical to three decimals. Don't spend time tuning it.
+- **`serve.sh` sends `Cache-Control: no-store`** because Chrome otherwise serves a stale
+  ES module after you edit it, and the test page silently checks the old code — which looks
+  exactly like a correct fix failing.
 - **Demucs setup:** Python 3.12 (no PyTorch wheels for 3.14), install `numpy` explicitly
   (demucs 4.1.0 doesn't declare it), skip `torchaudio`. Probe for MPS with the venv's own
   interpreter — a bare `python3` is the system one and has no torch, which silently drops
@@ -99,9 +136,12 @@ out of the project; never commit them.
 
 ## Working conventions
 
-- **Not a git repository.** There is no `.git` here, so devlog timestamps cannot come from
-  `git log` — use the date, or filesystem mtimes, and say which. If the user initialises git,
-  add `rips/` and `stems/` to `.gitignore` first (keep the `.gitkeep` files).
+- **Git repository** with `rips/` and `stems/` gitignored (the `.gitkeep` files are kept).
+  Devlog timestamps come from `git log`.
+- **Tests are browser pages, not a runner.** `tests/test.html` for units (read
+  `window.__testResults`), `tests/parity.html` for separation accuracy against the native
+  stems in the repo (read `window.__parity`). Both need `./scripts/serve.sh`. There is no
+  npm and none may be added.
 - **Versioning:** three-part semver. `vX.Y.0` for releases, `vX.Y.1` for follow-up sessions,
   `vX.Y.0-design` for design-only sessions. Devlog headings, TL;DR anchors, and any tags match.
 - **Devlog at end of session.** Newest-first, update the TL;DR table with an anchor link, and

@@ -82,12 +82,13 @@ only way to see per-lane gain at all. For "did playback actually stop", patch
 | L3 | An unrecognised filename still gets its own lane, labelled with the filename. | Lane label equals the name minus extension. |
 | L4 | A file whose name matches `mix`/`full`/`master`/`original` **and** which sits alongside stems becomes the Full mix lane, and is muted whenever anything else is unmuted. | Its gain ramps to 0 when any stem is on. Never both. |
 | L5 | An undecodable file is skipped with a message naming it; the rest still load. | Status line names the file. |
-| L6 | ⚠ On `file://`, dragging a **folder** does not work and must not be "fixed". Dragging a **`.zip`**, and **Load zip**, both do. | Chrome refuses the directory read; a zip arrives in `dataTransfer.files` like any other file. |
+| L6 | ⚠ Dropping a **folder** is unsupported on every protocol and must not be "fixed" — it says so and tells the user to zip it. Dragging a **`.zip`**, dragging loose audio files, and **Load zip** all work, `file://` included. | Status line reads "Dropping a folder is not supported…". A zip arrives in `dataTransfer.files` like any other file, so no directory API is involved. |
 | L7 | The `AudioContext` is 44100 Hz regardless of the machine's default. | `audio.sampleRate`. Wrong rate silently produces wrong stems. |
 | L8 | A `.zip` of stems loads to exactly the lanes the same folder would, and the song title comes from the folder name **inside** the zip. | Lane labels, and `#title` reads the inner folder name — not `6 tracks`. |
 | L9 | Both stored and deflated zips load — the app's own Save stems output and anything from Finder "Compress" or `zip -r`. | `zip -0` and `zip -r` of the same folder give identical lanes. |
 | L10 | Finder's `__MACOSX/._*` sidecars are ignored, so a Finder-made six-stem zip gives six lanes, not twelve. | Lane count is 6. A seventh lane labelled `._bass` means the filter is broken. |
 | L11 | A zip that is unreadable says why: not a zip, a damaged directory, Zip64, encrypted, unsupported compression, truncated, corrupt, or no audio inside. | Status line names the actual cause and is visibly shown. "Codec not supported" for a *read* failure is wrong, and an empty message hides the bar entirely. |
+| L12 | A drop with nothing usable in it names which case it was: a folder, or no audio. Neither is silent. | Status line, and its computed `display` is not `none`. |
 
 ## Lanes and muting
 

@@ -706,97 +706,45 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// drag & drop, including folders
+// drag & drop: a .zip of stems, or loose audio files
 ['dragenter', 'dragover'].forEach(ev =>
   document.addEventListener(ev, e => { e.preventDefault(); el.dropzone.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev =>
   document.addEventListener(ev, e => { e.preventDefault(); el.dropzone.classList.remove('over'); }));
 
-const onFileUrl = () => location.protocol === 'file:';
-
-document.addEventListener('drop', async (e) => {
+/* Dropping a FOLDER is deliberately not supported. It needed the directory entries API,
+ * which Chrome blocks on file:// — so it only ever worked over http://, and the whole
+ * recursive walk existed to serve that one case. A zip does the same job everywhere, so
+ * the walk is gone. A dropped folder is still *detected*, purely to say what to do about
+ * it: degrading that into "no audio files in that drop" would be a worse answer, not a
+ * smaller one. */
+document.addEventListener('drop', (e) => {
   e.preventDefault();
   const dt = e.dataTransfer;
-
-  // A zip is a plain file, so it arrives in dt.files even on file://, where the directory
-  // entries API is blocked. This branch is what makes zip drag-and-drop work from disk.
   const dropped = [...(dt.files || [])];
+
+  // A zip is a plain file, so it arrives in dt.files even on file://, where the entries
+  // API is blocked. This is what makes zip drag-and-drop work from disk.
   if (dropped.length === 1 && /\.zip$/i.test(dropped[0].name)) return loadZip(dropped[0]);
 
-  const items = [...(dt.items || [])];
-  const entries = items.map(i => i.webkitGetAsEntry?.() ?? null);
+  const audio = dropped.filter(f => AUDIO_RE.test(f.name));
+  if (audio.length) return loadFiles(audio);
 
-  const files = [];
-  let sawDirectory = false;
-  let walkFailed = false;
+  // Nothing usable — say precisely why rather than failing silently. webkitGetAsEntry is
+  // used only to ask "was that a directory?"; it returns null on file://, where a folder
+  // still shows up in dt.files with no type and no audio extension.
+  const looksLikeFolder =
+    [...(dt.items || [])].some(i => i.webkitGetAsEntry?.()?.isDirectory) ||
+    dropped.some(f => !f.type && !AUDIO_RE.test(f.name));
 
-  for (const entry of entries) {
-    if (!entry) continue;
-    if (entry.isDirectory) sawDirectory = true;
-    try {
-      await walkEntry(entry, files);
-    } catch (err) {
-      walkFailed = true;               // e.g. blocked by file:// restrictions
-      console.error('Could not read dropped entry:', err);
-    }
-  }
-  if (files.length) return loadFiles(files);
-
-  // Fall back to the plain file list, which works in places the entries API doesn't.
-  const plain = [...(dt.files || [])].filter(f => AUDIO_RE.test(f.name));
-  if (plain.length) return loadFiles(plain);
-
-  // Nothing usable — say precisely why rather than failing silently.
-  const looksLikeFolder = sawDirectory || walkFailed ||
-    [...(dt.files || [])].some(f => !f.type && !AUDIO_RE.test(f.name));
-
-  if (looksLikeFolder && onFileUrl()) {
-    say('Chrome will not let a page opened straight from disk read a dropped folder. ' +
-        'Zip the folder and drop the zip instead (that works), drag the audio files ' +
-        'themselves, or serve the directory over http — see the README.', true);
-  } else if (looksLikeFolder) {
-    say('That folder contained no audio files.', true);
+  if (looksLikeFolder) {
+    say('Dropping a folder is not supported. Zip it first — right-click the folder and ' +
+        'choose Compress — then drop the .zip, or use the Load zip button.', true);
   } else {
-    say('No audio files in that drop. Supported: wav, flac, m4a, mp3, opus, aiff.', true);
+    say('No audio files in that drop. Drop a .zip of stems, or loose audio files. ' +
+        'Supported: wav, flac, m4a, mp3, opus, aiff.', true);
   }
 });
-
-/**
- * Promisified FileSystem entry calls. These APIs take (successCb, errorCb) — wiring up
- * only the success callback means any failure hangs the await forever, which is how a
- * blocked folder read turns into a drop that silently does nothing.
- */
-const fsCall = (fn) => new Promise((resolve, reject) => {
-  let settled = false;
-  const ok = (v) => { settled = true; resolve(v); };
-  const fail = (err) => { settled = true; reject(err || new Error('FileSystem call failed')); };
-  // Belt and braces: some builds neither call back nor throw. Never hang the UI.
-  setTimeout(() => { if (!settled) fail(new Error('FileSystem call timed out')); }, 5000);
-  try { fn(ok, fail); } catch (err) { fail(err); }
-});
-
-async function walkEntry(entry, out) {
-  if (entry.isFile) {
-    out.push(await fsCall((ok, fail) => entry.file(ok, fail)));
-  } else if (entry.isDirectory) {
-    const reader = entry.createReader();
-    let batch;
-    do {
-      batch = await fsCall((ok, fail) => reader.readEntries(ok, fail));
-      for (const child of batch) await walkEntry(child, out);
-    } while (batch.length);
-  }
-}
-
-// Opened straight from disk, folder drag-and-drop is unreliable in Chrome, so point at
-// the route that always works before the user discovers the failure the hard way.
-if (onFileUrl()) {
-  const hint = document.createElement('p');
-  hint.className = 'dim';
-  hint.innerHTML = 'Opened from disk — dragging a folder will not work here. ' +
-                   'Zip the folder and drop the <strong>.zip</strong> instead.';
-  el.dropzone.appendChild(hint);
-}
 
 let resizeTimer;
 window.addEventListener('resize', () => {

@@ -247,27 +247,36 @@ Then zip one song's folder — `stems/<song>/`, or `stems/<album>/<song>/` if yo
 album — and click **Load zip** to pick it. **Load files** is the same thing for a hand-picked
 set of loose files rather than a zip.
 
-### Dragging a folder in doesn't work when opened from disk
+### Dropping a folder doesn't work
 
-This is a Chrome restriction, not a bug in the player. A page opened as `file://…` is
-generally not allowed to read a dropped *folder* — Chrome refuses the directory read, so
-nothing loads. Three ways around it, in order of convenience:
+That is deliberate. Reading a dropped folder needs Chrome's directory entries API, which
+Chrome blocks on `file://` — so it only ever worked when the page was served over http,
+and it broke silently the rest of the time. A zip works everywhere, so folder drop was
+removed rather than left as a trap.
 
-1. **Zip the folder and use "Load zip"** — or just drag the `.zip` in. A zip is a plain file,
-   so both work on `file://`, where a folder never will.
-2. **Drag the audio files themselves** rather than the folder containing them. Plain file
-   drops are fine on `file://`; only folders are restricted.
-3. **Serve the directory over http**, where folder drag-and-drop works normally:
+**Drop a `.zip` instead.** On macOS, right-click the folder → **Compress**, then drag the
+`.zip` onto the page or pick it with **Load zip**. On the command line:
 
-   ```bash
-   python3 -c "from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler; \
-   ThreadingHTTPServer(('127.0.0.1',8777), SimpleHTTPRequestHandler).serve_forever()"
-   # then open http://localhost:8777
-   ```
+```bash
+cd stems/<album> && zip -r ~/Desktop/song.zip "<song>"
+```
 
-   Use `ThreadingHTTPServer` as above rather than a plain `python3 -m http.server`. The
-   default server is single-threaded, and with files this size the browser can wedge it —
-   `fetch` then hangs forever while `curl` on the same URL returns instantly.
+Both stored (`zip -0`) and compressed (`zip -r`) archives load, as does anything Finder's
+**Compress** produces — its `__MACOSX` sidecars are filtered out. Loose audio files can
+still be dragged straight on, and **Load files** picks them from a dialog.
+
+### Serving over http
+
+The player itself needs no server — `open index.html` is enough. In-browser separation
+does, because it loads ES modules:
+
+```bash
+./scripts/serve.sh          # http://localhost:8777
+```
+
+Use `ThreadingHTTPServer` (as `serve.sh` does) rather than a plain `python3 -m http.server`.
+The default server is single-threaded, and with files this size the browser can wedge it —
+`fetch` then hangs forever while `curl` on the same URL returns instantly.
 
 ### Controls
 

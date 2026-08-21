@@ -5,6 +5,11 @@
 **Status:** approved, ready for planning
 **Supersedes:** the `Load folder` button (the folder *drop* path is kept)
 
+> **Revised during implementation (v1.3.0):** folder *drop* was removed too. Once a zip
+> worked on every protocol, keeping a ~40-line directory walk that only worked over http
+> was indefensible. A dropped folder is still detected, only to say "zip it first".
+> See the v1.3.0 devlog entry. The two rows below are left as originally written.
+
 ## Goal
 
 Replace the **Load folder** button with **Load zip**, so a song's stems can be loaded from a
@@ -29,7 +34,7 @@ Three things push this way.
 |---|---|
 | Replace `Load folder`, or add a button? | **Replace.** Two buttons stay: `Load files`, `Load zip`. |
 | Which zips must open? | **Store (method 0) and deflate (method 8).** |
-| Does folder *drop* survive? | **Yes.** `walkEntry`/`fsCall` are kept; only the button and its `webkitdirectory` input go. |
+| Does folder *drop* survive? | **Yes.** `walkEntry`/`fsCall` are kept; only the button and its `webkitdirectory` input go. *(Revised: no — see the note at the top.)* |
 | Extract eagerly or lazily? | **Eagerly.** See "Why eager". |
 
 Deflate matters because the zips users make themselves — Finder "Compress", `zip -r`, 7-Zip —

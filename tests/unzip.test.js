@@ -98,3 +98,74 @@ test('unzip: accepts every extension the player supports', async () => {
   const out = await extract(blob);
   assertEq(out.length, exts.length, 'all extensions kept');
 });
+
+/** A one-entry zip with method 8. lib/zip.js only writes stored entries, so build it here. */
+async function deflatedZip(name, payload) {
+  const stream = new Blob([payload]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  const comp = new Uint8Array(await new Response(stream).arrayBuffer());
+  const nameBytes = enc.encode(name);
+  const crc = 0;                       // not verified by the reader
+  const n = nameBytes.length;
+
+  const local = new Uint8Array(30 + n);
+  const lv = new DataView(local.buffer);
+  lv.setUint32(0, 0x04034b50, true);
+  lv.setUint16(4, 20, true);
+  lv.setUint16(6, 0x800, true);
+  lv.setUint16(8, 8, true);            // method 8 = deflate
+  lv.setUint32(14, crc, true);
+  lv.setUint32(18, comp.length, true);
+  lv.setUint32(22, payload.length, true);
+  lv.setUint16(26, n, true);
+  local.set(nameBytes, 30);
+
+  const cd = new Uint8Array(46 + n);
+  const cv = new DataView(cd.buffer);
+  cv.setUint32(0, 0x02014b50, true);
+  cv.setUint16(4, 20, true);
+  cv.setUint16(6, 20, true);
+  cv.setUint16(8, 0x800, true);
+  cv.setUint16(10, 8, true);           // method 8
+  cv.setUint32(16, crc, true);
+  cv.setUint32(20, comp.length, true);
+  cv.setUint32(24, payload.length, true);
+  cv.setUint16(28, n, true);
+  cv.setUint32(42, 0, true);           // local header at offset 0
+  cd.set(nameBytes, 46);
+
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, 1, true);
+  ev.setUint16(10, 1, true);
+  ev.setUint32(12, cd.length, true);
+  ev.setUint32(16, local.length + comp.length, true);
+  return new Blob([local, comp, cd, eocd]);
+}
+
+test('unzip: inflates a deflated entry back to the original bytes', async () => {
+  const payload = enc.encode('the quick brown fox '.repeat(50));
+  const out = await extract(await deflatedZip('S/bass.wav', payload));
+  assertEq(out.length, 1, 'entry count');
+  assertEq(out[0].bytes.length, payload.length, 'inflated length');
+  assert(out[0].bytes.every((b, i) => b === payload[i]), 'inflated bytes match');
+});
+
+test('unzip: an inflated entry also gets its own exact-size buffer', async () => {
+  const payload = enc.encode('x'.repeat(1000));
+  const out = await extract(await deflatedZip('S/bass.wav', payload));
+  assertEq(out[0].bytes.buffer.byteLength, 1000, 'buffer is exactly the inflated entry');
+});
+
+test('unzip: an unsupported compression method reports which file', async () => {
+  const blob = buildZip([{ name: 'S/bass.wav', bytes: enc.encode('data') }]);
+  const b = new Uint8Array(await blob.arrayBuffer());
+  // Method lives at +10 in the central directory. Find it via the EOCD's CD offset.
+  const dv = new DataView(b.buffer);
+  const cdOff = dv.getUint32(b.length - 22 + 16, true);
+  dv.setUint16(cdOff + 10, 12, true);          // 12 = bzip2, which we do not support
+  let err = null;
+  try { await extract(new Blob([b])); } catch (e) { err = e; }
+  assertEq(err && err.code, 'method', 'error code');
+  assert(err.message.includes('bass.wav'), 'names the offending file');
+});

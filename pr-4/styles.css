@@ -209,6 +209,8 @@ input[type=range] { width: 110px; }
   cursor: pointer;
 }
 .mini:hover { color: var(--fg); border-color: var(--dim); }
+.mini[disabled] { opacity: .4; cursor: default; }
+.mini[disabled]:hover { color: var(--dim); border-color: var(--line); }
 
 /* ---------- lanes ---------- */
 

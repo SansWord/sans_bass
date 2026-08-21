@@ -55,7 +55,9 @@ window.__fake.onmessage({ data: { type: 'result', stems } });   // lands the res
 ```
 
 Build `stems` as six `{left, right}` Float32Array pairs at 44100. Synthesise input audio
-as a WAV `File` and feed it through `#file-input` with a `DataTransfer`.
+as a WAV `File` and feed it through `#song-input` with a `DataTransfer` — one file only, the
+input has no `multiple`. To load a set of stems instead, zip them with `buildZip` from
+`lib/zip.js` and feed the Blob through `#zip-input` the same way.
 
 ### Observing audio rather than parameters
 
@@ -78,12 +80,19 @@ only way to see per-lane gain at all. For "did playback actually stop", patch
 | # | Expected | How to observe |
 |---|---|---|
 | L1 | One audio file loads as a single lane labelled **Full mix**. | Lane list is `["Full mix"]`. |
-| L2 | Files named `vocals`/`guitar`/`bass`/`drums`/`piano`/`other` land in those lanes in that order, whatever order they were picked in. | Lane labels top to bottom. |
+| L2 | Stems named `vocals`/`guitar`/`bass`/`drums`/`piano`/`other` land in those lanes in that order, whatever order they sit in inside the zip. | Lane labels top to bottom. |
 | L3 | An unrecognised filename still gets its own lane, labelled with the filename. | Lane label equals the name minus extension. |
 | L4 | A file whose name matches `mix`/`full`/`master`/`original` **and** which sits alongside stems becomes the Full mix lane, and is muted whenever anything else is unmuted. | Its gain ramps to 0 when any stem is on. Never both. |
 | L5 | An undecodable file is skipped with a message naming it; the rest still load. | Status line names the file. |
-| L6 | ⚠ Loading a folder over `file://` works via **Load folder**. Drag-and-drop of a folder does not, and must not be "fixed". | Chrome refuses the directory read. |
+| L6 | ⚠ Dropping a **folder** is unsupported on every protocol and must not be "fixed" — it says so and tells the user to zip it. | Status line reads "Dropping a folder is not supported…". |
 | L7 | The `AudioContext` is 44100 Hz regardless of the machine's default. | `audio.sampleRate`. Wrong rate silently produces wrong stems. |
+| L8 | A `.zip` of stems loads to exactly the lanes the same folder would, and the song title comes from the folder name **inside** the zip. | Lane labels, and `#title` reads the inner folder name — not `6 tracks`. |
+| L9 | Both stored and deflated zips load — the app's own Save stems output and anything from Finder "Compress" or `zip -r`. | `zip -0` and `zip -r` of the same folder give identical lanes. |
+| L10 | Finder's `__MACOSX/._*` sidecars are ignored, so a Finder-made six-stem zip gives six lanes, not twelve. | Lane count is 6. A seventh lane labelled `._bass` means the filter is broken. |
+| L11 | A zip that is unreadable says why: not a zip, a damaged directory, Zip64, encrypted, unsupported compression, truncated, corrupt, or no audio inside. | Status line names the actual cause and is visibly shown. "Codec not supported" for a *read* failure is wrong, and an empty message hides the bar entirely. |
+| L12 | A drop with nothing usable in it names which case it was: a folder, more than one file, or neither a song nor a zip. None is silent. | Status line, and its computed `display` is not `none`. |
+| L13 | Exactly two things load, by button or by drop: **one** audio file (a whole song), or **one** `.zip` of stems. | `#song-input` has no `multiple`. Dropping two audio files is refused, not loaded. |
+| L14 | A set of loose stem files is **not** a supported input — the user is told to zip them. Six files dropped together give a message, not six lanes. | Status line names the file count and says to zip them. |
 
 ## Lanes and muting
 

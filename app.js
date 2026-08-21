@@ -28,7 +28,7 @@ const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
 const $ = (id) => document.getElementById(id);
 const el = {
   dropzone: $('dropzone'), player: $('player'), status: $('status'),
-  fileInput: $('file-input'), dirInput: $('dir-input'),
+  songInput: $('song-input'), zipInput: $('zip-input'),
   play: $('play'), title: $('title'), mainWave: $('main-wave'),
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
@@ -69,7 +69,7 @@ function say(msg, isErr) {
 
 async function loadFiles(fileList) {
   const files = [...fileList].filter(f => AUDIO_RE.test(f.name));
-  if (!files.length) { say('No audio files found in that drop. Supported: wav, flac, m4a, mp3, opus, aiff.', true); return; }
+  if (!files.length) { say('No audio files to load. Supported: wav, flac, m4a, mp3, opus, aiff.', true); return; }
 
   ensureAudio();
   stop(true);
@@ -107,11 +107,53 @@ async function loadFiles(fileList) {
   if (failed.length) {
     say(`Skipped ${failed.join(', ')} — codec not supported by this browser. Re-encode as .m4a.`, true);
   } else if (tracks.length > 1 && tracks.every((t) => !t.stem)) {
-    say('None of these filenames looked like stems, so they are all playing layered on top of ' +
-        'each other. Rename them vocals / guitar / bass / drums to get labelled lanes.');
+    say('None of the filenames in that zip looked like stems, so they are all playing layered ' +
+        'on top of each other. Rename them vocals / guitar / bass / drums to get labelled lanes.');
   } else {
     say('');
   }
+}
+
+/**
+ * Load a zip of stems. The entries are mapped to the duck-typed shape loadFiles already
+ * consumes — `webkitRelativePath` in particular, because commonName reads it to title the
+ * song from the folder inside the zip, and a real File cannot carry one (it is read-only
+ * and always empty).
+ */
+async function loadZip(file) {
+  if (!file) return;
+  say('Reading zip…');
+  let entries;
+  try {
+    entries = await window.SansUnzip.extract(file);
+  } catch (err) {
+    console.error(err);
+    say(err.message, true);      // already user-ready; see lib/unzip.js zipError()
+    return;
+  }
+  if (!entries.length) {
+    say('No audio files in that zip. Supported: wav, flac, m4a, mp3, opus, aiff.', true);
+    return;
+  }
+  return loadFiles(entries.map((e) => ({
+    name: e.name,
+    webkitRelativePath: e.webkitRelativePath,
+    arrayBuffer: async () => e.bytes.buffer,
+  })));
+}
+
+/**
+ * Load one unseparated song. Deliberately single-file: this is the separation entry point,
+ * and a set of loose stem files is what a zip is for. `loadFiles` still takes many, because
+ * loadZip hands it six.
+ */
+function loadSong(file) {
+  if (!file) return;
+  if (!AUDIO_RE.test(file.name)) {
+    say(`${file.name} is not an audio file. Supported: wav, flac, m4a, mp3, opus, aiff.`, true);
+    return;
+  }
+  return loadFiles([file]);
 }
 
 /**
@@ -659,8 +701,8 @@ el.masterVol.addEventListener('input', () => {
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
 });
 
-el.fileInput.addEventListener('change', e => loadFiles(e.target.files));
-el.dirInput.addEventListener('change', e => loadFiles(e.target.files));
+el.songInput.addEventListener('change', e => loadSong(e.target.files[0]));
+el.zipInput.addEventListener('change', e => loadZip(e.target.files[0]));
 
 document.addEventListener('keydown', (e) => {
   if (/input|select|textarea/i.test(e.target.tagName) && e.key !== ' ') return;
@@ -678,91 +720,50 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// drag & drop, including folders
+// drag & drop: a .zip of stems, or loose audio files
 ['dragenter', 'dragover'].forEach(ev =>
   document.addEventListener(ev, e => { e.preventDefault(); el.dropzone.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev =>
   document.addEventListener(ev, e => { e.preventDefault(); el.dropzone.classList.remove('over'); }));
 
-const onFileUrl = () => location.protocol === 'file:';
-
-document.addEventListener('drop', async (e) => {
+/* Drop accepts exactly what the two buttons accept: ONE song, or ONE zip of stems.
+ *
+ * Dropping a FOLDER is deliberately not supported. It needed the directory entries API,
+ * which Chrome blocks on file:// — so it only ever worked over http://, and the whole
+ * recursive walk existed to serve that one case. A zip does the same job everywhere.
+ * A dropped folder is still *detected*, purely to say what to do about it: degrading that
+ * into a generic "nothing usable here" would be a worse answer, not a smaller one. */
+document.addEventListener('drop', (e) => {
   e.preventDefault();
   const dt = e.dataTransfer;
-  const items = [...(dt.items || [])];
-  const entries = items.map(i => i.webkitGetAsEntry?.() ?? null);
+  const dropped = [...(dt.files || [])];
 
-  const files = [];
-  let sawDirectory = false;
-  let walkFailed = false;
+  const isZip = (f) => /\.zip$/i.test(f.name);
 
-  for (const entry of entries) {
-    if (!entry) continue;
-    if (entry.isDirectory) sawDirectory = true;
-    try {
-      await walkEntry(entry, files);
-    } catch (err) {
-      walkFailed = true;               // e.g. blocked by file:// restrictions
-      console.error('Could not read dropped entry:', err);
-    }
+  if (dropped.length === 1) {
+    // A zip is a plain file, so it arrives in dt.files even on file://, where the entries
+    // API is blocked. This is what makes zip drag-and-drop work from disk.
+    if (isZip(dropped[0])) return loadZip(dropped[0]);
+    if (AUDIO_RE.test(dropped[0].name)) return loadSong(dropped[0]);
   }
-  if (files.length) return loadFiles(files);
 
-  // Fall back to the plain file list, which works in places the entries API doesn't.
-  const plain = [...(dt.files || [])].filter(f => AUDIO_RE.test(f.name));
-  if (plain.length) return loadFiles(plain);
+  // Nothing usable — say precisely which case it was rather than failing silently.
+  // webkitGetAsEntry is used only to ask "was that a directory?"; it returns null on
+  // file://, where a folder still arrives in dt.files with no type and no extension.
+  const looksLikeFolder =
+    [...(dt.items || [])].some(i => i.webkitGetAsEntry?.()?.isDirectory) ||
+    dropped.some(f => !f.type && !AUDIO_RE.test(f.name) && !isZip(f));
 
-  // Nothing usable — say precisely why rather than failing silently.
-  const looksLikeFolder = sawDirectory || walkFailed ||
-    [...(dt.files || [])].some(f => !f.type && !AUDIO_RE.test(f.name));
-
-  if (looksLikeFolder && onFileUrl()) {
-    say('Chrome will not let a page opened straight from disk read a dropped folder. ' +
-        'Use the "Load folder" button instead (it works), drag the audio files themselves ' +
-        'rather than the folder, or serve the directory over http — see the README.', true);
-  } else if (looksLikeFolder) {
-    say('That folder contained no audio files.', true);
+  if (looksLikeFolder) {
+    say('Dropping a folder is not supported. Zip it first — right-click the folder and ' +
+        'choose Compress — then drop the .zip, or use the Load zip button.', true);
+  } else if (dropped.length > 1) {
+    say(`Drop one thing at a time: a single song to separate, or one .zip of stems. ` +
+        `That was ${dropped.length} files — if they are stems, zip them first.`, true);
   } else {
-    say('No audio files in that drop. Supported: wav, flac, m4a, mp3, opus, aiff.', true);
+    say('That is not a song or a .zip of stems. Audio: wav, flac, m4a, mp3, opus, aiff.', true);
   }
 });
-
-/**
- * Promisified FileSystem entry calls. These APIs take (successCb, errorCb) — wiring up
- * only the success callback means any failure hangs the await forever, which is how a
- * blocked folder read turns into a drop that silently does nothing.
- */
-const fsCall = (fn) => new Promise((resolve, reject) => {
-  let settled = false;
-  const ok = (v) => { settled = true; resolve(v); };
-  const fail = (err) => { settled = true; reject(err || new Error('FileSystem call failed')); };
-  // Belt and braces: some builds neither call back nor throw. Never hang the UI.
-  setTimeout(() => { if (!settled) fail(new Error('FileSystem call timed out')); }, 5000);
-  try { fn(ok, fail); } catch (err) { fail(err); }
-});
-
-async function walkEntry(entry, out) {
-  if (entry.isFile) {
-    out.push(await fsCall((ok, fail) => entry.file(ok, fail)));
-  } else if (entry.isDirectory) {
-    const reader = entry.createReader();
-    let batch;
-    do {
-      batch = await fsCall((ok, fail) => reader.readEntries(ok, fail));
-      for (const child of batch) await walkEntry(child, out);
-    } while (batch.length);
-  }
-}
-
-// Opened straight from disk, folder drag-and-drop is unreliable in Chrome, so point at
-// the button that always works before the user discovers the failure the hard way.
-if (onFileUrl()) {
-  const hint = document.createElement('p');
-  hint.className = 'dim';
-  hint.innerHTML = 'Opened from disk — if dragging a folder does nothing, use the ' +
-                   '<strong>Load folder</strong> button instead.';
-  el.dropzone.appendChild(hint);
-}
 
 let resizeTimer;
 window.addEventListener('resize', () => {

@@ -19,9 +19,9 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
 ## Hard constraints — do not break these
 
 - **No build step, no dependencies, no framework.** Vanilla JS, no bundler, no npm, nothing
-  installed. The player core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js`,
-  and it must keep working when opened as `file://` by double-clicking it. Separation adds
-  ES modules that load only over HTTP and never touch that path.
+  installed. The player core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js`
+  and `lib/unzip.js`, and it must keep working when opened as `file://` by double-clicking
+  it. Separation adds ES modules that load only over HTTP and never touch that path.
 - **Nothing leaves the machine.** No uploads, no analytics, no audio egress ever. Inbound
   fetches are allowed and necessary: the ONNX runtime from jsDelivr and the ~285 MB model
   from Hugging Face. Keep the distinction — "no outbound audio", not "no network calls".
@@ -72,6 +72,7 @@ A-B repeat / routing / input).
 ```
 index.html  styles.css  app.js     the player (classic scripts — file:// safe)
 lib/stems.js                       stem identity, classic script, shared with the tests
+lib/unzip.js                       zip reading, classic script — window.SansUnzip.extract
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 tests/test.html                    units      → window.__testResults
@@ -109,7 +110,8 @@ out of the project; never commit them.
 ## Gotchas that will bite again
 
 - **Folder drag-and-drop cannot work on `file://`.** Chrome refuses the directory read. The
-  Load folder button (`<input webkitdirectory>`) always works. Don't "fix" the drop path.
+  Load zip button, and dragging a `.zip`, both always work — a zip is a plain file, so the
+  directory API is never involved. Don't "fix" the folder drop path.
 - **Callback-pair DOM APIs need their error callback wired.** `fsCall` in `app.js` exists
   because `new Promise(res => reader.readEntries(res))` hung forever on a blocked read, with
   no error anywhere. There is a 5 s timeout as a backstop.

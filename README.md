@@ -8,8 +8,8 @@ machine. In-browser separation fetches a model *in*, but nothing about your audi
 *out*. It is built for learning a part: solo one instrument, set an A–B loop around the
 phrase you keep fluffing, and drill it.
 
-**Already have stems?** `open index.html`, click **Load folder**, pick the folder, and skip
-to [Controls](#controls). Steps 1–3 below are the one-time job of getting stems out of a CD.
+**Already have stems?** Zip the folder, `open index.html`, click **Load zip**, pick the zip, and
+skip to [Controls](#controls). Steps 1–3 below are the one-time job of getting stems out of a CD.
 
 ---
 
@@ -162,8 +162,8 @@ done
 ```
 
 That gives `stems/reborn/<track name>/{vocals,guitar,bass,drums,piano,other}.m4a`, one
-folder per track — which is exactly what the player's **Load folder** button expects. A
-12-track album takes roughly five minutes end to end on Apple Silicon.
+folder per track — zip one of those folders and it is exactly what the player's **Load zip**
+button expects. A 12-track album takes roughly five minutes end to end on Apple Silicon.
 
 ### Which format for the player?
 
@@ -192,8 +192,8 @@ Homebrew and Demucs entirely and let the browser do it.
 Open that URL, click **Load files**, pick any audio file, then **Separate into 6 stems**.
 The six lanes replace the track you loaded — they sum back to it, so nothing is lost —
 and a **Save stems (.zip)** button appears that writes
-`<song>/{vocals,guitar,bass,drums,piano,other}.wav` — unzip it and it loads with
-**Load folder**.
+`<song>/{vocals,guitar,bass,drums,piano,other}.wav` — that zip loads straight back in with
+**Load zip**, no unzipping needed.
 
 It uses [`kramp/htdemucs-6s-webgpu-onnx`](https://huggingface.co/kramp/htdemucs-6s-webgpu-onnx),
 the same `htdemucs_6s` weights as the local pipeline, exported to ONNX and run through WebGPU.
@@ -243,9 +243,9 @@ Two rules for a public deployment:
 open index.html
 ```
 
-Then click **Load folder** and pick one song's folder — `stems/<song>/`, or
-`stems/<album>/<song>/` if you batched an album. **Load files** is the same thing for a
-hand-picked set of files rather than a whole folder.
+Then zip one song's folder — `stems/<song>/`, or `stems/<album>/<song>/` if you batched an
+album — and click **Load zip** to pick it. **Load files** is the same thing for a hand-picked
+set of loose files rather than a zip.
 
 ### Dragging a folder in doesn't work when opened from disk
 
@@ -253,7 +253,8 @@ This is a Chrome restriction, not a bug in the player. A page opened as `file://
 generally not allowed to read a dropped *folder* — Chrome refuses the directory read, so
 nothing loads. Three ways around it, in order of convenience:
 
-1. **Use the "Load folder" button.** Native file pickers always work, on `file://` too.
+1. **Zip the folder and use "Load zip"** — or just drag the `.zip` in. A zip is a plain file,
+   so both work on `file://`, where a folder never will.
 2. **Drag the audio files themselves** rather than the folder containing them. Plain file
    drops are fine on `file://`; only folders are restricted.
 3. **Serve the directory over http**, where folder drag-and-drop works normally:

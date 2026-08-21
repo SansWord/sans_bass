@@ -717,6 +717,12 @@ const onFileUrl = () => location.protocol === 'file:';
 document.addEventListener('drop', async (e) => {
   e.preventDefault();
   const dt = e.dataTransfer;
+
+  // A zip is a plain file, so it arrives in dt.files even on file://, where the directory
+  // entries API is blocked. This branch is what makes zip drag-and-drop work from disk.
+  const dropped = [...(dt.files || [])];
+  if (dropped.length === 1 && /\.zip$/i.test(dropped[0].name)) return loadZip(dropped[0]);
+
   const items = [...(dt.items || [])];
   const entries = items.map(i => i.webkitGetAsEntry?.() ?? null);
 
@@ -746,8 +752,8 @@ document.addEventListener('drop', async (e) => {
 
   if (looksLikeFolder && onFileUrl()) {
     say('Chrome will not let a page opened straight from disk read a dropped folder. ' +
-        'Use the "Load folder" button instead (it works), drag the audio files themselves ' +
-        'rather than the folder, or serve the directory over http — see the README.', true);
+        'Zip the folder and drop the zip instead (that works), drag the audio files ' +
+        'themselves, or serve the directory over http — see the README.', true);
   } else if (looksLikeFolder) {
     say('That folder contained no audio files.', true);
   } else {
@@ -783,12 +789,12 @@ async function walkEntry(entry, out) {
 }
 
 // Opened straight from disk, folder drag-and-drop is unreliable in Chrome, so point at
-// the button that always works before the user discovers the failure the hard way.
+// the route that always works before the user discovers the failure the hard way.
 if (onFileUrl()) {
   const hint = document.createElement('p');
   hint.className = 'dim';
-  hint.innerHTML = 'Opened from disk — if dragging a folder does nothing, use the ' +
-                   '<strong>Load folder</strong> button instead.';
+  hint.innerHTML = 'Opened from disk — dragging a folder will not work here. ' +
+                   'Zip the folder and drop the <strong>.zip</strong> instead.';
   el.dropzone.appendChild(hint);
 }
 

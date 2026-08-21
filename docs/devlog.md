@@ -14,12 +14,56 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.3.0](#v130--load-stems-from-a-zip-2026-08-21-0004) | Load zip replaces Load folder; a classic-script zip reader that never holds the whole file. |
 | [v1.2.2](#v122--separation-panel-and-lane-toggle-refinements-2026-08-20-2310) | UI refinements: lane clicks toggle instead of solo, separation drops the original track and stops playback, an Unmute all / Restore previous control, and a repaired `[hidden]` rule that had been showing buttons meant to be hidden |
 | [v1.2.1](#v121--github-pages-deployment-with-pr-previews-2026-08-20-2105) | Published to GitHub Pages with per-PR preview deployments; every pull request gets a live URL at `/pr-N/` before it reaches production |
 | [v1.2.0](#v120--in-browser-stem-separation-2026-08-20-2043) | Six-stem separation running entirely in the browser via onnxruntime-web + htdemucs_6s, at ~8x realtime on WebGPU, with stems saveable as one ZIP of WAVs |
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.3.0 — Load stems from a zip (2026-08-21 00:04)
+
+**Review:** not yet
+
+**Design docs:**
+- Load a zip of stems: [Spec](superpowers/specs/2026-08-20-load-zip-design.md) [Plan](superpowers/plans/2026-08-20-load-zip.md)
+
+**What was built:**
+- `lib/unzip.js` — a classic-script zip reader, `window.SansUnzip.extract`.
+- **Load zip** replaces **Load folder**. Folder *drop* is kept for `http://`.
+- Dropping a `.zip` works on `file://`, which folder loading never could.
+
+**Key technical learnings:**
+- `[insight]` A zip removes a `file://` limitation instead of adding one. A folder needs the
+  directory entries API, which Chrome blocks from disk; a `.zip` is a plain file and arrives
+  in `dataTransfer.files` anywhere.
+- `[insight]` The tail-parse is load-bearing, not a micro-optimisation. Reading the whole zip
+  into one ArrayBuffer costs ~848 MB peak for a 200-second six-stem WAV zip against ~636 MB
+  for per-entry slices — close enough to Chrome's per-tab ceiling to fail on a longer song.
+  A `File` from an `<input>` is disk-backed, so `blob.slice()` is free until awaited.
+- `[insight]` `decodeAudioData` **detaches** its input, which is why eager extraction costs no
+  more memory than lazy — and why every entry needs its own exact-size buffer. Two entries
+  sharing one allocation would mean decoding the first detaches the second.
+- `[gotcha]` The local header's extra-field length may differ from the central directory's.
+  Compute the data offset from the *local* header or you land mid-file. Sizes, conversely,
+  must come from the central directory — with general purpose bit 3 set the local sizes are
+  zero and the real ones trail the data.
+- `[gotcha]` Finder's "Compress" writes an AppleDouble `__MACOSX/._name` per file. Unfiltered,
+  a six-stem zip yields twelve entries and `._bass.wav` competes for the bass lane.
+- `[gotcha]` `zip -r` does **not** set general purpose bit 11, so Python's `zipfile` renders a
+  Chinese song title as CP437 mojibake while the player shows it correctly. Decoding names as
+  UTF-8 unconditionally is what makes `1 基隆路` survive; a spec-faithful CP437 fallback would
+  have broken the real archive the feature was built for.
+- `[gotcha]` Deleting a button means auditing every string that names it. Two `file://`
+  messages, a code comment, and five README lines still said "Load folder" after it was gone.
+- `[gotcha]` The play button's state lives in a `.playing` class on the *button*; the inner
+  `<span>` keeps `class="ico-play"` and CSS swaps the glyph. Probing the span to ask "is it
+  playing?" reads as paused forever — check `#play.classList.contains('playing')`.
+- `[note]` `DecompressionStream('deflate-raw')` handles method 8 with no library. Store-only
+  zips must still load where it is unavailable, so feature-detect per entry, not up front.
 
 ---
 

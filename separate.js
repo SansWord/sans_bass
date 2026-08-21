@@ -12,14 +12,12 @@ const el = {
   status: document.getElementById('sep-status'),
   bar:    document.getElementById('sep-bar'),
   fill:   document.getElementById('sep-fill'),
-  model:  document.getElementById('sep-model'),
 };
 
 const MB = 1e6;
 let worker = null;
 let lastStems = null;
 let lastName = 'song';
-let localModel = null;   // ArrayBuffer from the "use a local .onnx" picker
 
 function setProgress(frac) {
   el.bar.hidden = frac === null;
@@ -31,6 +29,9 @@ function status(msg) { el.status.textContent = msg; }
 function busy(on) {
   el.go.disabled = on;
   el.cancel.hidden = !on;
+  // Save must not be reachable mid-run: the stems it would write are the *previous*
+  // track's, and encoding them competes with the worker for memory.
+  el.save.disabled = on;
 }
 
 function getWorker() {
@@ -47,6 +48,7 @@ function refresh() {
   const single = window.sansBass?.isSingleTrack?.();
   if (single) {
     el.panel.hidden = false;
+    el.go.hidden = false;             // a fresh unseparated song can be separated again
     el.save.hidden = true;
     lastStems = null;                 // a newly loaded song invalidates old results
   } else if (!lastStems) {
@@ -104,7 +106,8 @@ el.go.addEventListener('click', () => {
       lastStems = m.stems;
       busy(false);
       setProgress(null);
-      status('done');
+      status('');                      // the six lanes appearing is the confirmation
+      el.go.hidden = true;             // this song is separated; nothing left to separate
       el.save.hidden = false;
       window.sansBass.loadSeparated({ name: lastName, buffer: mix.buffer }, m.stems);
       el.panel.hidden = false;         // keep the panel up so Save stays reachable
@@ -115,19 +118,7 @@ el.go.addEventListener('click', () => {
     }
   };
 
-  w.postMessage(
-    { type: 'separate', left, right, modelBuffer: localModel || undefined },
-    [left.buffer, right.buffer]
-  );
-});
-
-// Lets the 285 MB model be supplied from disk, so the feature works fully offline.
-el.model.addEventListener('change', async (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  status(`reading ${f.name}…`);
-  localModel = await f.arrayBuffer();
-  status(`using local model (${(localModel.byteLength / MB).toFixed(0)} MB)`);
+  w.postMessage({ type: 'separate', left, right }, [left.buffer, right.buffer]);
 });
 
 el.cancel.addEventListener('click', () => {

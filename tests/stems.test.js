@@ -45,11 +45,12 @@ test('stems: an explicit stem overrides filename detection', () => {
   assertEq(out[1].stem, 'guitar', 'explicit guitar honoured');
 });
 
-test('stems: THE DOUBLED-AUDIO TRAP — separation output must tag the original as mix', () => {
-  // After separation there are 7 tracks, so the lone-file rule does not fire, and a real
-  // song filename matches none of the mix patterns. Without an explicit stem the original
-  // becomes a generic extra lane, hasMixPlusStems() is false, and the original plays on
-  // top of its own six stems at double volume.
+test('stems: THE DOUBLED-AUDIO TRAP — a mix alongside stems must be tagged', () => {
+  // With 7 tracks the lone-file rule does not fire, and a real song filename matches none
+  // of the mix patterns. Without an explicit stem the original becomes a generic extra
+  // lane, hasMixPlusStems() is false, and it plays on top of the six stems at double
+  // volume. (In-browser separation sidesteps this by dropping the original entirely; a
+  // folder loaded from disk that really does hold both still depends on this.)
   const stems = ['vocals', 'guitar', 'bass', 'drums', 'piano', 'other'];
 
   const wrong = assignStems([

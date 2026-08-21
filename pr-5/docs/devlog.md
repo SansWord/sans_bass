@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [v1.3.0](#v130--load-stems-from-a-zip-2026-08-21-0004) | Load zip replaces Load folder; a classic-script zip reader that never holds the whole file. |
+| [v1.3.0](#v130--one-song-or-one-zip-of-stems-2026-08-21-0104) | Loading rework: **Load song** takes one audio file, **Load zip** takes one `.zip` of stems, and drop accepts the same two. Folder drop, multi-file loading and the directory walk are gone; a classic-script zip reader never holds the whole file. |
 | [v1.2.2](#v122--separation-panel-and-lane-toggle-refinements-2026-08-20-2310) | UI refinements: lane clicks toggle instead of solo, separation drops the original track and stops playback, an Unmute all / Restore previous control, and a repaired `[hidden]` rule that had been showing buttons meant to be hidden |
 | [v1.2.1](#v121--github-pages-deployment-with-pr-previews-2026-08-20-2105) | Published to GitHub Pages with per-PR preview deployments; every pull request gets a live URL at `/pr-N/` before it reaches production |
 | [v1.2.0](#v120--in-browser-stem-separation-2026-08-20-2043) | Six-stem separation running entirely in the browser via onnxruntime-web + htdemucs_6s, at ~8x realtime on WebGPU, with stems saveable as one ZIP of WAVs |
@@ -24,27 +24,52 @@ Running log of what was built and what was learned building it.
 
 ---
 
-## v1.3.0 — Load stems from a zip (2026-08-21 00:04)
+## v1.3.0 — One song, or one zip of stems (2026-08-21 01:04)
 
-**Review:** not yet
+**Review:** complete
 
 **Design docs:**
 - Load a zip of stems: [Spec](superpowers/specs/2026-08-20-load-zip-design.md) [Plan](superpowers/plans/2026-08-20-load-zip.md)
+  — the spec carries a revision note: it planned to keep folder *drop*, which was dropped during implementation.
 
 **What was built:**
-- `lib/unzip.js` — a classic-script zip reader, `window.SansUnzip.extract`.
-- **Load zip** replaces **Load folder**, and dropping a `.zip` works on `file://`, which
-  folder loading never could.
-- Folder drop **removed** entirely — the recursive `walkEntry`/`fsCall` directory walk
-  (~40 lines) is gone. A dropped folder is still detected, only to say "zip it first".
-- The input surface narrowed to **exactly two things**: **Load song** takes one audio file
-  (and is the separation entry point), **Load zip** takes one `.zip` of stems. Drop accepts
-  the same two. Multi-file loading of loose stems is gone; **Load files** is now **Load song**.
+- `lib/unzip.js` — a classic-script zip reader, `window.SansUnzip.extract`. Finds the EOCD by
+  scanning backwards from the tail and reads each entry with its own `blob.slice()`, so the
+  whole zip is never resident. Deflate via `DecompressionStream`, no library.
+- The input surface is now **exactly two things**: **Load song** takes one audio file (and is
+  the separation entry point), **Load zip** takes one `.zip` of stems. Drop accepts the same
+  two and nothing else.
+- **Load folder** and **Load files** are both gone, along with folder drop and multi-file
+  loading. The recursive `walkEntry`/`fsCall` directory walk (~40 lines) is deleted.
+- Dropping a `.zip` works on `file://`, which folder loading never could.
 
 **Key technical learnings:**
+
+*On the design — why the surface shrank:*
 - `[insight]` A zip removes a `file://` limitation instead of adding one. A folder needs the
   directory entries API, which Chrome blocks from disk; a `.zip` is a plain file and arrives
   in `dataTransfer.files` anywhere.
+- `[insight]` Adding the zip path made the folder path indefensible. Folder drop worked over
+  http and failed silently everywhere else, and the ~40 lines of `walkEntry`/`fsCall` existed
+  only to serve that one protocol. Once a zip did the same job everywhere, the right move was
+  to delete the walk, not keep two paths. Removing it also retired `onFileUrl` and the whole
+  `file://` startup hint: with folder drop gone there is no protocol-dependent loading
+  behaviour left to warn about.
+- `[insight]` Two buttons that each did a vague thing became two that each do one thing.
+  "Load files" was a shrug — it took one song *or* a pile of stems, and its name said which
+  neither time. Splitting the meaning out ("Load song" = the separation entry point, "Load
+  zip" = stems) made the drop contract fall out for free: whatever the buttons accept, drop
+  accepts. A vague name was hiding a vague contract.
+- `[insight]` Deleting a feature is not the same as deleting its *detection*. A dropped
+  folder is still recognised — one `webkitGetAsEntry()?.isDirectory` check, no walk — purely
+  so the app can say "zip it first". Letting it fall through to a generic "nothing usable"
+  would have been fewer lines and a worse answer.
+- `[gotcha]` Narrowing an input means the *rejection* messages carry the design. Refusing six
+  dropped stem files is only defensible if the message says to zip them; otherwise it reads
+  as a regression. Three distinct refusals earn their place — folder, too many files, and
+  neither-song-nor-zip — where one generic message would not.
+
+*On reading zips by hand:*
 - `[insight]` The tail-parse is load-bearing, not a micro-optimisation. Reading the whole zip
   into one ArrayBuffer costs ~848 MB peak for a 200-second six-stem WAV zip against ~636 MB
   for per-entry slices — close enough to Chrome's per-tab ceiling to fail on a longer song.
@@ -55,18 +80,22 @@ Running log of what was built and what was learned building it.
 - `[gotcha]` The local header's extra-field length may differ from the central directory's.
   Compute the data offset from the *local* header or you land mid-file. Sizes, conversely,
   must come from the central directory — with general purpose bit 3 set the local sizes are
-  zero and the real ones trail the data.
+  zero and the real ones trail the data. Real `zip -r` output carries a local `UT`/`ux` field,
+  so this fires in practice; `lib/zip.js` writes 0 in both, so only a hand-built fixture
+  catches a regression.
 - `[gotcha]` Finder's "Compress" writes an AppleDouble `__MACOSX/._name` per file. Unfiltered,
   a six-stem zip yields twelve entries and `._bass.wav` competes for the bass lane.
 - `[gotcha]` `zip -r` does **not** set general purpose bit 11, so Python's `zipfile` renders a
   Chinese song title as CP437 mojibake while the player shows it correctly. Decoding names as
   UTF-8 unconditionally is what makes `1 基隆路` survive; a spec-faithful CP437 fallback would
   have broken the real archive the feature was built for.
-- `[gotcha]` Deleting a button means auditing every string that names it. Two `file://`
-  messages, a code comment, and five README lines still said "Load folder" after it was gone.
-- `[gotcha]` The play button's state lives in a `.playing` class on the *button*; the inner
-  `<span>` keeps `class="ico-play"` and CSS swaps the glyph. Probing the span to ask "is it
-  playing?" reads as paused forever — check `#play.classList.contains('playing')`.
+- `[note]` `DecompressionStream('deflate-raw')` handles method 8 with no library. Store-only
+  zips must still load where it is unavailable, so feature-detect per entry, not up front.
+
+*On the two defects a code review found — both of which returned rather than threw:*
+- `[insight]` The bug a hand-rolled parser hides is the one where it *succeeds*. Every guard
+  that threw was correct first time; both real defects returned — wrong bytes, and a blank
+  status bar. Fuzzing malformed archives found them; the happy-path tests never could.
 - `[gotcha]` `blob.slice(start, end)` **clamps** an out-of-range `end` instead of throwing.
   A truncated archive therefore resolved with the central directory glued onto the payload
   and no error at all — surfacing downstream as "codec not supported", the wrong diagnosis.
@@ -76,32 +105,23 @@ Running log of what was built and what was learned building it.
   escapes with an empty `message` — which is what a broken `DecompressionStream` can reject
   with — renders as a drop that visibly does nothing. Every throw crossing into `loadZip`
   needs a non-empty, user-ready message; that is the whole point of `zipError`.
-- `[insight]` Adding the zip path made the folder path indefensible. Folder drop needed the
-  directory entries API, which Chrome blocks on `file://`, so it worked over http and failed
-  silently everywhere else — and the ~40 lines of `walkEntry`/`fsCall` existed only to serve
-  that one protocol. Once a zip did the same job on every protocol, the right move was to
-  delete the walk, not keep two paths. Removing it also retired `onFileUrl` and the whole
-  `file://` startup hint: with folder drop gone there is no protocol-dependent loading
-  behaviour left to warn about.
-- `[insight]` Two buttons that each did a vague thing became two that each do one thing.
-  "Load files" was a shrug — it took one song *or* a pile of stems, and its name said which
-  neither time. Splitting the meaning out ("Load song" = the separation entry point, "Load
-  zip" = stems) made the drop contract fall out for free: whatever the buttons accept, drop
-  accepts. A vague name was hiding a vague contract.
-- `[gotcha]` Narrowing an input means the *rejection* messages carry the design. Refusing six
-  dropped stem files is only defensible if the message says to zip them; otherwise it reads
-  as a regression. Three distinct refusals earn their place here — folder, too many files,
-  and neither-song-nor-zip — where one generic "nothing usable" would not.
-- `[insight]` Deleting a feature is not the same as deleting its *detection*. A dropped
-  folder still gets recognised — one `webkitGetAsEntry()?.isDirectory` check, no walk —
-  purely so the app can say "zip it first". Letting it fall through to "no audio files in
-  that drop" would have been fewer lines and a worse answer.
-- `[insight]` The bug a hand-rolled parser hides is the one where it succeeds. The guards
-  that threw were all correct first time; the two real defects both **returned** — wrong
-  bytes, and a blank status bar. Fuzzing malformed archives found them; the happy-path
-  tests never could.
-- `[note]` `DecompressionStream('deflate-raw')` handles method 8 with no library. Store-only
-  zips must still load where it is unavailable, so feature-detect per entry, not up front.
+
+*On changing UI out from under the docs:*
+- `[gotcha]` Renaming or deleting a button means auditing every string that names it, and it
+  bit twice here — "Load folder" survived in two `file://` messages, a code comment and five
+  README lines; "Load files" then survived in three more. The one that would have cost most
+  was a stale `#file-input` in `docs/behaviour.md`'s **test harness** section: a future
+  session following those instructions gets a null and no clue why.
+- `[gotcha]` The play button's state lives in a `.playing` class on the *button*; the inner
+  `<span>` keeps `class="ico-play"` and CSS swaps the glyph. Probing the span to ask "is it
+  playing?" reads as paused forever — check `#play.classList.contains('playing')`.
+
+**Process learnings:**
+- `[insight]` `file://` is unreachable from browser automation, so the one capability this
+  feature exists for could not be machine-verified. Static proof (no `import`/`export`, no
+  `fetch`, plain `<script src>` ahead of the conditional module injection) narrowed it, but
+  the last step was a human double-clicking `index.html`. Worth planning for: the headline
+  behaviour was the least testable one.
 
 ---
 

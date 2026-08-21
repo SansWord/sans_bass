@@ -20,8 +20,10 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
 
 - **No build step, no dependencies, no framework.** Vanilla JS, no bundler, no npm, nothing
   installed. The player core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js`
-  and `lib/unzip.js`, and it must keep working when opened as `file://` by double-clicking
-  it. Separation adds ES modules that load only over HTTP and never touch that path.
+  and `lib/unzip.js`. The site is served over HTTP — GitHub Pages, or `./scripts/serve.sh`
+  locally. `file://` support was dropped in v1.5.0; `lib/stems.js`, `lib/unzip.js` and
+  `lib/i18n.js` are still classic scripts only because the ESM migration is a separate
+  change.
 - **Nothing leaves the machine.** No uploads, no analytics, no audio egress ever. Inbound
   fetches are allowed and necessary: the ONNX runtime from jsDelivr and the ~285 MB model
   from Hugging Face. Keep the distinction — "no outbound audio", not "no network calls".
@@ -51,11 +53,10 @@ A-B repeat / routing / input).
   Idle and active versions are pre-rendered offscreen, so a frame is a blit plus a clip.
 - **In-browser separation** (`separate.js`, `separate.worker.js`) is additive and optional.
   The worker owns ONNX Runtime and `htdemucs_6s`; `lib/overlap.js` plans the segments;
-  `lib/wav.js` and `lib/zip.js` handle saving. It is loaded **only over HTTP** — `index.html`
-  injects the module conditionally, because Chrome blocks `<script type="module">` on
-  `file://` and the player must survive being double-clicked. `app.js` therefore stays a
-  classic script, and `lib/stems.js` is a classic script too so both it and the tests can
-  use it.
+  `lib/wav.js` and `lib/zip.js` handle saving. It loads as a plain
+  `<script type="module">`; the conditional injection that guarded `file://` went with
+  `file://` support in v1.5.0. `app.js` stays a classic script, and `lib/stems.js` and
+  `lib/i18n.js` are classic too so both they and the tests can use them.
 - **Stem identity comes from the filename** (`detectStem`). Demucs' output names land in the
   right lanes untouched. The `mix` pattern is deliberately narrow (`\bmix\b|\bfull\b|…`) —
   a false positive there suppresses every other track.
@@ -70,9 +71,10 @@ A-B repeat / routing / input).
 ## Repo layout
 
 ```
-index.html  styles.css  app.js     the player (classic scripts — file:// safe)
+index.html  styles.css  app.js     the player (classic scripts)
 lib/stems.js                       stem identity, classic script, shared with the tests
 lib/unzip.js                       zip reading, classic script — window.SansUnzip.extract
+lib/i18n.js                        zh-TW/en dictionary + runtime, classic script
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 tests/test.html                    units      → window.__testResults
@@ -143,8 +145,14 @@ out of the project; never commit them.
   returning visitor can run a stale `app.js` against a fresh `index.html`. That is not a
   degraded page — the old script throws on an element the new markup dropped, and because
   `app.js` wires everything from one flat run of top-level statements, every listener *below*
-  the throw silently never registers. Bump the version in `index.html` (5), `separate.js` (3)
+  the throw silently never registers. Bump the version in `index.html` (6), `separate.js` (3)
   and `separate.worker.js` (1); `tests/versions.test.js` fails if they drift.
+- **UI strings live in `lib/i18n.js`, and both locales must move together.** `data-i18n`
+  sets `textContent`, `data-i18n-html` sets `innerHTML` (our own dictionary values only,
+  never user data), `data-i18n-attr` sets attributes. Adding a key to one locale and
+  forgetting the other is caught by `tests/i18n.test.js`, as is a `{placeholder}` that
+  drifts between them. Lane labels translate; **stem ids and filenames never do** — a
+  saved zip is `vocals.wav` in every language.
 - **Top-level wiring goes through `on()`, never `addEventListener` directly.** Same reason: a
   single null element must not be able to take out the rest of the app. If you add a listener
   at the top level of `app.js`, use the helper.

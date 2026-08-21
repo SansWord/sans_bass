@@ -148,3 +148,23 @@ test('i18n: every key used in index.html exists in both locales', async () => {
   }
   assertEq(missing.join(', '), '', 'keys used in markup but absent from the dictionary');
 });
+
+test('i18n: translating labels never renames a stem', () => {
+  // Filenames are derived from the stem id (loadSeparated builds `${stem}.wav`, and
+  // separate.js writes `${name}/${stem}.wav`). Those ids come from lib/stems.js, which is
+  // deliberately NOT translated — the dictionary is a separate, display-only layer.
+  I18N.setLocale('zh-TW', { persist: false });
+  assertEq(I18N.t('stem.bass'), '貝斯', 'the display label really is translated');
+
+  assertEq(window.SansStems.STEMS.bass.label, 'Bass',
+    'lib/stems.js keeps the English label as the stable identity');
+
+  const ids = ['vocals', 'guitar', 'bass', 'drums', 'piano', 'other'];
+  const out = window.SansStems.assignStems(ids.map((s) => ({ name: `${s}.wav`, stem: s })));
+  assertEq(out.map((o) => o.stem).join(','), ids.join(','),
+    'stem ids are unchanged under zh-TW');
+  assertEq(out.map((o) => `song/${o.stem}.wav`)[2], 'song/bass.wav',
+    'a zip entry built from the id stays English');
+
+  I18N.setLocale('en', { persist: false });
+});

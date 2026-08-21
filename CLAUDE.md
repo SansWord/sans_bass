@@ -138,6 +138,16 @@ out of the project; never commit them.
   at double volume. Covered by a test in `tests/stems.test.js`. In-browser separation avoids
   the question by dropping the original: `loadSeparated` builds lanes from the six stems
   only, which is also why `__hasStems` is false there and every lane starts unmuted.
+- **Every local asset URL carries `?v=<version>` and they must all match.** GitHub Pages pins
+  everything to `max-age=600` with no way to override it, so for ten minutes after a deploy a
+  returning visitor can run a stale `app.js` against a fresh `index.html`. That is not a
+  degraded page — the old script throws on an element the new markup dropped, and because
+  `app.js` wires everything from one flat run of top-level statements, every listener *below*
+  the throw silently never registers. Bump the version in `index.html` (5), `separate.js` (3)
+  and `separate.worker.js` (1); `tests/versions.test.js` fails if they drift.
+- **Top-level wiring goes through `on()`, never `addEventListener` directly.** Same reason: a
+  single null element must not be able to take out the rest of the app. If you add a listener
+  at the top level of `app.js`, use the helper.
 - **A class that sets `display` silently defeats the `hidden` attribute.** `[hidden]` is a
   UA-stylesheet rule, and *any* author rule beats it — `.btn { display: inline-block }` left
   Save, Cancel and the loop badge on screen while their `.hidden` property read `true`.

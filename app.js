@@ -33,8 +33,18 @@ const el = {
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
-  allToggle: $('all-toggle'),
+  allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'),
 };
+
+/* Null-safe wiring. Every listener in this file is registered from one flat run of
+ * top-level statements, so a single missing element used to abort the whole script at its
+ * first `.addEventListener` and silently take every listener below it with it — including
+ * drag & drop, which is what made the browser navigate to the dropped file instead of
+ * loading it (see the v1.4.0 devlog entry). Warn and keep going instead. */
+function on(node, ev, fn, opts) {
+  if (!node) { console.warn(`sans_bass: no element for the "${ev}" handler — skipped`); return; }
+  node.addEventListener(ev, fn, opts);
+}
 
 // ---------------------------------------------------------------- helpers
 
@@ -60,10 +70,20 @@ function fmt(t) {
 }
 
 function say(msg, isErr) {
+  if (!el.status) return;   // called from the last-resort error handler below
   el.status.hidden = !msg;
   el.status.textContent = msg || '';
   el.status.classList.toggle('err', !!isErr);
 }
+
+/* Last resort. A script error here is nearly always a stale cached asset paired with a
+ * fresh one, and the symptom is a page that looks fine and does nothing — the worst kind
+ * of failure to debug from the user's side. Name the fix rather than fail mutely. */
+window.addEventListener('error', (e) => {
+  console.error('sans_bass:', e.error || e.message);
+  say('Something went wrong in the player. Force-reload the page — Cmd-Shift-R on macOS, ' +
+      'Ctrl-Shift-R elsewhere — to clear a stale cached script.', true);
+});
 
 // ---------------------------------------------------------------- loading
 
@@ -692,17 +712,17 @@ function attachSeek(canvas) {
   });
 }
 
-el.play.addEventListener('click', toggle);
-el.loopClear.addEventListener('click', clearLoop);
-el.allToggle.addEventListener('click', toggleAllTracks);
-el.mode.addEventListener('change', () => setMode(el.mode.value));
-el.masterVol.addEventListener('input', () => {
+on(el.play, 'click', toggle);
+on(el.loopClear, 'click', clearLoop);
+on(el.allToggle, 'click', toggleAllTracks);
+on(el.mode, 'change', () => setMode(el.mode.value));
+on(el.masterVol, 'input', () => {
   ensureAudio();
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
 });
 
-el.songInput.addEventListener('change', e => loadSong(e.target.files[0]));
-el.zipInput.addEventListener('change', e => loadZip(e.target.files[0]));
+on(el.songInput, 'change', e => loadSong(e.target.files[0]));
+on(el.zipInput, 'change', e => loadZip(e.target.files[0]));
 
 document.addEventListener('keydown', (e) => {
   if (/input|select|textarea/i.test(e.target.tagName) && e.key !== ' ') return;
@@ -720,11 +740,30 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// drag & drop: a .zip of stems, or loose audio files
-['dragenter', 'dragover'].forEach(ev =>
-  document.addEventListener(ev, e => { e.preventDefault(); el.dropzone.classList.add('over'); }));
-['dragleave', 'drop'].forEach(ev =>
-  document.addEventListener(ev, e => { e.preventDefault(); el.dropzone.classList.remove('over'); }));
+// drag & drop: one song, or one .zip of stems
+
+/* The drop target is the whole window, and #drag-overlay is what says so. It has to be an
+ * overlay rather than a highlight on #dropzone, because #dropzone is hidden the moment a
+ * song loads — and dropping a second song over the player is the common case, exactly when
+ * there was no visible target at all. The overlay is `pointer-events: none` so it never
+ * becomes the drop target itself and never disturbs the depth count below. */
+function showDropTarget(on) {
+  if (el.dragOverlay) el.dragOverlay.hidden = !on;
+}
+
+/* dragenter/dragleave fire once per element the cursor crosses, so "a leave means the file
+ * is gone" flickers the overlay off over every lane boundary. Count enters, trust zero. */
+let dragDepth = 0;
+document.addEventListener('dragenter', (e) => { e.preventDefault(); dragDepth++; showDropTarget(true); });
+document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; showDropTarget(false); } });
+document.addEventListener('dragend', () => { dragDepth = 0; showDropTarget(false); });
+
+/* preventDefault on dragover is the one call that makes the window a drop target at all.
+ * Without it the browser keeps its default and navigates to the dropped file. */
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+});
 
 /* Drop accepts exactly what the two buttons accept: ONE song, or ONE zip of stems.
  *
@@ -735,6 +774,8 @@ document.addEventListener('keydown', (e) => {
  * into a generic "nothing usable here" would be a worse answer, not a smaller one. */
 document.addEventListener('drop', (e) => {
   e.preventDefault();
+  dragDepth = 0;
+  showDropTarget(false);
   const dt = e.dataTransfer;
   const dropped = [...(dt.files || [])];
 

@@ -8,7 +8,7 @@ description of the code, which would just rot alongside it.
 If you find an item here that no longer matches the app, one of the two is a bug; decide
 which before moving on.
 
-Last exercised end-to-end: **v1.2.2**. Items marked ⚠ were reasoned from the code rather
+Last exercised end-to-end: **v1.2.2**; the Loading and Loading-the-page-itself rows were re-run in **v1.4.0**. Items marked ⚠ were reasoned from the code rather
 than run in that session, so treat them as the least trustworthy rows here.
 
 ---
@@ -93,6 +93,9 @@ only way to see per-lane gain at all. For "did playback actually stop", patch
 | L12 | A drop with nothing usable in it names which case it was: a folder, more than one file, or neither a song nor a zip. None is silent. | Status line, and its computed `display` is not `none`. |
 | L13 | Exactly two things load, by button or by drop: **one** audio file (a whole song), or **one** `.zip` of stems. | `#song-input` has no `multiple`. Dropping two audio files is refused, not loaded. |
 | L14 | A set of loose stem files is **not** a supported input — the user is told to zip them. Six files dropped together give a message, not six lanes. | Status line names the file count and says to zip them. |
+| L15 | Dragging a file anywhere over the window shows `#drag-overlay`, and the window accepts the drop. A dropped file must **never** make the browser navigate to it. | `getComputedStyle('#drag-overlay').display === 'flex'` during the drag. Dispatch a cancelable `dragover` and assert `defaultPrevented` — that one call is what stops the navigation. |
+| L16 | The overlay is the drop target in **both** states, before a song loads and after. Dropping a second song over a loaded player is the common case and `#dropzone` is hidden by then. | Load a song, then drag over the player: the overlay still appears. |
+| L17 | The overlay does not flicker while the cursor crosses lanes and panels. | `dragenter` on a child then `dragleave` on the parent leaves it visible. `app.js` counts enters; `.drag-overlay` is `pointer-events: none` so it never fires a pair of its own. |
 
 ## Lanes and muting
 
@@ -187,6 +190,15 @@ the player must still work fully.
 |---|---|---|
 | V1 | Anything with the `hidden` attribute is actually invisible. | `styles.css` carries a global `[hidden] { display: none !important; }`. Author `display` rules outrank the UA `[hidden]` rule, so without it `.btn` and `.loop-badge` render regardless. |
 | V2 | Every hidden-toggle in `app.js` and `separate.js` depends on V1. | If V1 is removed, S5, S6, R6 and the loop badge all silently break while their properties still read correctly. |
+
+## Loading the page itself
+
+| # | Expected | How to observe |
+|---|---|---|
+| G1 | A missing element does not stop `app.js`. Every top-level listener goes through `on()`, which warns and continues. | Serve a copy of `index.html` with `id="play"` renamed. `window.sansBass` is still an object and drag & drop still works — before v1.4.0 this killed every listener below it. |
+| G2 | An uncaught error puts a message on screen naming the force-reload, instead of leaving a page that looks fine and does nothing. | Throw from the console; `#status` is visible and mentions Cmd-Shift-R. |
+| G3 | Every local asset URL carries `?v=<version>`, and all of them agree. | `tests/versions.test.js`. GitHub Pages pins everything to `max-age=600` with no way to change it, so without this a returning visitor can hold a stale `app.js` against a fresh `index.html` for ten minutes. |
+| G4 | ⚠ `?v=` does not break `file://`. Chrome resolves the query away and loads the file. | Open `index.html` from disk: the stylesheet applies and `window.sansBass` is an object. |
 
 ## Constraints that are not features
 

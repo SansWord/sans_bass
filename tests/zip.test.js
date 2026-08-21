@@ -50,3 +50,27 @@ test('zip: multiple entries each get a central directory record', async () => {
   for (let i = 0; i < b.length - 4; i++) if (dv.getUint32(i, true) === 0x02014b50) found++;
   assertEq(found, 2, 'two central directory headers');
 });
+
+test('zip: non-ASCII names set the UTF-8 flag (bit 11)', async () => {
+  // We always write UTF-8 name bytes. Without general purpose bit 11 set, unzip decodes
+  // them as CP437 — every Chinese song title extracts to a mojibake folder name.
+  const blob = buildZip([{ name: '2 最後兩禮拜/bass.wav', bytes: new Uint8Array(4) }]);
+  const b = new Uint8Array(await blob.arrayBuffer());
+  const dv = new DataView(b.buffer);
+  assert((dv.getUint16(6, true) & 0x800) !== 0, 'local header flags bit 11 set');
+  const eocd = b.length - 22;
+  const cdOff = dv.getUint32(eocd + 16, true);
+  assertEq(dv.getUint32(cdOff, true), 0x02014b50, 'found the central directory');
+  assert((dv.getUint16(cdOff + 8, true) & 0x800) !== 0, 'central directory flags bit 11 set');
+});
+
+test('zip: name bytes are UTF-8, and length counts bytes not characters', async () => {
+  const name = '2 最後兩禮拜/bass.wav';
+  const blob = buildZip([{ name, bytes: new Uint8Array(4) }]);
+  const b = new Uint8Array(await blob.arrayBuffer());
+  const dv = new DataView(b.buffer);
+  const expected = new TextEncoder().encode(name);
+  assertEq(dv.getUint16(26, true), expected.length, 'name length is the UTF-8 byte length');
+  assert(expected.length > name.length, 'this name really is multi-byte');
+  assertEq(new TextDecoder().decode(b.subarray(30, 30 + expected.length)), name, 'round trips');
+});

@@ -61,6 +61,22 @@
         &middot; <strong>a</strong>/<strong>b</strong> loop &middot; <strong>c</strong> clear</span>
     </div>
 
+    <section id="sep" class="sep" hidden>
+      <div class="sep-row">
+        <button id="sep-go" class="btn">Separate into 6 stems</button>
+        <span id="sep-status" class="dim"></span>
+      </div>
+      <div id="sep-bar" class="sep-bar" hidden><div id="sep-fill"></div></div>
+      <div class="sep-row">
+        <button id="sep-save" class="btn ghost" hidden>Save stems (.zip)</button>
+        <button id="sep-cancel" class="btn ghost" hidden>Cancel</button>
+        <label class="btn ghost">
+          Use a local .onnx
+          <input type="file" id="sep-model" accept=".onnx" hidden>
+        </label>
+      </div>
+    </section>
+
     <div id="lanes" class="lanes"></div>
   </section>
 
@@ -69,5 +85,15 @@
 
 <script src="lib/stems.js"></script>
 <script src="app.js"></script>
+<script>
+  // separate.js is an ES module and Chrome blocks module scripts on file://. Injecting it
+  // conditionally keeps the player working when index.html is opened straight from disk.
+  if (location.protocol !== 'file:') {
+    const s = document.createElement('script');
+    s.type = 'module';
+    s.src = 'separate.js';
+    document.body.appendChild(s);
+  }
+</script>
 </body>
 </html>

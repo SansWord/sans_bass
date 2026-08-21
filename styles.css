@@ -267,3 +267,14 @@ input[type=range] { width: 110px; }
   .lane-vol { display: none; }
   .hint { display: none; }
 }
+
+/* ---- separation panel ---- */
+.sep {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; margin: 0 0 14px;
+  background: #141419; border: 1px solid #23232b; border-radius: 10px;
+}
+.sep-row { display: flex; align-items: center; gap: 12px; }
+.sep-bar { height: 6px; background: #23232b; border-radius: 3px; overflow: hidden; }
+.sep-bar > div { height: 100%; width: 0; background: #ff9f1c; transition: width .2s linear; }
+.sep .btn[disabled] { opacity: .5; cursor: default; }

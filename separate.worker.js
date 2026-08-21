@@ -9,7 +9,7 @@
  *   output stems [1, 6, 2, 343980]  in the order below — STFT is baked into the graph.
  */
 
-import { N_SAMPLES, STRIDE, segmentStarts, trapezoidWindow, raisedCosineWindow } from './lib/overlap.js?v=1.5.0';
+import { N_SAMPLES, STRIDE, segmentStarts, trapezoidWindow, raisedCosineWindow } from './lib/overlap.js?v=1.6.0';
 
 const ORT_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.webgpu.bundle.min.mjs';
 const MODEL_URL = 'https://huggingface.co/kramp/htdemucs-6s-webgpu-onnx/resolve/main/htdemucs_6s.onnx';

@@ -8,7 +8,7 @@ description of the code, which would just rot alongside it.
 If you find an item here that no longer matches the app, one of the two is a bug; decide
 which before moving on.
 
-Last exercised end-to-end: **v1.2.2**; the Loading and Loading-the-page-itself rows were re-run in **v1.4.0**. Items marked ⚠ were reasoned from the code rather
+Last exercised end-to-end: **v1.2.2**; the Loading and Loading-the-page-itself rows were re-run in **v1.4.0**, and the Loading / Lanes / Unmute-all / Play-dropdown rows touched by v1.6.0 were re-run in **v1.6.0**. Items marked ⚠ were reasoned from the code rather
 than run in that session, so treat them as the least trustworthy rows here.
 
 ---
@@ -55,9 +55,11 @@ window.__fake.onmessage({ data: { type: 'result', stems } });   // lands the res
 ```
 
 Build `stems` as six `{left, right}` Float32Array pairs at 44100. Synthesise input audio
-as a WAV `File` and feed it through `#song-input` with a `DataTransfer` — one file only, the
+as a WAV `File` and feed it through `#file-input` with a `DataTransfer` — one file only, the
 input has no `multiple`. To load a set of stems instead, zip them with `buildZip` from
-`lib/zip.js` and feed the Blob through `#zip-input` the same way.
+`lib/zip.js` and feed the same input a `.zip` Blob; there is one picker for both and
+`app.js` dispatches on the extension. Note `#file-input` clears its own `value` after every
+change, so re-feeding the same `File` fires again rather than being swallowed.
 
 ### Observing audio rather than parameters
 
@@ -92,7 +94,9 @@ only way to see per-lane gain at all. For "did playback actually stop", patch
 | L10 | Finder's `__MACOSX/._*` sidecars are ignored, so a Finder-made six-stem zip gives six lanes, not twelve. | Lane count is 6. A seventh lane labelled `._bass` means the filter is broken. |
 | L11 | A zip that is unreadable says why: not a zip, a damaged directory, Zip64, encrypted, unsupported compression, truncated, corrupt, or no audio inside. | Status line names the actual cause and is visibly shown. "Codec not supported" for a *read* failure is wrong, and an empty message hides the bar entirely. |
 | L12 | A drop with nothing usable in it names which case it was: a folder, more than one file, or neither a song nor a zip. None is silent. | Status line, and its computed `display` is not `none`. |
-| L13 | Exactly two things load, by button or by drop: **one** audio file (a whole song), or **one** `.zip` of stems. | `#song-input` has no `multiple`. Dropping two audio files is refused, not loaded. |
+| L13 | Exactly two things load, by button or by drop: **one** audio file (a whole song), or **one** `.zip` of stems. | `#file-input` has no `multiple`. Dropping two audio files is refused, not loaded. |
+| L18 | There is **one** load button, not two. It accepts either kind and picks the behaviour from the extension: `.zip` → `loadZip`, anything else → `loadSong`. | One `.btn` in `.loadzone`; `#file-input`'s `accept` lists both the audio extensions and `.zip`. Feed it a zip and a song in turn through the same input — both load. |
+| L19 | Picking the **same** file twice in a row loads it twice. | Feed one `File`, then feed the identical `File` again: two loads, not one. The input clears `value` on change; without that the second pick is silent, which reads as a broken button. |
 | L14 | A set of loose stem files is **not** a supported input — the user is told to zip them. Six files dropped together give a message, not six lanes. | Status line names the file count and says to zip them. |
 | L15 | Dragging a file anywhere over the window shows `#drag-overlay`, and the window accepts the drop. A dropped file must **never** make the browser navigate to it. | `getComputedStyle('#drag-overlay').display === 'flex'` during the drag. Dispatch a cancelable `dragover` and assert `defaultPrevented` — that one call is what stops the navigation. |
 | L16 | The overlay is the drop target in **both** states, before a song loads and after. Dropping a second song over a loaded player is the common case and `#dropzone` is hidden by then. | Load a song, then drag over the player: the overlay still appears. |
@@ -104,6 +108,8 @@ only way to see per-lane gain at all. For "did playback actually stop", patch
 |---|---|---|
 | M1 | Clicking a lane's name block toggles **only** that lane. Others are untouched. | Ramps: one value changes, five stay. |
 | M2 | The click target is the whole left column — full lane height, flush to the lane's left edge, through the number badge. | `getBoundingClientRect()` of `.lane-name` vs `.lane`; click the top-left corner specifically, it was dead before v1.2.2. |
+| M2a | That target is visibly a target **without hovering**: its own background tint, distinct from the lane, and a divider against the waveform. | `getComputedStyle('.lane-name').backgroundColor !== getComputedStyle('.lane').backgroundColor`, with no pointer over it. Hover-only affordance is invisible on touch, and is what beta testers failed to find. |
+| M2b | The player says in words that the name block toggles the track. | `.hint-click` is present and visible, in both locales, and stays visible at ≤640px where `.hint-keys` is hidden. |
 | M3 | Clicking the waveform seeks and does **not** toggle. | Clock moves to the clicked fraction; mute state unchanged. |
 | M4 | Keys `1`–`6` toggle the same lanes as clicking their names. | Same as M1. |
 | M5 | A muted lane is dimmed, and its gain is 0. | `.lane.muted` **and** a 0 ramp. Class alone is not evidence. |
@@ -119,8 +125,9 @@ The button and the `0` key are the same action.
 | U2 | Pressing again returns to exactly the lanes that were on before. | Lane state matches the pre-press snapshot. |
 | U3 | The snapshot is taken **when everything is turned on**, not when a lane is muted. So: all on → mute one lane → press → all on → press → back to *that one lane muted*, not to an older state. | Run the full sequence; this is the item most likely to regress. |
 | U4 | Label follows state: **Unmute all** when anything is muted, **Restore previous** when everything is on and a snapshot exists. | `textContent`. |
-| U5 | Everything on with nothing saved: disabled, dimmed, and both the click and `0` are no-ops. | `disabled === true`, opacity 0.5, lane state unchanged after both. |
-| U6 | A new song clears the snapshot. | Load a second file; button is disabled again. |
+| U5 | Everything on with **nothing saved** — the state a freshly loaded or freshly separated song starts in — the press **mutes every lane**, and the label reads **Mute all**. Pressing again brings them all back. The button is never disabled. | Ramps: all to 0, then all to 1. `disabled === false` throughout. This replaced a disabled no-op in v1.6.0: on a separated song every lane starts on, so the very first `0` was always the dead one and read as a broken key. |
+| U5a | All lanes off does **not** take a snapshot — "restore previous" meaning "silence again" is not offered. After mute-all → unmute-all the label is **Mute all** again, not **Restore previous**. | `textContent` after the second press. |
+| U6 | A new song clears the snapshot. | Load a second file; the label is back to **Unmute all** or **Mute all**, never **Restore previous**. |
 | U7 | With a full-mix file present, "unmute all" unmutes the stems and drives the mix lane to 0 — never both. | Last ramp in the batch is the mix lane at 0. |
 | U8 | The button is styled identically to **Save stems (.zip)** (`btn ghost`). | Computed font, padding, radius, colours match. |
 
@@ -131,6 +138,7 @@ The button and the `0` key are the same action.
 | P1 | Picking an instrument solos it — every other lane mutes. | One ramp at 1, rest at 0. |
 | P2 | **Full mix** turns every lane on, or plays the mix file if one exists. | See L4. |
 | P3 | Any per-lane change switches the dropdown to **Custom…**. | `#mode.value === 'custom'`. |
+| P5 | After choosing from the dropdown, the keyboard shortcuts still work. The select does not keep focus. | Change `#mode`, then press `space` with no click in between: playback toggles. `document.activeElement` is not `#mode`. The global keydown handler ignores `<select>` targets on purpose — arrows have to move the selection, not seek — so a select that kept focus silently disabled every hotkey. |
 | P4 | With no mix file, "all lanes on" shows **Full mix**, not Custom — all six on *is* the full mix. | `#mode.value === 'mix'` after U1. |
 
 ## Transport
@@ -198,6 +206,7 @@ in v1.5.0.
 | N6 | The mode dropdown's option **value** is a stable key (`mix`, a stem id, `lane:<i>`, `custom`), never the label. | `[...document.querySelectorAll('#mode option')].map(o => o.value)`. Keying on labels would break soloing on every switch. |
 | N7 | ⚠ Lane labels translate; **stem ids and filenames never do**. | `tests/i18n.test.js`. A saved zip holds `vocals.wav`, `bass.wav` … in every language. |
 | N8 | Zip errors are translated by their stable `code`; an unknown code falls back to the original English message. | Drop a random file renamed `.zip`. `lib/unzip.js` is not modified — three messages share `not-zip`, so the translation is less specific than the English. |
+| N8a | Both halves of the hint line translate, markup included. | `.hint-click` and `.hint-keys` both carry `data-i18n-html`; switch locale and both change. `hint.keys` names the `0`, `a`/`b` and `c` keys, and `c` says what it clears — **the A–B loop**, not a bare "clear". |
 | N9 | The switcher is visible and both halves are reachable. | `getComputedStyle(btn).display` on both `#lang-toggle button`s — not `.hidden`, see V1. The active half carries `aria-pressed="true"`. |
 | N10 | `<html lang>` and the tab title follow the locale. | `document.documentElement.lang`, `document.title`. |
 | N11 | A blocked or throwing `localStorage` degrades to detection instead of killing the app. | Block site data, reload: the UI is still translated and `window.sansBass` is still an object. Every access is inside `try/catch` — an uncaught throw during setup kills every listener below it (see G1). |

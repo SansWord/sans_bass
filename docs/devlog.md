@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.6.0](#v160--beta-test-refinements-2026-08-21-1600) | Seven things beta testers tripped over: the two Load buttons become one, `0` becomes a real mute/unmute-all toggle instead of a disabled no-op, the mode dropdown stops eating every hotkey, the keyboard hint gets legible, and the lane's click target finally looks like one. |
 | [v1.5.0](#v150--interface-i18n-2026-08-21-1109) | The whole interface speaks zh-TW by default and English when the system language is not Traditional Chinese, with a remembered toggle in the header. Switching re-renders in place — no reload, no re-decode, playback never stops. |
 | [v1.4.0](#v140--the-drop-that-navigated-away-2026-08-21) | Drag & drop on the live site was dead: a stale cached `app.js` threw on an element the new `index.html` no longer had, and every listener below it — drag & drop included — never registered. Versioned asset URLs, null-safe wiring, a loud error path, and an explicit full-window drop overlay. |
 | [v1.3.0](#v130--one-song-or-one-zip-of-stems-2026-08-21-0104) | Loading rework: **Load song** takes one audio file, **Load zip** takes one `.zip` of stems, and drop accepts the same two. Folder drop, multi-file loading and the directory walk are gone; a classic-script zip reader never holds the whole file. |
@@ -23,6 +24,89 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.6.0 — Beta-test refinements (2026-08-21 16:00)
+
+**Review:** not yet
+
+**What was built:**
+
+- **One load button.** `Load song` and `Load zip` become a single **Load song or zip** and a
+  single `#file-input`; `loadAny()` dispatches on the extension, and `accept` lists both
+  sets so the file dialog still greys out everything unloadable. The drop handler shares the
+  same `isZip` and the same `loadAny`. The input clears its own `value` on `change`, so
+  picking the same file twice in a row loads it twice.
+- **`0` is a real toggle.** With every lane on and no snapshot saved, it now mutes
+  everything; press again and they all come back. The button is never disabled, and its
+  label carries the third state: **Unmute all** / **Restore previous** / **Mute all**.
+  All-lanes-off deliberately takes no snapshot.
+- **The mode dropdown blurs on `change`.** It had been keeping focus and silently disabling
+  every keyboard shortcut.
+- **The keyboard hint is legible.** 11px → 12.5px, `--dim` → `#a3a3b2` (~4.7:1 → ~7.8:1 on
+  the background), and moved onto its own full-width row via `flex: 1 0 100%` inside the
+  wrapping `.controls`. `c` now says what it clears — the A–B loop, not a bare "clear" — and
+  the badge's Clear button gained a matching `title`.
+- **A written instruction that the lane's name block toggles the track**, as its own span so
+  it survives at ≤640px where the key list is hidden.
+- **`.lane-name` looks clickable without being hovered:** its own panel tint, a divider
+  against the waveform, and rounded left corners hugging the lane.
+- Everything bumped to `?v=1.6.0` (10 URLs across three files).
+- `docs/behaviour.md`: U5 rewritten, and U5a / L18 / L19 / M2a / M2b / P5 / N8a added.
+
+**Key technical learnings:**
+
+- `[insight]` **A disabled control is not a neutral answer to "nothing to do here".** `0`
+  and the all-toggle were deliberately dead when every lane was already on with no snapshot
+  saved — defensible in the abstract, and U5 in `docs/behaviour.md` specified it that way on
+  purpose. But that is precisely the state a freshly separated song *starts* in, so the very
+  first press a new user ever makes was always the dead one, and it read as a broken key
+  rather than as a considered no-op. The fix was not better feedback for the no-op; it was
+  noticing the state had a useful action available (mute everything, then build the mix back
+  up one lane at a time) and that "nothing to do" had been a failure of imagination.
+- `[insight]` **A picker that asks the user to classify the input before opening is asking a
+  question the code can answer.** Two buttons meant getting it wrong was possible — pick the
+  zip under **Load song** and you got "not an audio file" for a file the app can read
+  perfectly well. The extension already carries the answer. Same two inputs, same two code
+  paths, one fewer decision.
+- `[gotcha]` **A `<file>` input does not fire `change` when you pick the same file twice.**
+  With two inputs this was rare enough to never surface. With one it is the obvious retry
+  after a decode error, and a silent no-op there looks exactly like a dead button. Clearing
+  `value` after reading `files[0]` is the whole fix — and it has to happen *before* the
+  async load, not after, or an error path can skip it.
+- `[gotcha]` **A focused `<select>` swallows every global hotkey, and nothing about that is
+  visible.** `app.js` ignores keydown aimed at `input|select|textarea` — it has to, or
+  `←`/`→` would seek instead of moving the selection. But a `<select>` keeps focus after a
+  choice, so from the user's side the shortcuts simply stopped working, with no state on
+  screen to explain it and no error anywhere. `el.mode.blur()` on `change` is the fix. Any
+  future control that takes focus needs the same thought.
+- `[insight]` **Hover-only affordance is invisible on touch, and nearly invisible on
+  desktop.** `.lane-name` had been the full-height click target since v1.2.2 and had a
+  `title` and a `:hover` background, and testers still did not find it. A target has to look
+  like a target when the pointer is somewhere else entirely — a persistent tint and a
+  divider, not a hover state. Saying it in words on screen was the other half; the tooltip
+  was never going to do that job.
+- `[gotcha]` **A gap is not a separator when both halves share a colour and a face.** The
+  click hint and the key list laid out as flex row items 18px apart read as one run-on
+  monospace sentence. Stacking them — `flex-direction: column` — was the whole fix, and it
+  only showed up in a screenshot; the computed styles were all exactly as intended.
+- `[note]` The markup changed shape (`#song-input` is gone), so this needed the `?v=` bump
+  in its own right rather than riding on the next release — a stale `app.js` against this
+  `index.html` is the v1.4.0 failure mode exactly.
+
+**Process learnings:**
+
+- `[insight]` **"Here is what went wrong" is not the same as "here is what should happen."**
+  Item 10 of the report — *the behavior press 0 when all tracks are unmuted for the first
+  time* — named a state and a key and stopped. Three different fixes were consistent with
+  it (mute all, explain the no-op, leave it alone), each a different product decision.
+  Asking cost one round trip; guessing would have cost a rebuild. The other six items were
+  unambiguous and were simply done.
+- `[note]` The `0`-key change was verified by patching `AudioParam.setTargetAtTime` and
+  reading the ramp values across the whole seven-press cycle, per the standing rule in
+  `docs/behaviour.md` — observe audio, not parameters. The label transitions came along in
+  the same table, which is what made the missing snapshot rule obvious.
 
 ---
 

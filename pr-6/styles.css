@@ -1,0 +1,321 @@
+:root {
+  --bg: #0d0d10;
+  --panel: #16161b;
+  --panel-2: #1d1d24;
+  --line: #2a2a33;
+  --fg: #e9e9ef;
+  --dim: #7c7c8a;
+  --accent: #ff2e63;
+  --loop: #ff9f1c;
+  --radius: 10px;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { min-height: 100vh; }
+
+/* ---------- header ---------- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: rgba(13, 13, 16, .88);
+  backdrop-filter: blur(12px);
+  z-index: 5;
+}
+
+.bar h1 {
+  margin: 0;
+  font: 700 17px/1 var(--mono);
+  letter-spacing: -.02em;
+  text-transform: lowercase;
+}
+.bar h1 span { color: var(--accent); }
+
+.loadzone { display: flex; gap: 8px; }
+
+/* Any author rule that sets `display` beats the UA stylesheet's `[hidden] { display: none }`,
+   so .btn / .loop-badge / .sep elements stayed visible while their .hidden property read
+   true. Every hidden-attribute toggle in app.js and separate.js depends on this line. */
+[hidden] { display: none !important; }
+
+.btn {
+  display: inline-block;
+  padding: 7px 14px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  user-select: none;
+}
+.btn:hover { filter: brightness(1.1); }
+.btn.ghost {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--line);
+}
+.btn.ghost:hover { background: var(--panel-2); }
+.btn[disabled] { opacity: .5; cursor: default; }
+.btn[disabled]:hover { filter: none; background: transparent; }
+
+/* ---------- layout ---------- */
+
+main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+
+.dim { color: var(--dim); }
+code {
+  font: 12px var(--mono);
+  background: var(--panel-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.dropzone {
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 56px 24px;
+  text-align: center;
+  transition: border-color .15s, background .15s;
+}
+.dropzone .big { font-size: 19px; font-weight: 600; margin: 0 0 12px; }
+.dropzone p { margin: 6px 0; max-width: 60ch; margin-inline: auto; }
+
+/* ---------- drag overlay ---------- */
+
+/* pointer-events: none is deliberate. The overlay appears under the cursor mid-drag, so if
+   it could receive events it would become the drop target and fire its own
+   dragenter/dragleave pair — the depth count in app.js would never settle at zero. */
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: none;
+  background: rgba(13, 13, 16, .8);
+  backdrop-filter: blur(3px);
+}
+.drag-card {
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 44px 56px;
+  text-align: center;
+}
+.drag-card .big { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+.drag-card p { margin: 0; }
+
+/* ---------- master row ---------- */
+
+.master {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.master-mid { flex: 1; min-width: 0; }
+
+.title {
+  font: 600 13px/1.4 var(--mono);
+  color: var(--fg);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.play {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform .1s;
+}
+.play:active { transform: scale(.94); }
+
+.ico-play {
+  width: 0; height: 0;
+  border-left: 15px solid #fff;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  margin-left: 4px;
+}
+.play.playing .ico-play {
+  border: none;
+  width: 14px; height: 16px;
+  margin-left: 0;
+  background: linear-gradient(90deg, #fff 0 5px, transparent 5px 9px, #fff 9px 14px);
+}
+
+.times {
+  flex: none;
+  font: 12px/1.5 var(--mono);
+  text-align: right;
+  min-width: 54px;
+}
+.times span { display: block; }
+
+.wave { display: block; width: 100%; cursor: pointer; touch-action: none; }
+.wave.main { height: 76px; }
+
+/* ---------- controls ---------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 16px 4px 4px;
+}
+
+.ctl { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+
+select, input[type=range] { accent-color: var(--accent); }
+
+select {
+  background: var(--panel-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: 13px var(--mono);
+}
+
+input[type=range] { width: 110px; }
+
+.hint { font-size: 11px; font-family: var(--mono); margin-left: auto; }
+.hint strong { color: var(--fg); font-weight: 600; }
+
+.loop-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 11px var(--mono);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px 4px 10px;
+}
+.loop-badge.armed { color: var(--loop); border-color: color-mix(in srgb, var(--loop) 45%, transparent); }
+
+.mini {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font: 10px var(--mono);
+  cursor: pointer;
+}
+.mini:hover { color: var(--fg); border-color: var(--dim); }
+
+/* ---------- lanes ---------- */
+
+.lanes { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+
+.lane {
+  display: grid;
+  grid-template-columns: 128px 1fr 96px;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  transition: opacity .15s, border-color .15s;
+}
+.lane.muted { opacity: .38; }
+.lane.muted:hover { opacity: .6; }
+
+.lane-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 12px var(--mono);
+  cursor: pointer;
+  user-select: none;
+  overflow: hidden;
+  /* The grid centres its items, which left this only as tall as the text — a ~14px strip
+     in a ~56px lane. Stretch to the full lane height and swallow the lane's left/top/bottom
+     padding, so the whole block up to the number badge toggles the track. The waveform is
+     a separate grid column and keeps its own pointer handlers for seeking. */
+  align-self: stretch;
+  margin: -8px 0 -8px -12px;
+  padding: 8px 0 8px 12px;
+  border-radius: 6px;
+}
+.lane-name:hover { background: var(--panel-2); }
+.lane-name .dot {
+  flex: none;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.lane-name .kbd {
+  flex: none;
+  font-size: 10px;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: auto;
+}
+.lane-name .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.lane .wave { height: 40px; }
+
+.lane-vol { display: flex; align-items: center; }
+.lane-vol input { width: 100%; }
+
+.status {
+  margin-top: 20px;
+  font: 12px var(--mono);
+  color: var(--dim);
+  white-space: pre-wrap;
+}
+.status.err { color: #ff6b81; }
+
+@media (max-width: 640px) {
+  .lane { grid-template-columns: 96px 1fr; }
+  .lane-vol { display: none; }
+  .hint { display: none; }
+}
+
+/* ---- separation panel ---- */
+.sep {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; margin: 0 0 14px;
+  background: #141419; border: 1px solid #23232b; border-radius: 10px;
+}
+.sep-row { display: flex; align-items: center; gap: 12px; }
+.sep-bar { height: 6px; background: #23232b; border-radius: 3px; overflow: hidden; }
+.sep-bar > div { height: 100%; width: 0; background: #ff9f1c; transition: width .2s linear; }

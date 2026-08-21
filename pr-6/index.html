@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sans_bass — stem player</title>
+<link rel="stylesheet" href="styles.css?v=1.4.0">
+</head>
+<body>
+
+<header class="bar">
+  <h1>sans<span>_</span>bass</h1>
+  <div class="loadzone">
+    <label class="btn">
+      Load song
+      <input type="file" id="song-input" accept="audio/*,.wav,.flac,.m4a,.mp3,.opus,.ogg,.aiff" hidden>
+    </label>
+    <label class="btn ghost">
+      Load zip
+      <input type="file" id="zip-input" accept=".zip,application/zip" hidden>
+    </label>
+  </div>
+</header>
+
+<main id="app">
+
+  <section id="dropzone" class="dropzone">
+    <p class="big">Drop a song, or a <code>.zip</code> of stems</p>
+    <p class="dim"><strong>One audio file</strong> &mdash; a whole song &mdash; plays as a single track,
+      and can be split into six stems right here in the browser. <strong>A <code>.zip</code></strong>
+      of stems already separated loads them as one lane each.</p>
+    <p class="dim">To make a zip: on macOS, right-click a folder of stems and choose
+      <strong>Compress</strong>. Dropping the folder itself is not supported.</p>
+    <p class="dim">Everything is decoded locally in your browser. Nothing is uploaded.</p>
+  </section>
+
+  <section id="player" hidden>
+    <div class="master">
+      <button id="play" class="play" aria-label="Play/pause"><span class="ico-play"></span></button>
+      <div class="master-mid">
+        <div id="title" class="title">&mdash;</div>
+        <canvas id="main-wave" class="wave main"></canvas>
+      </div>
+      <div class="times">
+        <span id="t-cur">0:00</span>
+        <span class="dim" id="t-dur">0:00</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label class="ctl">
+        <span>Play</span>
+        <select id="mode"></select>
+      </label>
+      <button id="all-toggle" class="btn ghost" type="button">Unmute all</button>
+      <label class="ctl">
+        <span>Volume</span>
+        <input type="range" id="master-vol" min="0" max="1.5" step="0.01" value="1">
+      </label>
+      <span id="loop-badge" class="loop-badge" hidden>
+        <span id="loop-text"></span>
+        <button id="loop-clear" class="mini" type="button">Clear</button>
+      </span>
+      <span class="hint dim">space play &middot; &larr;&rarr; seek 5s &middot; 1-6 stem &middot; 0 unmute all
+        &middot; <strong>a</strong>/<strong>b</strong> loop &middot; <strong>c</strong> clear</span>
+    </div>
+
+    <section id="sep" class="sep" hidden>
+      <div class="sep-row">
+        <button id="sep-go" class="btn">Separate into 6 stems</button>
+        <span id="sep-status" class="dim"></span>
+      </div>
+      <div id="sep-bar" class="sep-bar" hidden><div id="sep-fill"></div></div>
+      <div class="sep-row">
+        <button id="sep-save" class="btn ghost" hidden>Save stems (.zip)</button>
+        <button id="sep-cancel" class="btn ghost" hidden>Cancel</button>
+      </div>
+    </section>
+
+    <div id="lanes" class="lanes"></div>
+  </section>
+
+  <section id="status" class="status" hidden></section>
+</main>
+
+<!-- The visible drop target. #dropzone above explains the two ways in, but it disappears
+     as soon as a song loads; this covers the window in both states, and is the only thing
+     on screen while a file is being dragged. pointer-events: none — see app.js. -->
+<div id="drag-overlay" class="drag-overlay" hidden aria-hidden="true">
+  <div class="drag-card">
+    <p class="big">Drop to load</p>
+    <p class="dim">One song, or one <code>.zip</code> of stems</p>
+  </div>
+</div>
+
+<!-- ?v= is a cache buster, and it is load-bearing. GitHub Pages serves every file with
+     max-age=600 and no way to change that, so after a deploy a returning visitor can hold a
+     stale app.js against a fresh index.html for ten minutes. That combination is not a
+     degraded page, it is a dead one: app.js throws on the first element index.html no longer
+     has and every listener below it — drag & drop included — never registers.
+     Bump the version in ALL of these on release: index.html (5), separate.js (3),
+     separate.worker.js (1). tests/versions.test.js fails if they drift apart. -->
+<script src="lib/stems.js?v=1.4.0"></script>
+<script src="lib/unzip.js?v=1.4.0"></script>
+<script src="app.js?v=1.4.0"></script>
+<script>
+  // separate.js is an ES module and Chrome blocks module scripts on file://. Injecting it
+  // conditionally keeps the player working when index.html is opened straight from disk.
+  if (location.protocol !== 'file:') {
+    const s = document.createElement('script');
+    s.type = 'module';
+    s.src = 'separate.js?v=1.4.0';
+    document.body.appendChild(s);
+  }
+</script>
+</body>
+</html>

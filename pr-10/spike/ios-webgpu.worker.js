@@ -14,7 +14,17 @@
 
 import { N_SAMPLES, STRIDE, segmentStarts, trapezoidWindow } from '../lib/overlap.js?v=1.7.0';
 
-const ORT_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.webgpu.bundle.min.mjs';
+/* Two ORT builds, and the difference is NOT just the execution provider.
+ *   webgpu bundle -> ort-wasm-simd-threaded.asyncify.wasm   24.3 MB, asyncify-instrumented
+ *   wasm bundle   -> ort-wasm-simd-threaded.wasm            13.5 MB, plain
+ * Asyncify rewrites every function so the wasm stack can be unwound and rewound, which
+ * nearly doubles the code and spills a lot of state. Forcing executionProviders:['wasm']
+ * from the webgpu bundle still runs the instrumented binary — so "we tested WASM" was
+ * never true until this option existed. Production imports the webgpu bundle only. */
+const ORT_BUILDS = {
+  webgpu: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.webgpu.bundle.min.mjs',
+  wasm:   'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.wasm.bundle.min.mjs',
+};
 const MODEL_URL = 'https://huggingface.co/kramp/htdemucs-6s-webgpu-onnx/resolve/main/htdemucs_6s.onnx';
 const MODEL_CACHE = 'sans-bass-htdemucs6s-v1';   // same key as production: reuse its cached copy
 const SOURCES = ['drums', 'bass', 'other', 'vocals', 'guitar', 'piano'];
@@ -31,11 +41,14 @@ const ms = (t) => `${(performance.now() - t).toFixed(0)} ms`;
 
 /* ---------------------------------------------------------------- ORT + model */
 
-async function loadOrt() {
+async function loadOrt(runtime = 'webgpu') {
   if (ort) return ort;
-  stage('import ORT from jsDelivr');
+  const url = ORT_BUILDS[runtime] || ORT_BUILDS.webgpu;
+  stage(`import ORT (${runtime} build) from jsDelivr`);
+  log(runtime === 'wasm' ? 'runtime: plain ort-wasm-simd-threaded.wasm (13.5 MB)'
+                         : 'runtime: ort-wasm-simd-threaded.asyncify.wasm (24.3 MB)');
   const t = performance.now();
-  ort = await import(/* @vite-ignore */ ORT_CDN);
+  ort = await import(/* @vite-ignore */ url);
   ort.env.wasm.numThreads = 1;               // identical to production — see CLAUDE.md
   log(`ORT imported in ${ms(t)}`);
   return ort;
@@ -96,9 +109,9 @@ async function loadModelBytes() {
  *   forced, because "does the WASM path survive where WebGPU does not" is the question.
  * @param release  drop the 285 MB ArrayBuffer as soon as the session exists.
  */
-async function ensureSession(backend, release) {
+async function ensureSession(backend, release, runtime) {
   if (session && sessionBackend === backend) return session;
-  const rt = await loadOrt();
+  const rt = await loadOrt(runtime);
   let bytes = await loadModelBytes();
 
   const opts = { graphOptimizationLevel: 'disabled' };   // identical to production
@@ -137,17 +150,17 @@ function synthetic(seconds) {
 
 /* ---------------------------------------------------------------- probes */
 
-async function probeSession({ backend, release }) {
-  await ensureSession(backend, release);
+async function probeSession({ backend, release, runtime }) {
+  await ensureSession(backend, release, runtime);
   stage('session idle — read the memory plateau now');
   log('IDLE. Session is up and nothing else is allocated.');
   log('Let the Timelines graph settle, then read the plateau. This is the fixed floor.');
   post({ type: 'done', probe: 'session', backend });
 }
 
-async function probeSegment({ backend, release }) {
-  const rt = await loadOrt();
-  await ensureSession(backend, release);
+async function probeSegment({ backend, release, runtime }) {
+  const rt = await loadOrt(runtime);
+  await ensureSession(backend, release, runtime);
 
   stage('allocate one segment input');
   const x = new Float32Array(2 * N_SAMPLES);
@@ -175,9 +188,9 @@ async function probeSegment({ backend, release }) {
   post({ type: 'done', probe: 'segment', backend, first, second });
 }
 
-async function probeLoop({ backend, release, seconds, accumulate }) {
-  const rt = await loadOrt();
-  await ensureSession(backend, release);
+async function probeLoop({ backend, release, seconds, accumulate, runtime }) {
+  const rt = await loadOrt(runtime);
+  await ensureSession(backend, release, runtime);
 
   const { left, right } = synthetic(seconds);
   const total = left.length;
@@ -324,6 +337,9 @@ async function probeWasmLadder() {
 self.onmessage = async (e) => {
   const m = e.data || {};
   try {
+    if (m.runtime === 'wasm' && m.backend === 'webgpu') {
+      throw new Error('the plain wasm build has no webgpu provider — set the provider to wasm');
+    }
     if (m.probe === 'session') await probeSession(m);
     else if (m.probe === 'segment') await probeSegment(m);
     else if (m.probe === 'loop') await probeLoop(m);

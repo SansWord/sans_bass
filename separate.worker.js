@@ -21,6 +21,7 @@ const SOURCES = ['drums', 'bass', 'other', 'vocals', 'guitar', 'piano'];
 let ort = null;
 let session = null;
 let cancelled = false;
+let modelFromCache = null;   // true/false once the model has been obtained; null if supplied
 
 const post = (msg, transfer) => self.postMessage(msg, transfer || []);
 const log = (message) => post({ type: 'log', message });
@@ -41,6 +42,7 @@ async function loadModelBytes(modelUrl) {
     const hit = await cache.match(modelUrl);
     if (hit) {
       log('model loaded from cache');
+      modelFromCache = true;
       return await hit.arrayBuffer();
     }
   } catch {
@@ -49,6 +51,7 @@ async function loadModelBytes(modelUrl) {
 
   const res = await fetch(modelUrl);
   if (!res.ok) throw new Error(`model download failed: HTTP ${res.status}`);
+  modelFromCache = false;
   const total = +res.headers.get('content-length') || 0;
   const reader = res.body.getReader();
   const chunks = [];
@@ -96,7 +99,7 @@ async function ensureSession(modelUrl, modelBuffer) {
   if (!session) {
     session = await rt.InferenceSession.create(bytes, { ...opts, executionProviders: ['wasm'] });
   }
-  post({ type: 'ready', backend });
+  post({ type: 'ready', backend, cached: modelFromCache });
   return session;
 }
 

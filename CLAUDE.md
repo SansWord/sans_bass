@@ -58,8 +58,9 @@ A-B repeat / routing / input).
   The worker owns ONNX Runtime and `htdemucs_6s`; `lib/overlap.js` plans the segments;
   `lib/wav.js` and `lib/zip.js` handle saving. It loads as a plain
   `<script type="module">`; the conditional injection that guarded `file://` went with
-  `file://` support in v1.5.0. `app.js` stays a classic script, and `lib/stems.js` and
-  `lib/i18n.js` are classic too so both they and the tests can use them.
+  `file://` support in v1.5.0. `app.js` stays a classic script, and `lib/stems.js`,
+  `lib/i18n.js` and `lib/platform.js` are classic too so both they and the tests can use
+  them. Since v1.8.0 the whole panel is **gated to desktop** — see the handheld gotcha below.
 - **Stem identity comes from the filename** (`detectStem`). Demucs' output names land in the
   right lanes untouched. The `mix` pattern is deliberately narrow (`\bmix\b|\bfull\b|…`) —
   a false positive there suppresses every other track.
@@ -78,6 +79,7 @@ index.html  styles.css  app.js     the player (classic scripts)
 lib/stems.js                       stem identity, classic script, shared with the tests
 lib/unzip.js                       zip reading, classic script — window.SansUnzip.extract
 lib/i18n.js                        zh-TW/en dictionary + runtime, classic script
+lib/platform.js                    isHandheld() device predicate, classic script
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 tests/test.html                    units      → window.__testResults
@@ -151,9 +153,17 @@ out of the project; never commit them.
   returning visitor can run a stale `app.js` against a fresh `index.html`. That is not a
   degraded page — the old script throws on an element the new markup dropped, and because
   `app.js` wires everything from one flat run of top-level statements, every listener *below*
-  the throw silently never registers. Bump the version in `index.html` (7), `separate.js` (3)
+  the throw silently never registers. Bump the version in `index.html` (8), `separate.js` (3)
   and `separate.worker.js` (1); `tests/versions.test.js` fails if they drift. Currently
-  `v1.7.0`.
+  `v1.8.0`.
+- **Separation is desktop-only, and that is not fixable from this repo.** On iOS the first
+  `session.run()` kills the tab; the accumulators, the 285 MB model, the memory floor,
+  WebGPU and asyncify were each ruled out by measurement, and `N_SAMPLES = 343980` is baked
+  into the ONNX graph. `lib/platform.js` answers the question — coarse primary pointer AND
+  `maxTouchPoints > 1`, both required — and `separate.js` reads it **once** at module init
+  (`refresh()` runs every 400 ms). The test is capability-shaped on purpose: iPadOS reports
+  itself as a Mac, so `/iPhone|iPad/` would miss it entirely, and Android phones very likely
+  fail the same way. Don't try to make separation run there.
 - **UI strings live in `lib/i18n.js`, and both locales must move together.** `data-i18n`
   sets `textContent`, `data-i18n-html` sets `innerHTML` (our own dictionary values only,
   never user data), `data-i18n-attr` sets attributes. Adding a key to one locale and

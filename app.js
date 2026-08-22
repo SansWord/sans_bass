@@ -55,6 +55,18 @@ const gcTrack = (n) => { try { window.SansAnalytics?.track(n); } catch (e) { /* 
 const gcOnce  = (n) => { try { window.SansAnalytics?.once(n);  } catch (e) { /* never */ } };
 const gcBump  = (n) => { try { window.SansAnalytics?.bump(n);  } catch (e) { /* never */ } };
 
+/* The drop zone promises that a song "can be split into six stems right here in the
+ * browser". On a phone that is false — see lib/platform.js. Swap the KEY rather than the
+ * text: SansI18n.apply() re-reads data-i18n-html from the element on every run, so the
+ * language toggle keeps working for free and t() needs no branch.
+ *
+ * app.js is a classic script at the end of <body>, so this runs during parse — before
+ * DOMContentLoaded, and therefore before apply() first walks the document. */
+if (window.SansPlatform?.isHandheld()) {
+  const explain = document.getElementById('drop-explain');
+  if (explain) explain.setAttribute('data-i18n-html', 'drop.explainHandheld');
+}
+
 /** The lane's display name. Recognised stems translate; an unrecognised file keeps the
  *  label assignStems derived from its filename, which is not translatable. */
 function laneLabel(t) {

@@ -169,9 +169,15 @@ Served over HTTP like the rest of the site. `separate.js` loads as a plain
 `<script type="module">` — the `file://` injection guard went with `file://` support
 in v1.5.0.
 
+S14–S16 are verified two ways, because a real handheld cannot be driven from automation:
+`isHandheld(fakeWindow)` covers the predicate's truth table in `tests/platform.test.js`,
+and DevTools device emulation plus one manual pass on a real phone against the PR preview
+covers the DOM. This is the same fault-injection approach the project already uses for
+`file://`.
+
 | # | Expected | How to observe |
 |---|---|---|
-| S1 | The panel appears only for a single unseparated track. A stems folder loaded from disk shows no panel. | Computed `display` of `#sep`. |
+| S1 | The panel appears only for a single unseparated track. A stems folder loaded from disk shows no panel. On a handheld the same rule holds, but the panel's *contents* are the explanation — see S14. | Computed `display` of `#sep`. |
 | S2 | While a run is in flight: **Separate** disabled, **Cancel** shown, **Save** disabled. | All three, by computed style and `disabled`. |
 | S3 | Save is disabled mid-run specifically so a *previous* track's stems can't be written, and so encoding doesn't compete with the worker for memory. | Start a second run with Save visible; it must go disabled. |
 | S4 | On success the status line goes **empty** — no "done". Six lanes replacing one is the confirmation. | `#sep-status.textContent === ''`. |
@@ -184,6 +190,9 @@ in v1.5.0.
 | S11 | A worker that dies without posting (OOM) still releases the UI. | `w.onerror` path: progress bar clears, message shown. |
 | S12 | ⚠ Model download progress is reported in MB, then the backend (`webgpu` or CPU) is named. | Status line during a real run. |
 | S13 | There is no local-`.onnx` picker. The worker still accepts a `modelBuffer`, but nothing in the UI supplies one. | No `#sep-model` in the DOM. |
+| S14 | On a handheld, a loaded single song shows `#sep` containing only the explanation. **Separate**, **Save**, **Cancel** and the progress bar are all gone. | Computed `display` of all four must be `none`. Never `.hidden` — a class that sets `display` beats the attribute, and that has already cost this project a debugging session. |
+| S15 | On a handheld the drop zone makes no in-browser-separation promise. | `#drop-explain` renders `drop.explainHandheld`, not `drop.explain`. |
+| S16 | Both handheld strings follow the language toggle like every other string. | Switch locale with a song loaded; the panel line and the drop zone must both re-render. |
 
 ## Saving stems
 
@@ -238,6 +247,7 @@ in v1.5.0.
 | A4 | No event name carries user content. | Load a song with a distinctive filename, exercise every control, and confirm no logged name contains any part of it. |
 | A5 | Events fired before GoatCounter loads are not lost. | `SansAnalytics.reset()` (clears the sink), fire events, then `SansAnalytics.setSink(console.log)`. The queued names appear in order. |
 | A6 | Events do not reach GoatCounter from localhost. | Expected and deliberate — `allow_local` is not set. Use the sink recipe above to verify locally. |
+| A7 | `separate-handheld-blocked` fires **once** per visitor shown the message, never once per poll. | `refresh()` runs every 400 ms, so it uses `once()`. With the sink attached, load a song on a handheld and wait several seconds: exactly one. |
 
 ## Constraints that are not features
 

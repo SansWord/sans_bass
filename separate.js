@@ -1,8 +1,8 @@
 /* Separation panel: owns the worker's lifecycle and the UI around it.
  * Loaded as a plain module script: file:// support was dropped in v1.5.0. */
 
-import { encodeWav } from './lib/wav.js?v=1.7.0';
-import { buildZip } from './lib/zip.js?v=1.7.0';
+import { encodeWav } from './lib/wav.js?v=1.8.0';
+import { buildZip } from './lib/zip.js?v=1.8.0';
 
 const el = {
   panel:  document.getElementById('sep'),
@@ -12,7 +12,13 @@ const el = {
   status: document.getElementById('sep-status'),
   bar:    document.getElementById('sep-bar'),
   fill:   document.getElementById('sep-fill'),
+  handheld: document.getElementById('sep-handheld'),
 };
+
+/* Separation cannot run on a phone or tablet — the first session.run() kills the tab. See
+ * lib/platform.js for the evidence. Read once: the answer cannot change within a page
+ * load, and refresh() runs every 400 ms. */
+const HANDHELD = window.SansPlatform?.isHandheld() ?? false;
 
 const MB = 1e6;
 let worker = null;
@@ -29,6 +35,7 @@ const tr = (key, params) => window.SansI18n.t(key, params);
 /* Analytics must never be able to break separation. A blocked or missing analytics
  * script degrades to a no-op rather than throwing out of an event handler. */
 const gcTrack = (n) => { try { window.SansAnalytics?.track(n); } catch (e) { /* never */ } };
+const gcOnce  = (n) => { try { window.SansAnalytics?.once(n);  } catch (e) { /* never */ } };
 
 /* Same shape as app.js's say(): remember the key, not the rendered text, so a language
  * switch mid-separation re-renders the progress line instead of freezing it. */
@@ -63,7 +70,7 @@ function busy(on) {
 
 function getWorker() {
   if (worker) return worker;
-  worker = new Worker('separate.worker.js?v=1.7.0', { type: 'module' });
+  worker = new Worker('separate.worker.js?v=1.8.0', { type: 'module' });
   return worker;
 }
 
@@ -72,6 +79,17 @@ function getWorker() {
  * run, or the Save button vanishes 400 ms after the stems appear.
  */
 function refresh() {
+  if (HANDHELD) {
+    // Same visibility rule as below — the panel belongs to a single unseparated song —
+    // but its contents are the explanation, and the controls never come back.
+    const single = window.sansBass?.isSingleTrack?.();
+    el.panel.hidden = !single;
+    // once(), not track(): refresh() runs on a 400 ms interval and track() would fire all
+    // session. This counts visitors who were shown the message, exactly once each.
+    if (single) gcOnce('separate-handheld-blocked');
+    return;
+  }
+
   const single = window.sansBass?.isSingleTrack?.();
   if (single) {
     el.panel.hidden = false;
@@ -190,5 +208,13 @@ el.save.addEventListener('click', async () => {
 
 // The player has no load event, so poll for a track appearing. Cheap and avoids
 // reaching into app.js internals.
+if (HANDHELD) {
+  el.handheld.hidden = false;
+  // #sep-go is the only control the markup leaves visible; save, cancel and the progress
+  // bar already start hidden. styles.css carries the global
+  // [hidden] { display: none !important } that this depends on.
+  el.go.hidden = true;
+}
+
 setInterval(refresh, 400);
 refresh();

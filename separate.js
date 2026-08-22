@@ -1,8 +1,8 @@
 /* Separation panel: owns the worker's lifecycle and the UI around it.
  * Loaded as a plain module script: file:// support was dropped in v1.5.0. */
 
-import { encodeWav } from './lib/wav.js?v=1.6.0';
-import { buildZip } from './lib/zip.js?v=1.6.0';
+import { encodeWav } from './lib/wav.js?v=1.7.0';
+import { buildZip } from './lib/zip.js?v=1.7.0';
 
 const el = {
   panel:  document.getElementById('sep'),
@@ -25,6 +25,10 @@ function setProgress(frac) {
 }
 
 const tr = (key, params) => window.SansI18n.t(key, params);
+
+/* Analytics must never be able to break separation. A blocked or missing analytics
+ * script degrades to a no-op rather than throwing out of an event handler. */
+const gcTrack = (n) => { try { window.SansAnalytics?.track(n); } catch (e) { /* never */ } };
 
 /* Same shape as app.js's say(): remember the key, not the rendered text, so a language
  * switch mid-separation re-renders the progress line instead of freezing it. */
@@ -59,7 +63,7 @@ function busy(on) {
 
 function getWorker() {
   if (worker) return worker;
-  worker = new Worker('separate.worker.js?v=1.6.0', { type: 'module' });
+  worker = new Worker('separate.worker.js?v=1.7.0', { type: 'module' });
   return worker;
 }
 
@@ -89,6 +93,8 @@ el.go.addEventListener('click', () => {
     return;
   }
 
+  gcTrack('separate-start');
+
   lastName = mix.name.replace(/\.[^.]+$/, '');   // "1 基隆路.flac" -> "1 基隆路"
   const left = mix.buffer.getChannelData(0).slice();
   const right = (mix.buffer.numberOfChannels > 1
@@ -103,6 +109,7 @@ el.go.addEventListener('click', () => {
   // A worker killed by the OOM reaper never posts anything. Without this the UI
   // would sit on a progress bar for ever.
   w.onerror = (err) => {
+    gcTrack('separate-fail');
     busy(false);
     setProgress(null);
     status('sep.workerFailed', { msg: err.message || (() => tr('sep.oom')) });
@@ -116,6 +123,10 @@ el.go.addEventListener('click', () => {
         loaded: (m.loaded / MB).toFixed(0), total: (m.total / MB).toFixed(0) });
       setProgress(m.total ? m.loaded / m.total : 0);
     } else if (m.type === 'ready') {
+      gcTrack(m.backend === 'webgpu' ? 'separate-backend-webgpu' : 'separate-backend-wasm');
+      // Explicit === true / === false: a null (model supplied directly) fires neither.
+      if (m.cached === true) gcTrack('model-cached');
+      else if (m.cached === false) gcTrack('model-download');
       status(m.backend === 'webgpu' ? 'sep.gpu' : 'sep.cpu');
       setProgress(0);
     } else if (m.type === 'progress') {
@@ -124,6 +135,7 @@ el.go.addEventListener('click', () => {
     } else if (m.type === 'log') {
       console.log('[separate]', m.message);
     } else if (m.type === 'result') {
+      gcTrack('separate-done');
       lastStems = m.stems;
       busy(false);
       setProgress(null);
@@ -133,6 +145,7 @@ el.go.addEventListener('click', () => {
       window.sansBass.loadSeparated({ name: lastName, buffer: mix.buffer }, m.stems);
       el.panel.hidden = false;         // keep the panel up so Save stays reachable
     } else if (m.type === 'error') {
+      gcTrack(m.message === 'cancelled' ? 'separate-cancel' : 'separate-fail');
       busy(false);
       setProgress(null);
       status(m.message === 'cancelled' ? 'sep.cancelled' : 'sep.failed', { msg: m.message });
@@ -167,6 +180,7 @@ el.save.addEventListener('click', async () => {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
     status('sep.saved', { mb: (blob.size / MB).toFixed(0) });
+    gcTrack('stems-save');
   } catch (e) {
     status('sep.saveFailed', { msg: e.message });
   } finally {

@@ -228,6 +228,17 @@ in v1.5.0.
 | G3 | Every local asset URL carries `?v=<version>`, and all of them agree. | `tests/versions.test.js`. GitHub Pages pins everything to `max-age=600` with no way to change it, so without this a returning visitor can hold a stale `app.js` against a fresh `index.html` for ten minutes. |
 | G4 | The page is served over HTTP — GitHub Pages, or `./scripts/serve.sh` locally. `file://` is no longer supported (dropped in v1.5.0); opening `index.html` from disk is not expected to work. | `separate.js` now loads as a plain `<script type="module">` with no protocol guard. |
 
+## Analytics
+
+| # | Behaviour | How to observe |
+|---|---|---|
+| A1 | Analytics never breaks the player. With `window.SansAnalytics` deleted, every control still works. | `delete window.SansAnalytics` in the console, then load a song, play, seek, toggle a lane. No console errors, no dead listeners. |
+| A2 | `play` fires once per page load, from the user gesture only. | `SansAnalytics.reset(); SansAnalytics.setSink(console.log)`, then press space twice and scrub while playing. Exactly one `play`. |
+| A3 | Interaction counts emit power-of-two buckets. | Toggle one lane eight times: `toggle`, `toggle-2`, `toggle-4`, `toggle-8` and nothing else. |
+| A4 | No event name carries user content. | Load a song with a distinctive filename, exercise every control, and confirm no logged name contains any part of it. |
+| A5 | Events fired before GoatCounter loads are not lost. | `SansAnalytics.reset()` (clears the sink), fire events, then `SansAnalytics.setSink(console.log)`. The queued names appear in order. |
+| A6 | Events do not reach GoatCounter from localhost. | Expected and deliberate — `allow_local` is not set. Use the sink recipe above to verify locally. |
+
 ## Constraints that are not features
 
 Breaking any of these breaks the project, not just a behaviour.
@@ -235,8 +246,10 @@ Breaking any of these breaks the project, not just a behaviour.
 - The site is served over HTTP. `file://` support was dropped in v1.5.0 — local use goes
   through `./scripts/serve.sh`, which separation already required.
 - No build step, no dependencies, no npm, no framework.
-- No audio ever leaves the machine. Inbound fetches (ORT from jsDelivr, model from Hugging
-  Face) are fine and necessary.
+- No audio ever leaves the machine, and no filename or song title does either. The one
+  outbound beacon is GoatCounter, carrying event names from a fixed set — see the
+  Analytics section above. Inbound fetches (ORT from jsDelivr, model from Hugging Face)
+  are fine and necessary.
 - `ort.env.wasm.numThreads = 1`, so no SharedArrayBuffer, so no COOP/COEP, so GitHub Pages
   can host it at all.
 - `rips/` and `stems/` are never committed, published, or copied out of the project.

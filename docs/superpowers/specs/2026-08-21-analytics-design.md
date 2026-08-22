@@ -94,6 +94,11 @@ These are genuinely one-per-song, so there is nothing to deduplicate.
 `play` fires **once per session** rather than per occurrence — it is the bounce gate ("did this
 visitor ever start audio"), and per-press counting would tell us nothing extra.
 
+It is fired from `toggle()`, not from `play()`. `play()` is re-entered internally by `seek()`
+and `refreshLoop()`, so it is not a user-gesture boundary; instrumenting it would count every
+scrub during playback as a play. `toggle()` is the single entry point for both the play button
+and the spacebar.
+
 Several of these go beyond the original request — `load-error`, `folder-drop`, `separate-fail`,
 `separate-cancel`, the backend split and `stems-save`. Two justify themselves loudest:
 `separate-fail`, because separation is a heavy feature that can quietly OOM on weak machines and
@@ -186,14 +191,17 @@ again.
 
 ## Transport and the queue GoatCounter does not have
 
-The snippet is the documented one, with the site code baked in:
+The snippet is GoatCounter's, with the site code baked in — but with an absolute `https://`
+src rather than the protocol-relative `//gc.zgo.at/count.js` their docs give:
 
 ```html
 <script data-goatcounter="https://sansword.goatcounter.com/count"
-        async src="//gc.zgo.at/count.js"></script>
+        async src="https://gc.zgo.at/count.js"></script>
 ```
 
-External, so no `?v=` — the version-query convention applies to local assets only. The default
+External, so no `?v=` — the version-query convention applies to local assets only.
+`tests/versions.test.js` exempts external URLs with `url.startsWith('http')`, so a
+protocol-relative URL is read as a local asset missing its `?v=` and fails the suite. The default
 automatic pageview is kept (`no_onload` is not set).
 
 GoatCounter's JS API docs state there is no queue for calls made before the async script loads,
@@ -256,9 +264,12 @@ itself ever needs proving.
 
 ## Everything that moves in the same commit
 
-- **Version bump to `v1.7.0`** across `index.html`, `separate.js` and `separate.worker.js`, plus
-  the new `lib/analytics.js?v=1.7.0` tag. `tests/versions.test.js` asserts the count of tagged
-  URLs and will need updating for the new script.
+- **Version bump to `v1.7.0`** across `index.html` (7 tags, including `styles.css`),
+  `separate.js` (3) and `separate.worker.js` (1), plus the new `lib/analytics.js?v=1.7.0`.
+  `tests/versions.test.js` needs no change: it asserts that every local asset carries a
+  `?v=` and that all versions agree, so a new script is picked up automatically. The
+  GoatCounter tag must use `https://`, not the protocol-relative URL in GoatCounter's
+  docs, or that test treats it as an unversioned local asset.
 - **`CLAUDE.md`** — the constraint line, per "Constraint change" above.
 - **`docs/behaviour.md`** — observable rows for the analytics behaviour, the fake-sink
   verification recipe, and the `allow_local` trap.

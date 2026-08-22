@@ -14,6 +14,7 @@
   <script src="../lib/stems.js"></script>
   <script src="../lib/unzip.js"></script>
   <script src="../lib/i18n.js"></script>
+  <script src="../lib/analytics.js"></script>
   <script type="module">
     import { runAll } from './assert.js';
     await import('./wav.test.js');
@@ -23,6 +24,7 @@
     await import('./unzip.test.js');
     await import('./versions.test.js');
     await import('./i18n.test.js');
+    await import('./analytics.test.js');
     await runAll(document.getElementById('out'));
   </script>
 </body>

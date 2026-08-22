@@ -48,6 +48,13 @@ function on(node, ev, fn, opts) {
 
 const tr = (key, params) => window.SansI18n.t(key, params);
 
+/* Analytics must never be able to break the player. Same reasoning as on() above: a
+ * missing window.SansAnalytics (script blocked by an extension, 404 after a bad deploy)
+ * must degrade to a no-op, not take out every listener below it. */
+const gcTrack = (n) => { try { window.SansAnalytics?.track(n); } catch (e) { /* never */ } };
+const gcOnce  = (n) => { try { window.SansAnalytics?.once(n);  } catch (e) { /* never */ } };
+const gcBump  = (n) => { try { window.SansAnalytics?.bump(n);  } catch (e) { /* never */ } };
+
 /** The lane's display name. Recognised stems translate; an unrecognised file keeps the
  *  label assignStems derived from its filename, which is not translatable. */
 function laneLabel(t) {
@@ -112,9 +119,9 @@ window.addEventListener('error', (e) => {
 
 // ---------------------------------------------------------------- loading
 
-async function loadFiles(fileList, fallbackName) {
+async function loadFiles(fileList, fallbackName, source) {
   const files = [...fileList].filter(f => AUDIO_RE.test(f.name));
-  if (!files.length) { say('status.noAudioFiles', null, true); return; }
+  if (!files.length) { gcTrack('load-error'); say('status.noAudioFiles', null, true); return; }
 
   ensureAudio();
   stop(true);
@@ -141,12 +148,14 @@ async function loadFiles(fileList, fallbackName) {
 
   const loaded = settled.filter(Boolean);
   if (!loaded.length) {
+    gcTrack('load-error');
     say('status.decodeFailAll', { names: failed.join(', ') }, true);
     return;
   }
 
   const items = loaded.map((l) => ({ name: l.file.name, buffer: l.buffer }));
   buildTracks(items, commonName(files, fallbackName));
+  gcTrack(source === 'zip' ? 'zip-load' : 'song-load');
 
   if (failed.length) {
     say('status.decodeSkipped', { names: failed.join(', ') }, true);
@@ -171,6 +180,7 @@ async function loadZip(file) {
     entries = await window.SansUnzip.extract(file);
   } catch (err) {
     console.error(err);
+    gcTrack('load-error');
     /* lib/unzip.js tags every error with a stable `code` and an English `message`. Keying
      * on the code translates them without modifying that file. Three different messages
      * share the code 'not-zip', so the translation is slightly less specific than the
@@ -181,6 +191,7 @@ async function loadZip(file) {
     return;
   }
   if (!entries.length) {
+    gcTrack('load-error');
     say('status.noAudioInZip', null, true);
     return;
   }
@@ -188,7 +199,7 @@ async function loadZip(file) {
     name: e.name,
     webkitRelativePath: e.webkitRelativePath,
     arrayBuffer: async () => e.bytes.buffer,
-  })), file.name.replace(/\.zip$/i, ''));
+  })), file.name.replace(/\.zip$/i, ''), 'zip');
 }
 
 const isZip = (f) => /\.zip$/i.test(f.name);
@@ -211,10 +222,11 @@ function loadAny(file) {
 function loadSong(file) {
   if (!file) return;
   if (!AUDIO_RE.test(file.name)) {
+    gcTrack('load-error');
     say('status.notAudioFile', { name: file.name }, true);
     return;
   }
-  return loadFiles([file]);
+  return loadFiles([file], undefined, 'song');
 }
 
 /**
@@ -949,6 +961,7 @@ document.addEventListener('drop', (e) => {
     dropped.some(f => !f.type && !AUDIO_RE.test(f.name) && !isZip(f));
 
   if (looksLikeFolder) {
+    gcTrack('folder-drop');
     say('status.folderDrop', null, true);
   } else if (dropped.length > 1) {
     say('status.tooManyFiles', { n: dropped.length }, true);

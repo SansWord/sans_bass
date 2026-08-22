@@ -287,6 +287,38 @@ async function probeGpuLadder() {
   post({ type: 'done', probe: 'gpu-ladder', mib: held.length * 128 });
 }
 
+/**
+ * How large a WebAssembly heap will iOS actually commit? The WASM execution provider must
+ * fit the 285 MB model AND every intermediate tensor inside one wasm heap, so if this
+ * ceiling is low, no amount of refactoring makes the WASM path viable either.
+ *
+ * grow() reserves; it does not commit. Apple silicon pages are 16 KiB, so touching one byte
+ * every 16 KiB dirties every page and forces the memory to be real — which is what iOS
+ * accounts against the process. A coarser stride reports a ceiling that isn't there.
+ */
+async function probeWasmLadder() {
+  const STEP = 1024;                       // pages, 64 KiB each = 64 MiB
+  const mem = new WebAssembly.Memory({ initial: STEP });
+  let reached = 64;
+  for (let i = 2; i <= 64; i++) {          // up to 4 GiB, the 32-bit wasm ceiling
+    const target = i * 64;
+    stage(`wasm ladder: growing to ${target} MiB`);
+    try {
+      mem.grow(STEP);
+    } catch (e) {
+      log(`grow FAILED at ${target} MiB: ${e.message}`);
+      break;
+    }
+    // mem.buffer is replaced by grow(), so the view must be rebuilt every lap.
+    const view = new Uint8Array(mem.buffer);
+    for (let off = (i - 1) * 64 * MB; off < i * 64 * MB; off += 16384) view[off] = 1;
+    reached = target;
+    log(`  ok: ${target} MiB committed`);
+  }
+  log(`largest wasm heap committed: ${reached} MiB`);
+  post({ type: 'done', probe: 'wasm-ladder', mib: reached });
+}
+
 /* ---------------------------------------------------------------- dispatch */
 
 self.onmessage = async (e) => {
@@ -297,6 +329,7 @@ self.onmessage = async (e) => {
     else if (m.probe === 'loop') await probeLoop(m);
     else if (m.probe === 'gpu-limits') await probeGpuLimits();
     else if (m.probe === 'gpu-ladder') await probeGpuLadder();
+    else if (m.probe === 'wasm-ladder') await probeWasmLadder();
     else throw new Error(`unknown probe ${m.probe}`);
   } catch (err) {
     post({ type: 'error', message: err?.message || String(err), stack: String(err?.stack || '').slice(0, 400) });

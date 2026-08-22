@@ -143,4 +143,62 @@ WebGPU), whether the 285 MB model `ArrayBuffer` is released after session creati
 
 ## Results from the iPhone
 
-_To be filled in._
+iPhone18,2, Safari 26.6. (The UA reports `CPU iPhone OS 18_7` — Apple freezes that token
+now; `Version/26.6` is the real one, and it is why `navigator.gpu` exists at all.)
+
+| Probe | Backend | Result |
+|---|---|---|
+| 1 · WebGPU limits | — | survived |
+| 2 · session + idle | webgpu | **survived** |
+| 3 · one segment | webgpu | **crashed** at `FIRST session.run` |
+| 3 · one segment | wasm | **crashed** at `FIRST session.run` |
+
+Model out of Cache Storage in 19–20 ms. Session created in 1361 ms (webgpu) and 667 ms
+(wasm). Both crashes were self-inflicted page reloads, confirmed by the operator, with the
+breadcrumb naming the step.
+
+### WebGPU limits, iOS vs the Mac
+
+| Limit | iOS 26.6 | Mac (Chrome) |
+|---|---|---|
+| `maxBufferSize` | **1024 MiB** | 4096 MiB |
+| `maxStorageBufferBindingSize` | **1024 MiB** | 4096 MiB |
+| `maxUniformBufferBindingSize` | 1024 MiB | 65536 |
+| `maxComputeWorkgroupStorageSize` | 32768 | 32768 |
+| `maxComputeInvocationsPerWorkgroup` | 1024 | 1024 |
+| `maxBindGroups` | 11 | 4 |
+| adapter | `vendor=apple arch=apple` | `vendor=apple arch=metal-3` |
+
+### What this rules out
+
+**Probe 2 surviving is the load-bearing result.** The 285 MB model loads, the session
+builds, the `ArrayBuffer` is released, and the tab sits there stable — on *both* backends.
+So the fixed memory floor is not fatal, and neither is the model itself.
+
+**Probe 3 crashing on both backends is the wall.** With `accumulate:false` not one
+accumulator byte is allocated, so the length-scaled memory that explains the full-song
+1.42 GB crash is absent here. The only thing between a stable probe 2 and a dead probe 3
+is the working set of a single `session.run()` on a fixed `[1, 2, 343980]` input.
+
+That kills the two obvious fixes outright:
+
+- **Streaming the accumulators** — the refactor this spike was meant to justify — would not
+  have helped. Probe 3 allocates none and still dies.
+- **Forcing the WASM path on iOS** would not have helped either. It dies too, so this is
+  not iOS's new WebGPU implementation misbehaving.
+
+And `N_SAMPLES = 343980` is baked into the ONNX graph's input shape, so the segment cannot
+be shrunk to reduce the working set. That knob does not exist.
+
+### What is left
+
+Nothing in *our* code. The remaining levers all change the model:
+
+- a quantized or smaller `htdemucs_6s` export (int8 would be ~100 MB rather than 285 MB),
+  at some cost in separation quality;
+- an export with a smaller fixed segment length;
+- or accept that separation is a desktop feature, and point iOS users at
+  "separate on a computer, load the zip here" — which already works well on the phone.
+
+Still unmeasured, and the next thing to run: how long probe 3 survives before the kill
+(spike-2 writes a `still alive` line every 10 s), and the WASM heap ceiling from probe 6.

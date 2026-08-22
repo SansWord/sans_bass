@@ -10,7 +10,7 @@
  *     instructions. Check the stamp before trusting a result.
  */
 
-const BUILD = 'spike-1 (2026-08-21)';
+const BUILD = 'spike-2 (2026-08-22)';
 
 const KEY = { log: 'spike.log', stage: 'spike.stage', probe: 'spike.probe' };
 const $ = (id) => document.getElementById(id);
@@ -84,6 +84,7 @@ function run(probe) {
   worker.onerror = (e) => {
     crumb('WORKER ERROR');
     log(`worker error: ${e.message || '(no message — OOM reaper?)'}`);
+    stopRunning('killed the worker');
   };
 
   worker.onmessage = (e) => {
@@ -92,14 +93,52 @@ function run(probe) {
     else if (m.type === 'log') log(m.message);
     else if (m.type === 'download') log(`download ${(m.loaded / 1e6).toFixed(0)} / ${(m.total / 1e6).toFixed(0)} MB`);
     else if (m.type === 'progress') log(`segment ${m.segment}/${m.total} — ${m.ms.toFixed(0)} ms`);
-    else if (m.type === 'error') { crumb('ERROR'); log(`✗ ${m.message}`); log(m.stack || ''); }
-    else if (m.type === 'done') { crumb('DONE — survived'); log(`✓ ${JSON.stringify(m)}`); }
+    else if (m.type === 'error') { crumb('ERROR'); log(`✗ ${m.message}`); log(m.stack || ''); stopRunning('errored'); }
+    else if (m.type === 'done') { crumb('DONE — survived'); log(`✓ ${JSON.stringify(m)}`); stopRunning('completed'); }
   };
 
+  runStart = performance.now();
+  running = probe;
+  lastAlive = 0;
+  keepAwake();
   worker.postMessage({ probe, ...opt });
 }
 
-for (const id of ['session', 'segment', 'loop', 'gpu-limits', 'gpu-ladder']) {
+/* WASM inference blocks the worker for tens of seconds with the page frozen, which is
+ * indistinguishable from a crash by eye. The main thread stays free, so it ticks here —
+ * and every 10s it writes a line into the SAVED log. After a kill, the last "still alive"
+ * line says how long the probe survived; a log with none means it died almost at once. */
+let runStart = 0;
+let running = null;
+let lastAlive = 0;
+let wakeLock = null;
+
+setInterval(() => {
+  if (!running) return;
+  const secs = (performance.now() - runStart) / 1000;
+  $('status').textContent =
+    `running ${running} · ${secs.toFixed(0)}s · last stage: ${store.get(KEY.stage) || '?'}`;
+  if (secs - lastAlive >= 10) {
+    lastAlive = secs;
+    log(`· still alive at ${secs.toFixed(0)}s`);
+  }
+}, 1000);
+
+function stopRunning(how) {
+  running = null;
+  $('status').textContent = `idle — last run ${how}`;
+  wakeLock?.release?.().catch(() => {});
+  wakeLock = null;
+}
+
+/* Keeps the screen awake through a multi-minute WASM run. Must be requested inside the
+ * click, and it is optional: a browser without it just means you hold the phone. */
+async function keepAwake() {
+  try { wakeLock = await navigator.wakeLock.request('screen'); }
+  catch { /* not available — nothing to do */ }
+}
+
+for (const id of ['session', 'segment', 'loop', 'gpu-limits', 'gpu-ladder', 'wasm-ladder']) {
   $(`run-${id}`).addEventListener('click', () => run(id));
 }
 

@@ -39,8 +39,10 @@
 <div class="build">build: <span id="build">?</span></div>
 <p class="note">
   Check the build stamp matches what you were told to run — Pages caches for 10 minutes.
-  Run <strong>one probe at a time</strong>, with Safari Web Inspector → Timelines → Memory
-  recording. If the page reloads on its own, come back here: the previous run's log survives.
+  Run <strong>one probe at a time</strong>. A WASM run freezes the page for minutes — that is
+  the probe working. The counter below the log ticks every second and writes a
+  <code>still alive</code> line every ten, so a crashed log says how long it lasted.
+  If the page reloads on its own, come back here: the previous run's log survives.
 </p>
 
 <fieldset id="prev" hidden>
@@ -79,10 +81,12 @@
   <button class="go" id="run-segment">3 · One segment: first run vs second run</button>
   <button class="go" id="run-loop">4 · Full segment loop over the chosen length</button>
   <button class="warn" id="run-gpu-ladder">5 · GPU allocation ladder (may kill the page)</button>
+  <button class="warn" id="run-wasm-ladder">6 · WASM heap ladder (may kill the page)</button>
 </fieldset>
 
 <fieldset>
   <legend>log</legend>
+  <p class="note" id="status">idle</p>
   <textarea id="log" readonly></textarea>
   <div class="row">
     <button id="copy">Copy log</button>
@@ -90,6 +94,6 @@
   </div>
 </fieldset>
 
-<script src="ios-webgpu.js?v=spike-1"></script>
+<script src="ios-webgpu.js?v=spike-2"></script>
 </body>
 </html>

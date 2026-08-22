@@ -54,7 +54,7 @@
 
   <section id="dropzone" class="dropzone">
     <p class="big" data-i18n-html="drop.title">Drop a song, or a .zip of stems</p>
-    <p class="dim" data-i18n-html="drop.explain"><strong>One audio file</strong> &mdash; a whole song &mdash; plays as a single track,
+    <p id="drop-explain" class="dim" data-i18n-html="drop.explain"><strong>One audio file</strong> &mdash; a whole song &mdash; plays as a single track,
       and can be split into six stems right here in the browser. <strong>A .zip</strong>
       of stems already separated loads them as one lane each.</p>
     <p class="dim" data-i18n="drop.privacy">Everything is decoded locally in your browser. Nothing is uploaded.</p>
@@ -99,6 +99,11 @@
     </div>
 
     <section id="sep" class="sep" hidden>
+      <!-- Shown instead of the controls on a phone or tablet, where the first
+           session.run() kills the tab. See lib/platform.js and spike/RESULTS.md.
+           The literal English matches DICT.en exactly, like every other string here —
+           it is the no-JS fallback and the readable source of truth. -->
+      <p id="sep-handheld" class="dim" hidden data-i18n="sep.handheld">Separating stems needs a computer. Separate there, then load the .zip here.</p>
       <div class="sep-row">
         <button id="sep-go" class="btn" data-i18n="sep.go">Separate into 6 stems</button>
         <span id="sep-status" class="dim"></span>
@@ -131,11 +136,12 @@
      stale app.js against a fresh index.html for ten minutes. That combination is not a
      degraded page, it is a dead one: app.js throws on the first element index.html no longer
      has and every listener below it — drag & drop included — never registers.
-     Bump the version in ALL of these on release: index.html (7), separate.js (3),
+     Bump the version in ALL of these on release: index.html (8), separate.js (3),
      separate.worker.js (1). tests/versions.test.js fails if they drift apart. -->
 <script src="lib/stems.js?v=1.7.0"></script>
 <script src="lib/unzip.js?v=1.7.0"></script>
 <script src="lib/analytics.js?v=1.7.0"></script>
+<script src="lib/platform.js?v=1.7.0"></script>
 <script src="app.js?v=1.7.0"></script>
 <script type="module" src="separate.js?v=1.7.0"></script>
 </body>

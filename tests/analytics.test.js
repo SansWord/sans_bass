@@ -107,3 +107,18 @@ test('analytics: reset clears bump counters', () => {
   A().bump('seek');
   assertEq(again.join(','), 'seek', 'the counter restarted, so the base fires again');
 });
+
+test('analytics: watch() installs the GoatCounter sink and drains the queue', async () => {
+  A().reset();
+  A().track('queued-before-load');
+
+  const got = [];
+  window.goatcounter = { count: (vars) => got.push(vars) };
+  A().watch();
+  await new Promise((r) => setTimeout(r, 500));
+  delete window.goatcounter;
+
+  assertEq(got.length, 1, 'the queued event reached GoatCounter');
+  assertEq(got[0].path, 'queued-before-load');
+  assertEq(got[0].event, true, 'must be sent as an event, not a pageview');
+});

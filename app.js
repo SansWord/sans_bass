@@ -616,9 +616,13 @@ function stop(keepPosition) {
   draw();
 }
 
-function toggle() { playing ? stop(true) : play(); }
+function toggle() {
+  if (!playing) gcOnce('play');   // the bounce gate: did this visitor ever start audio?
+  playing ? stop(true) : play();
+}
 
 function seek(seconds) {
+  gcBump('seek');
   const wasPlaying = playing;
   if (playing) stop(true);
   offset = Math.max(0, Math.min(duration, seconds));
@@ -632,6 +636,7 @@ function seek(seconds) {
 /** Set A or B at the playhead, then restart playback so the audio graph picks it up. */
 function setLoopPoint(which) {
   if (!tracks.length) return;
+  gcBump('loop');
   const t = currentTime();
   if (which === 'a') loopA = t; else loopB = t;
 
@@ -786,6 +791,7 @@ function allLanesOff() {
  * "silence again" is a worse answer than simply offering "Mute all" once more.
  */
 function toggleAllTracks() {
+  gcOnce('unmute-all');
   if (allLanesOn()) {
     if (muteSnapshot) {
       const snap = muteSnapshot;
@@ -825,6 +831,8 @@ function setMode(mode) {
 }
 
 function toggleTrack(t) {
+  gcBump('toggle');
+  if (t.stem) gcOnce(`toggle-${t.stem}`);   // stem ids, never labels — never a filename
   // The mix lane is the exception: a full-mix file must never sound on top of its own
   // stems, so toggling it switches the whole routing instead of just its own gain.
   if (window.__hasStems && t.stem === 'mix') {
@@ -878,6 +886,7 @@ on(el.langToggle, 'click', (e) => {
 });
 window.addEventListener('sansbass:langchange', retranslate);
 renderLangToggle();
+gcOnce(`lang-${window.SansI18n.getLocale()}`);
 on(el.masterVol, 'input', () => {
   ensureAudio();
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);

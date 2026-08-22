@@ -200,5 +200,26 @@ Nothing in *our* code. The remaining levers all change the model:
 - or accept that separation is a desktop feature, and point iOS users at
   "separate on a computer, load the zip here" — which already works well on the phone.
 
-Still unmeasured, and the next thing to run: how long probe 3 survives before the kill
-(spike-2 writes a `still alive` line every 10 s), and the WASM heap ceiling from probe 6.
+### Probe 6 — the WASM heap ceiling is not the wall
+
+The heap grew and committed **1920 MiB**, then the process died growing to 1984 MiB.
+Whole ladder: 0.71 s.
+
+That is far more than a 285 MB model plus its intermediates should ever need, and it is
+*higher* than the 1.42 GB total footprint the full-song crash reached. So iOS is not
+refusing to give this tab memory. Raw capacity is not the constraint.
+
+This weakens the case for chasing a quantized export: the problem does not appear to be
+"285 MB is too much to hold", because the phone will hold 1.9 GiB quite happily.
+
+### Probe 3 on WASM — dies before finishing one segment
+
+Re-run under spike-2, which writes a `still alive at Ns` line into the saved log every ten
+seconds. The crashed log contains **no such line**, so it died **under 10 s** in — while
+one WASM segment takes **11.2 s on a desktop**. It never completed a single inference.
+
+**Caveat, and it is the operator's own sequencing error:** this run followed probe 6
+immediately, so the phone had just committed 1.9 GiB and had a process killed. Memory
+pressure and compressor state were poor. Needs one clean re-run — force-quit Safari or
+reboot, then run probe 3 on `wasm` alone with nothing before it — before this number is
+taken as read.

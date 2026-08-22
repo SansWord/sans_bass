@@ -210,7 +210,47 @@ Desktop, plain wasm build: first run 11010 ms, second 10853 ms, **0.72x realtime
 indistinguishable from asyncify (11249 / 11088, 0.70x). So on desktop the build makes no
 difference; the question is entirely whether JSC survives one and not the other.
 
-### What is left if the plain build also fails
+### The plain build also fails
+
+iPhone, plain `ort-wasm-simd-threaded.wasm`, `executionProviders: ['wasm']`: session
+created in 1947 ms, `ArrayBuffer` released, then **dead inside the first `session.run()`**.
+No `still alive at 11s` line, so under 10 s — subjectively longer than the asyncify build,
+but the same outcome.
+
+## Verdict
+
+Every combination crashes at the same line:
+
+| ORT runtime | Provider | Session (probe 2) | First `session.run` (probe 3) |
+|---|---|---|---|
+| asyncify (webgpu bundle) | webgpu | survives | **crash** |
+| asyncify (webgpu bundle) | wasm | survives | **crash** |
+| plain (wasm bundle) | wasm | survives | **crash** |
+
+And it is not capacity: probe 6 committed **1920 MiB** of WASM heap on the same device.
+
+Ruled out, each by measurement rather than argument:
+
+- **the accumulators** — probe 3 allocates none (`accumulate:false`) and still dies, so
+  streaming them would have changed nothing;
+- **the 285 MB model and the memory floor** — probe 2 holds a live session and idles
+  happily on both runtimes;
+- **iOS's new WebGPU backend** — the WASM path dies too;
+- **asyncify instrumentation** — the plain 13.5 MB binary dies too;
+- **raw memory capacity** — 1.9 GiB available on the same device.
+
+What remains is the working set of a single `session.run()` on a fixed
+`[1, 2, 343980]` input, and `N_SAMPLES` is baked into the ONNX graph. Nothing in this
+repo can change it. Fixing it means a different model export — a quantized or
+smaller-segment `htdemucs_6s` — and probe 6 makes even that look unpromising, since
+capacity was never the binding constraint.
+
+**Recommendation: separation stays a desktop feature.** Detect iOS, hide the separation
+panel, and say "separate on a computer, then load the zip here" — zip playback already
+works well on the phone. That change stops the tab crashing on people, which is the
+actual user-facing harm.
+
+### What is left, for the record
 
 Nothing in *our* code. The remaining levers all change the model:
 

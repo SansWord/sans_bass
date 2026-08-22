@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.8.0](#v180--separation-is-a-desktop-feature-2026-08-21-2225) | Separation hidden on phones and tablets, with an honest message; the crash is unfixable from this repo. |
 | [v1.7.0](#v170--usage-analytics-2026-08-21-1736) | Cookieless GoatCounter events: loads, separations, and interaction intensity in power-of-two buckets. |
 | [v1.6.0](#v160--beta-test-refinements-2026-08-21-1600) | Seven things beta testers tripped over: the two Load buttons become one, `0` becomes a real mute/unmute-all toggle instead of a disabled no-op, the mode dropdown stops eating every hotkey, the keyboard hint gets legible, and the lane's click target finally looks like one. |
 | [v1.5.0](#v150--interface-i18n-2026-08-21-1109) | The whole interface speaks zh-TW by default and English when the system language is not Traditional Chinese, with a remembered toggle in the header. Switching re-renders in place — no reload, no re-decode, playback never stops. |
@@ -27,6 +28,33 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.8.0 — separation is a desktop feature (2026-08-21 22:25)
+
+**Review:** not yet
+
+**Design docs:**
+- Handheld separation gate: [Spec](superpowers/specs/2026-08-21-handheld-separation-gate-design.md) [Plan](superpowers/plans/2026-08-21-handheld-separation-gate.md)
+
+**What was built:**
+- `lib/platform.js` — a pure `isHandheld(win)` predicate, coarse pointer AND multi-touch.
+- The separation panel now holds one sentence instead of four controls on a phone or tablet.
+- The drop zone stops promising in-browser separation there.
+- `separate-handheld-blocked`, fired with `once()`.
+
+**Key technical learnings:**
+- `[gotcha]` **Forcing `executionProviders: ['wasm']` does not change the ORT runtime binary.** `ort.webgpu.bundle.min.mjs` loads the asyncify-instrumented `ort-wasm-simd-threaded.asyncify.wasm` (24.3 MB) whatever provider you name; the plain 13.5 MB binary only ships with `ort.wasm.bundle.min.mjs`. Three rounds of "we tested WASM" were never true.
+- `[insight]` **iOS separation dies at the first `session.run()`, and it is not memory capacity.** A live session idles happily, and the same device committed 1920 MiB of WASM heap. The accumulators, the model, the memory floor, WebGPU and asyncify were each ruled out by measurement. `N_SAMPLES = 343980` is baked into the ONNX graph, so nothing in this repo can shrink the working set.
+- `[insight]` **Swapping an i18n *key* on the element beats branching inside `t()`.** `SansI18n.apply()` re-reads `data-i18n-html` on every run, so the language toggle keeps working for free and no key ever means two strings.
+- `[gotcha]` **`track()` inside `refresh()` would fire all session** — that function runs on a 400 ms interval. `once()` is the verb for "did this visitor ever reach X".
+- `[note]` Safari's Web Inspector memory graph does not show the WebKit GPU process at all, which is why the first crash looked like a WebContent problem for three rounds.
+- `[insight]` **A handheld can be faked convincingly enough to test the real parse-time path.** DevTools emulation is not reachable from browser automation, but an `srcdoc` iframe inherits the parent's origin: prepend `<base href="/">` and one inline script that overrides `matchMedia` and `maxTouchPoints`, and the page's own `app.js` and `separate.js` then parse against a coarse-pointer window. That caught the whole gate — key swap, four hidden controls, single analytics fire, language toggle — without a device.
+- `[gotcha]` **`#lang-toggle` is a container, not a button.** The handler delegates via `e.target.closest('button[data-lang]')`, so a synthetic click on the `<div>` silently does nothing and reads exactly like a broken language switch. Click `button[data-lang="en"]`.
+
+**Process learnings:**
+- `[insight]` **The user's own observation broke the investigation open.** "It crashes even on a 30-second clip" falsified a memory-scaling theory that two rounds of arithmetic had made look solid. Cheap evidence from the person holding the device beat confident reasoning.
+- `[gotcha]` **Running the destructive probe first poisoned the next measurement.** A 1.9 GiB allocation ladder immediately before an inference probe left the phone under memory pressure; the result had to be thrown away and re-run after a force-quit.
+- `[note]` Deliberately deleting the new `en` key for one reload proved the same-keys-in-both-locales guard actually covers it. A guard you have never seen fail is a guard you are trusting on faith.
 
 ## v1.7.0 — Usage analytics (2026-08-21 17:36)
 

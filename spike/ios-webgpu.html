@@ -54,6 +54,12 @@
 
 <fieldset>
   <legend>options</legend>
+  <label>ORT runtime build
+    <select id="runtime">
+      <option value="webgpu">webgpu bundle — asyncify wasm, 24.3 MB (what production uses)</option>
+      <option value="wasm">wasm bundle — plain wasm, 13.5 MB (never tested until now)</option>
+    </select>
+  </label>
   <label>execution provider
     <select id="backend">
       <option value="webgpu">webgpu (what production picks on iOS 26)</option>
@@ -94,6 +100,6 @@
   </div>
 </fieldset>
 
-<script src="ios-webgpu.js?v=spike-2"></script>
+<script src="ios-webgpu.js?v=spike-3"></script>
 </body>
 </html>

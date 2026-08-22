@@ -10,7 +10,7 @@
  *     instructions. Check the stamp before trusting a result.
  */
 
-const BUILD = 'spike-2 (2026-08-22)';
+const BUILD = 'spike-3 (2026-08-22)';
 
 const KEY = { log: 'spike.log', stage: 'spike.stage', probe: 'spike.probe' };
 const $ = (id) => document.getElementById(id);
@@ -56,6 +56,7 @@ function showPrevious() {
 
 function options() {
   return {
+    runtime: $('runtime').value,
     backend: $('backend').value,
     seconds: +$('seconds').value,
     release: $('release').checked,

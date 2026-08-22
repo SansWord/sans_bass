@@ -190,7 +190,27 @@ That kills the two obvious fixes outright:
 And `N_SAMPLES = 343980` is baked into the ONNX graph's input shape, so the segment cannot
 be shrunk to reduce the working set. That knob does not exist.
 
-### What is left
+### A variable that was never actually tested
+
+Every "WASM" run above — including the clean, force-quit re-run that died in 3 s — used the
+**asyncify-instrumented** runtime, because the spike and production both import
+`ort.webgpu.bundle.min.mjs`:
+
+| Bundle | Loads | Size |
+|---|---|---|
+| `ort.webgpu.bundle.min.mjs` | `ort-wasm-simd-threaded.asyncify.wasm` | 24.3 MB |
+| `ort.wasm.bundle.min.mjs` | `ort-wasm-simd-threaded.wasm` | 13.5 MB |
+
+`executionProviders: ['wasm']` selects the execution provider. It does **not** change the
+runtime binary. Asyncify rewrites every function so the wasm stack can be unwound and
+rewound, roughly doubling the code and spilling a lot of state — plausibly fatal on JSC
+where it is fine on V8. spike-3 adds an ORT-build selector so this can finally be tested.
+
+Desktop, plain wasm build: first run 11010 ms, second 10853 ms, **0.72x realtime** —
+indistinguishable from asyncify (11249 / 11088, 0.70x). So on desktop the build makes no
+difference; the question is entirely whether JSC survives one and not the other.
+
+### What is left if the plain build also fails
 
 Nothing in *our* code. The remaining levers all change the model:
 

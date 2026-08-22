@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.7.0](#v170--usage-analytics-2026-08-21-1736) | Cookieless GoatCounter events: loads, separations, and interaction intensity in power-of-two buckets. |
 | [v1.6.0](#v160--beta-test-refinements-2026-08-21-1600) | Seven things beta testers tripped over: the two Load buttons become one, `0` becomes a real mute/unmute-all toggle instead of a disabled no-op, the mode dropdown stops eating every hotkey, the keyboard hint gets legible, and the lane's click target finally looks like one. |
 | [v1.5.0](#v150--interface-i18n-2026-08-21-1109) | The whole interface speaks zh-TW by default and English when the system language is not Traditional Chinese, with a remembered toggle in the header. Switching re-renders in place — no reload, no re-decode, playback never stops. |
 | [v1.4.0](#v140--the-drop-that-navigated-away-2026-08-21) | Drag & drop on the live site was dead: a stale cached `app.js` threw on an element the new `index.html` no longer had, and every listener below it — drag & drop included — never registered. Versioned asset URLs, null-safe wiring, a loud error path, and an explicit full-window drop overlay. |
@@ -24,6 +25,58 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.7.0 — Usage analytics (2026-08-21 17:36)
+
+**Review:** not yet
+
+**Design docs:**
+- Usage analytics: [Spec](superpowers/specs/2026-08-21-analytics-design.md) [Plan](superpowers/plans/2026-08-21-analytics.md)
+
+**What was built:**
+- `lib/analytics.js` — `track` / `once` / `bump`, its own queue, and the GoatCounter transport.
+- Events across the whole surface: loads, load errors, folder drops, the separation
+  lifecycle, model cache-vs-download, the WebGPU-vs-wasm split, and interaction intensity.
+- `separate.worker.js` now reports `cached` on its `ready` message.
+- `tests/analytics.test.js` — 14 unit tests against an injected sink.
+
+**Key technical learnings:**
+- `[insight]` Power-of-two buckets fired as they are crossed beat both the alternatives.
+  Exclusive buckets need a session-end flush, and GoatCounter documents no `sendBeacon`
+  support — so a dropped flush loses the whole session, biased toward mobile. Firing every
+  occurrence and taking a mean is the statistic one power user distorts most. Buckets need
+  no flush and no assumption about what the dashboard displays.
+- `[gotcha]` GoatCounter's documented `//gc.zgo.at/count.js` fails `tests/versions.test.js`.
+  That test exempts external URLs with `url.startsWith('http')`, and a protocol-relative URL
+  fails it — so the tag is read as a local asset missing its `?v=`. Use `https://`.
+- `[gotcha]` `play()` is re-entered by `seek()` and `refreshLoop()`. Instrumenting it counts
+  every scrub during playback as a play. `toggle()` is the real gesture boundary. Verified
+  the only way that means anything: scrub while playing and confirm `seek`/`seek-2` appear
+  and a second `play` does not.
+- `[gotcha]` GoatCounter filters localhost by default, so every event fired from
+  `serve.sh` silently vanishes. Indistinguishable from broken instrumentation. The fix is
+  not `allow_local` — that pollutes the real dashboard with dev reloads — but the injectable
+  sink, which was already there for the tests.
+- `[note]` GoatCounter has no queue for calls made before its async script loads; its docs
+  recommend polling. `lib/analytics.js` owns a capped queue and a bounded poller instead.
+- `[insight]` Pin an empty `title` on every GoatCounter call. It fills that field from the
+  document title when omitted, which is safe here only because `document.title` is the
+  static `app.title` string. The song name lives in `el.title`, not the document title —
+  but "`<song> — sans_bass`" is an obvious future change, and it would quietly start
+  shipping song names. The defence costs one property and removes a whole class of
+  future leak.
+
+**Process learnings:**
+- `[insight]` A `once()` event that has already fired is still observable after the fact:
+  call it again with a recording sink and watch it be suppressed, against a control name
+  that is not. That is how the load-time `lang-zh-TW` event was verified even though it had
+  already drained into GoatCounter before any test sink could be installed.
+- `[gotcha]` The `model-cached` branch is the one you get for free and the one that proves
+  nothing. Both worker branches only got covered by deleting the Cache Storage entry and
+  letting the 285 MB model re-download — which re-caches itself, so the profile ends up
+  where it started.
 
 ---
 

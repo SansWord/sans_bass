@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sans_bass — iOS separation spike</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px; font: 15px/1.5 -apple-system, system-ui, sans-serif;
+         background: #14161a; color: #e6e8ec; }
+  h1 { font-size: 17px; margin: 0 0 2px; }
+  .build { font: 12px ui-monospace, monospace; color: #7de08a; margin-bottom: 10px; }
+  .note { font-size: 13px; color: #98a0ad; margin: 0 0 12px; }
+  fieldset { border: 1px solid #2b3038; border-radius: 8px; margin: 0 0 12px; padding: 10px; }
+  legend { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #98a0ad; padding: 0 4px; }
+  label { display: block; margin: 6px 0; font-size: 14px; }
+  select { font: inherit; background: #1d2128; color: inherit; border: 1px solid #2b3038;
+           border-radius: 6px; padding: 6px 8px; min-width: 140px; }
+  input[type=checkbox] { width: 18px; height: 18px; vertical-align: -3px; margin-right: 6px; }
+  button { font: 15px/1.2 inherit; background: #232830; color: #e6e8ec; border: 1px solid #363d47;
+           border-radius: 8px; padding: 12px 10px; width: 100%; margin: 6px 0; }
+  button:active { background: #2e343d; }
+  button.go { background: #2a3f5f; border-color: #3a5578; }
+  button.warn { background: #4a2b2b; border-color: #6a3c3c; }
+  .row { display: flex; gap: 8px; }
+  .row button { margin: 6px 0; }
+  textarea { width: 100%; height: 34vh; font: 12px/1.45 ui-monospace, SFMono-Regular, monospace;
+             background: #0e1013; color: #cfd4dc; border: 1px solid #2b3038; border-radius: 8px;
+             padding: 8px; white-space: pre; }
+  #prev { border-color: #5a4a20; }
+  #prev-log { height: 18vh; }
+  code { color: #7de08a; }
+</style>
+</head>
+<body>
+
+<h1>iOS separation spike</h1>
+<div class="build">build: <span id="build">?</span></div>
+<p class="note">
+  Check the build stamp matches what you were told to run — Pages caches for 10 minutes.
+  Run <strong>one probe at a time</strong>, with Safari Web Inspector → Timelines → Memory
+  recording. If the page reloads on its own, come back here: the previous run's log survives.
+</p>
+
+<fieldset id="prev" hidden>
+  <legend>previous run — it crashed or you reloaded</legend>
+  <p class="note">probe: <code id="prev-probe">?</code><br>
+     died at: <code id="prev-stage">?</code></p>
+  <textarea id="prev-log" readonly></textarea>
+</fieldset>
+
+<fieldset>
+  <legend>options</legend>
+  <label>execution provider
+    <select id="backend">
+      <option value="webgpu">webgpu (what production picks on iOS 26)</option>
+      <option value="wasm">wasm (the fallback — no GPU allocation at all)</option>
+    </select>
+  </label>
+  <label>synthetic audio length
+    <select id="seconds">
+      <option value="30">30 s</option>
+      <option value="60">60 s</option>
+      <option value="120">120 s</option>
+      <option value="240">240 s (≈ a real song)</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="release" checked>
+    release the 285 MB model ArrayBuffer after the session exists</label>
+  <label><input type="checkbox" id="accumulate">
+    allocate full-length accumulators (reproduces production; 2.29 MB per second of audio)</label>
+</fieldset>
+
+<fieldset>
+  <legend>probes — run in this order</legend>
+  <button class="go" id="run-gpu-limits">1 · WebGPU limits (safe, no model)</button>
+  <button class="go" id="run-session">2 · Load model + create session, then idle</button>
+  <button class="go" id="run-segment">3 · One segment: first run vs second run</button>
+  <button class="go" id="run-loop">4 · Full segment loop over the chosen length</button>
+  <button class="warn" id="run-gpu-ladder">5 · GPU allocation ladder (may kill the page)</button>
+</fieldset>
+
+<fieldset>
+  <legend>log</legend>
+  <textarea id="log" readonly></textarea>
+  <div class="row">
+    <button id="copy">Copy log</button>
+    <button id="clear">Clear saved</button>
+  </div>
+</fieldset>
+
+<script src="ios-webgpu.js?v=spike-1"></script>
+</body>
+</html>

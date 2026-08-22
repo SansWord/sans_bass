@@ -68,3 +68,79 @@ failure. Most likely cause: native Demucs overlap-adds with a raised-cosine tran
 weighting, while `infer.py` (and therefore this spike) uses a plain trapezoid — the two differ
 most on transient-dense material, which guitar is. Not blocking, but worth an A/B listen
 before shipping, and worth trying the raised-cosine window.
+
+---
+
+# iOS spike — why separation kills a Safari tab (2026-08-21)
+
+Branch `spike/ios-webgpu`. Question: separation crashes the tab on an iPhone. Where, and
+can a refactor fix it? Page: `spike/ios-webgpu.html`.
+
+## What the iPhone reported before the spike existed
+
+iPhone18,2, iOS 26.6, Safari. Web Inspector → Timelines, separating a full song:
+
+| Reading | Value |
+|---|---|
+| Peak footprint before the kill | **1.42 GB** |
+| `頁面` — non-JS: wasm heap + ArrayBuffer backing stores | 21.71 MB → **1.19 GB** |
+| JavaScript heap | 213.54 MB → 330.99 MB → 228 MB |
+| CPU during the final plateau | 400–500% sustained, ~3.5 s |
+
+Then, separately, a **30-second clip crashed too** — status went
+`載入模型中…` → `使用 GPU 分離中…` → reload, inside 3 seconds.
+
+`使用 GPU 分離中…` is posted on the worker's `ready` message, which is sent *after*
+`InferenceSession.create()` returns. So on the 30 s clip the model loaded, the session was
+created on WebGPU, and the kill landed inside the **first `session.run()`**. A 30 s clip
+allocates only ~69 MB of accumulators, so the length-scaled memory is not what killed it.
+
+**Two independent ceilings, same symptom:**
+
+1. Full song → WebContent process at 1.42 GB. Length-scaled: 13 full-length fp32
+   accumulators at 2.29 MB per second of audio (`separate.worker.js:108-113`), plus a
+   285 MB model `ArrayBuffer` that is never released, plus a wasm heap that never shrinks.
+2. 30 s clip → almost certainly `com.apple.WebKit.GPU`, a **separate process the Web
+   Inspector memory graph does not show**, dying during first-run shader compilation and
+   intermediate-tensor allocation. Fixed cost. Independent of song length.
+
+`N_SAMPLES = 343980` is baked into the ONNX graph's input shape, so the segment cannot be
+made smaller to shrink the GPU working set. That knob does not exist.
+
+## Desktop baseline (Apple Silicon, Chrome) — measured by this spike
+
+Read the iPhone numbers against these.
+
+| Backend | Session create | First run | Second run | Steady state |
+|---|---|---|---|---|
+| `webgpu` | 506 ms | 1389 ms | 805 ms | **9.69× realtime** |
+| `wasm`   | 307 ms | 11249 ms | 11088 ms | **0.70× realtime** |
+
+- Model out of Cache Storage: 271.6 MiB in 216 ms.
+- 30 s loop, WebGPU, accumulators on: 6 segments, 4.7 s, 6.35× realtime.
+- WebGPU adapter: `vendor=apple arch=metal-3`, `maxBufferSize` and
+  `maxStorageBufferBindingSize` both **4096 MiB**. The iOS figures are the ones to compare.
+- **The first-run penalty is the tell.** WebGPU's first run carries 584 ms of extra work
+  over its second; WASM's carries only 161 ms. That extra 584 ms *is* shader compilation
+  and GPU allocation — precisely the step the iPhone does not survive.
+
+## Probes
+
+Run one at a time, with Timelines → Memory recording. Each announces its stage to
+`localStorage` *before* running it, so a process kill still reports where it died.
+
+| # | Probe | Answers |
+|---|---|---|
+| 1 | WebGPU limits | what iOS actually reports vs the Mac's 4096 MiB |
+| 2 | Session, then idle | the fixed memory floor with nothing else allocated |
+| 3 | One segment, first vs second run | does iOS survive first-run compilation at all |
+| 4 | Full segment loop | throughput, and whether the accumulators are the binding cost |
+| 5 | GPU allocation ladder | how much GPU memory iOS hands over before OOM |
+
+Options vary what production hard-codes: execution provider (production always prefers
+WebGPU), whether the 285 MB model `ArrayBuffer` is released after session creation
+(production never releases it), and whether the full-length accumulators exist at all.
+
+## Results from the iPhone
+
+_To be filled in._

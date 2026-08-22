@@ -48,6 +48,13 @@ function on(node, ev, fn, opts) {
 
 const tr = (key, params) => window.SansI18n.t(key, params);
 
+/* Analytics must never be able to break the player. Same reasoning as on() above: a
+ * missing window.SansAnalytics (script blocked by an extension, 404 after a bad deploy)
+ * must degrade to a no-op, not take out every listener below it. */
+const gcTrack = (n) => { try { window.SansAnalytics?.track(n); } catch (e) { /* never */ } };
+const gcOnce  = (n) => { try { window.SansAnalytics?.once(n);  } catch (e) { /* never */ } };
+const gcBump  = (n) => { try { window.SansAnalytics?.bump(n);  } catch (e) { /* never */ } };
+
 /** The lane's display name. Recognised stems translate; an unrecognised file keeps the
  *  label assignStems derived from its filename, which is not translatable. */
 function laneLabel(t) {
@@ -112,9 +119,9 @@ window.addEventListener('error', (e) => {
 
 // ---------------------------------------------------------------- loading
 
-async function loadFiles(fileList, fallbackName) {
+async function loadFiles(fileList, fallbackName, source) {
   const files = [...fileList].filter(f => AUDIO_RE.test(f.name));
-  if (!files.length) { say('status.noAudioFiles', null, true); return; }
+  if (!files.length) { gcTrack('load-error'); say('status.noAudioFiles', null, true); return; }
 
   ensureAudio();
   stop(true);
@@ -141,12 +148,14 @@ async function loadFiles(fileList, fallbackName) {
 
   const loaded = settled.filter(Boolean);
   if (!loaded.length) {
+    gcTrack('load-error');
     say('status.decodeFailAll', { names: failed.join(', ') }, true);
     return;
   }
 
   const items = loaded.map((l) => ({ name: l.file.name, buffer: l.buffer }));
   buildTracks(items, commonName(files, fallbackName));
+  gcTrack(source === 'zip' ? 'zip-load' : 'song-load');
 
   if (failed.length) {
     say('status.decodeSkipped', { names: failed.join(', ') }, true);
@@ -171,6 +180,7 @@ async function loadZip(file) {
     entries = await window.SansUnzip.extract(file);
   } catch (err) {
     console.error(err);
+    gcTrack('load-error');
     /* lib/unzip.js tags every error with a stable `code` and an English `message`. Keying
      * on the code translates them without modifying that file. Three different messages
      * share the code 'not-zip', so the translation is slightly less specific than the
@@ -181,6 +191,7 @@ async function loadZip(file) {
     return;
   }
   if (!entries.length) {
+    gcTrack('load-error');
     say('status.noAudioInZip', null, true);
     return;
   }
@@ -188,7 +199,7 @@ async function loadZip(file) {
     name: e.name,
     webkitRelativePath: e.webkitRelativePath,
     arrayBuffer: async () => e.bytes.buffer,
-  })), file.name.replace(/\.zip$/i, ''));
+  })), file.name.replace(/\.zip$/i, ''), 'zip');
 }
 
 const isZip = (f) => /\.zip$/i.test(f.name);
@@ -211,10 +222,11 @@ function loadAny(file) {
 function loadSong(file) {
   if (!file) return;
   if (!AUDIO_RE.test(file.name)) {
+    gcTrack('load-error');
     say('status.notAudioFile', { name: file.name }, true);
     return;
   }
-  return loadFiles([file]);
+  return loadFiles([file], undefined, 'song');
 }
 
 /**
@@ -604,9 +616,13 @@ function stop(keepPosition) {
   draw();
 }
 
-function toggle() { playing ? stop(true) : play(); }
+function toggle() {
+  if (!playing) gcOnce('play');   // the bounce gate: did this visitor ever start audio?
+  playing ? stop(true) : play();
+}
 
 function seek(seconds) {
+  gcBump('seek');
   const wasPlaying = playing;
   if (playing) stop(true);
   offset = Math.max(0, Math.min(duration, seconds));
@@ -620,6 +636,7 @@ function seek(seconds) {
 /** Set A or B at the playhead, then restart playback so the audio graph picks it up. */
 function setLoopPoint(which) {
   if (!tracks.length) return;
+  gcBump('loop');
   const t = currentTime();
   if (which === 'a') loopA = t; else loopB = t;
 
@@ -774,6 +791,7 @@ function allLanesOff() {
  * "silence again" is a worse answer than simply offering "Mute all" once more.
  */
 function toggleAllTracks() {
+  gcOnce('unmute-all');
   if (allLanesOn()) {
     if (muteSnapshot) {
       const snap = muteSnapshot;
@@ -813,6 +831,8 @@ function setMode(mode) {
 }
 
 function toggleTrack(t) {
+  gcBump('toggle');
+  if (t.stem) gcOnce(`toggle-${t.stem}`);   // stem ids, never labels — never a filename
   // The mix lane is the exception: a full-mix file must never sound on top of its own
   // stems, so toggling it switches the whole routing instead of just its own gain.
   if (window.__hasStems && t.stem === 'mix') {
@@ -866,6 +886,7 @@ on(el.langToggle, 'click', (e) => {
 });
 window.addEventListener('sansbass:langchange', retranslate);
 renderLangToggle();
+gcOnce(`lang-${window.SansI18n.getLocale()}`);
 on(el.masterVol, 'input', () => {
   ensureAudio();
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
@@ -949,6 +970,7 @@ document.addEventListener('drop', (e) => {
     dropped.some(f => !f.type && !AUDIO_RE.test(f.name) && !isZip(f));
 
   if (looksLikeFolder) {
+    gcTrack('folder-drop');
     say('status.folderDrop', null, true);
   } else if (dropped.length > 1) {
     say('status.tooManyFiles', { n: dropped.length }, true);

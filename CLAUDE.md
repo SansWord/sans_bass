@@ -24,9 +24,12 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   locally. `file://` support was dropped in v1.5.0; `lib/stems.js`, `lib/unzip.js` and
   `lib/i18n.js` are still classic scripts only because the ESM migration is a separate
   change.
-- **Nothing leaves the machine.** No uploads, no analytics, no audio egress ever. Inbound
-  fetches are allowed and necessary: the ONNX runtime from jsDelivr and the ~285 MB model
-  from Hugging Face. Keep the distinction — "no outbound audio", not "no network calls".
+- **Nothing leaves the machine.** No audio egress ever. No uploads of user content. One
+  cookieless, anonymous usage beacon (GoatCounter) reports **event names only** — never
+  audio, never filenames, never song titles. Every event name is a compile-time constant
+  or a stem id from a fixed set of seven; see `lib/analytics.js`. Inbound fetches are
+  allowed and necessary: the ONNX runtime from jsDelivr and the ~285 MB model from
+  Hugging Face. Keep the distinction — "no outbound audio", not "no network calls".
 - **Deployable as a static site.** GitHub Pages hosts it with no backend. This depends on
   `ort.env.wasm.numThreads = 1` (no SharedArrayBuffer → no COOP/COEP, which Pages cannot
   set). Never commit the 285 MB model; it is fetched at runtime.
@@ -148,9 +151,9 @@ out of the project; never commit them.
   returning visitor can run a stale `app.js` against a fresh `index.html`. That is not a
   degraded page — the old script throws on an element the new markup dropped, and because
   `app.js` wires everything from one flat run of top-level statements, every listener *below*
-  the throw silently never registers. Bump the version in `index.html` (6), `separate.js` (3)
+  the throw silently never registers. Bump the version in `index.html` (7), `separate.js` (3)
   and `separate.worker.js` (1); `tests/versions.test.js` fails if they drift. Currently
-  `v1.6.0`.
+  `v1.7.0`.
 - **UI strings live in `lib/i18n.js`, and both locales must move together.** `data-i18n`
   sets `textContent`, `data-i18n-html` sets `innerHTML` (our own dictionary values only,
   never user data), `data-i18n-attr` sets attributes. Adding a key to one locale and
@@ -190,11 +193,35 @@ out of the project; never commit them.
 - **Near-silent `piano`/`other` stems are correct** for a guitar band, not a bug. Verify with
   `ffmpeg -af volumedetect` before chasing it.
 - **`htdemucs_6s` is the only model that splits out guitar.** Don't switch to plain `htdemucs`.
+- **GoatCounter's script tag must be `https://`, not protocol-relative.** Their docs give
+  `//gc.zgo.at/count.js`. `tests/versions.test.js` exempts external URLs with
+  `url.startsWith('http')`, so a protocol-relative URL is treated as a local asset missing
+  its `?v=` and fails the suite.
+- **`allow_local` is deliberately not set.** GoatCounter filters localhost and private-IP
+  requests, so events fired from `scripts/serve.sh` silently vanish — which looks exactly
+  like broken instrumentation. Verify with `SansAnalytics.setSink(console.log)` instead;
+  flip `allow_local` only if the network leg itself needs proving, and never commit it.
+- **`play` is instrumented in `toggle()`, not `play()`.** `play()` is re-entered by `seek()`
+  and `refreshLoop()`, so counting there would fire on every scrub during playback.
+- **No event name may carry user content.** Stem ids come from `t.stem`, never
+  `laneLabel()`. An empty `title` is passed to GoatCounter explicitly: it fills that field
+  from the surrounding element or the document title when omitted. Harmless today, because
+  `document.title` is always the static `app.title` string — but making the title dynamic
+  (`"<song> — sans_bass"`) is an obvious future change, and it would silently start putting
+  song names in the payload. Pin the field rather than relying on the title staying static.
 
 ## Working conventions
 
 - **Git repository** with `rips/` and `stems/` gitignored (the `.gitkeep` files are kept).
   Devlog timestamps come from `git log`.
+- **Every session starts on a branch and lands on `main` through a PR.** Never commit to
+  `main` directly — not for code, not for docs, not for a one-line fix. Branch first, before
+  the first commit, using the existing prefixes: `feat/`, `fix/`, `ui/`, `docs/`, `spike/`.
+  This is not ceremony. Each PR gets its own live preview at `/pr-<N>/`
+  (see [`docs/deployment.md`](docs/deployment.md)), so the branch is the only way to click
+  through a change before it reaches the published site — and `main` publishes to the root
+  the moment it moves. A design-only session branches too; the spec is reviewed the same way
+  the code is.
 - **Tests are browser pages, not a runner.** `tests/test.html` for units (read
   `window.__testResults`), `tests/parity.html` for separation accuracy against the native
   stems in the repo (read `window.__parity`). Both need `./scripts/serve.sh`. There is no

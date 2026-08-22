@@ -66,3 +66,44 @@ test('analytics: reset clears fired names', () => {
   A().once('play');
   assertEq(again.join(','), 'play');
 });
+
+test('analytics: bump fires the base event on the first occurrence', () => {
+  const seen = collect();
+  A().bump('seek');
+  assertEq(seen.join(','), 'seek');
+});
+
+test('analytics: bump fires a bucket at each power of two', () => {
+  const seen = collect();
+  for (let i = 0; i < 8; i++) A().bump('seek');
+  assertEq(seen.join(','), 'seek,seek-2,seek-4,seek-8');
+});
+
+test('analytics: bump is silent on counts that are not powers of two', () => {
+  const seen = collect();
+  for (let i = 0; i < 7; i++) A().bump('seek');   // counts 1..7
+  assertEq(seen.join(','), 'seek,seek-2,seek-4');
+});
+
+test('analytics: bump counts each name independently', () => {
+  const seen = collect();
+  A().bump('seek');
+  A().bump('toggle');
+  A().bump('seek');
+  assertEq(seen.join(','), 'seek,toggle,seek-2');
+});
+
+test('analytics: bump stops at the 4096 cap', () => {
+  const seen = collect();
+  for (let i = 0; i < 8192; i++) A().bump('seek');
+  assertEq(seen[seen.length - 1], 'seek-4096', 'the last bucket is 4096');
+  assertEq(seen.length, 13, 'base plus twelve buckets: 2,4,...,4096');
+});
+
+test('analytics: reset clears bump counters', () => {
+  collect();
+  for (let i = 0; i < 4; i++) A().bump('seek');
+  const again = collect();
+  A().bump('seek');
+  assertEq(again.join(','), 'seek', 'the counter restarted, so the base fires again');
+});

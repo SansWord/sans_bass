@@ -191,7 +191,8 @@ you pick.
 ## Step 3b — or skip all that: separate in the browser
 
 Steps 2 and 3 are the fast path for a whole album. For a single song you can skip Python,
-Homebrew and Demucs entirely and let the browser do it.
+Homebrew and Demucs entirely and let the browser do it — on a desktop; see the first
+bullet below.
 
 ```bash
 ./scripts/serve.sh          # http://localhost:8777
@@ -208,6 +209,11 @@ the same `htdemucs_6s` weights as the local pipeline, exported to ONNX and run t
 
 Details worth knowing:
 
+- **It needs a computer.** On a phone or tablet the separation controls are hidden and the
+  page says so instead. iOS kills the tab at the first inference step whatever settings are
+  used, and the model's input size is fixed inside the ONNX graph, so there is nothing to
+  tune. Separate on a desktop, then load the saved `.zip` on the phone — playback, muting
+  and A–B repeat all work there.
 - **It is as fast as the native pipeline.** Measured on Apple Silicon: 23.9 s for a 200 s
   song and 26.7 s for a 206 s song — roughly 8x realtime, against ~22 s for `prep-stems.sh`.
 - **It closely matches the native output**, at zero sample lag on every stem measured.

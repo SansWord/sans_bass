@@ -41,6 +41,10 @@ Running log of what was built and what was learned building it.
 - The separation panel now holds one sentence instead of four controls on a phone or tablet.
 - The drop zone stops promising in-browser separation there.
 - `separate-handheld-blocked`, fired with `once()`.
+- README gains a desktop-only caveat as the first bullet under Step 3b; `CLAUDE.md` gains
+  the gate as a gotcha, so the next session does not try to make separation run on a phone.
+- Verified on a real iPhone against the `pr-11` preview, which is the only way S14–S16 can
+  be checked end to end — a handheld is not reachable from browser automation.
 
 **Key technical learnings:**
 - `[gotcha]` **Forcing `executionProviders: ['wasm']` does not change the ORT runtime binary.** `ort.webgpu.bundle.min.mjs` loads the asyncify-instrumented `ort-wasm-simd-threaded.asyncify.wasm` (24.3 MB) whatever provider you name; the plain 13.5 MB binary only ships with `ort.wasm.bundle.min.mjs`. Three rounds of "we tested WASM" were never true.

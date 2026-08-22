@@ -195,6 +195,14 @@ out of the project; never commit them.
 
 - **Git repository** with `rips/` and `stems/` gitignored (the `.gitkeep` files are kept).
   Devlog timestamps come from `git log`.
+- **Every session starts on a branch and lands on `main` through a PR.** Never commit to
+  `main` directly — not for code, not for docs, not for a one-line fix. Branch first, before
+  the first commit, using the existing prefixes: `feat/`, `fix/`, `ui/`, `docs/`, `spike/`.
+  This is not ceremony. Each PR gets its own live preview at `/pr-<N>/`
+  (see [`docs/deployment.md`](docs/deployment.md)), so the branch is the only way to click
+  through a change before it reaches the published site — and `main` publishes to the root
+  the moment it moves. A design-only session branches too; the spec is reviewed the same way
+  the code is.
 - **Tests are browser pages, not a runner.** `tests/test.html` for units (read
   `window.__testResults`), `tests/parity.html` for separation accuracy against the native
   stems in the repo (read `window.__parity`). Both need `./scripts/serve.sh`. There is no

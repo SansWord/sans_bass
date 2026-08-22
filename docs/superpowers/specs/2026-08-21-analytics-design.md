@@ -101,15 +101,15 @@ the gap between `separate-start` and `separate-done` is the only way to see it; 
 split, because if most users land on `wasm` then the README's "20–25 seconds per song" is wrong
 for them and nothing else would reveal it.
 
-### Interaction events — once per session, plus cumulative thresholds
+### Interaction events — once per session, plus power-of-two buckets
 
-| Base | Thresholds | Notes |
+| Base | Buckets | Notes |
 |---|---|---|
 | `play` | — | first playback of a session; the bounce gate |
-| `toggle` | `toggle-5`, `toggle-20` | any lane |
+| `toggle` | `toggle-2` … `toggle-4096` | any lane |
 | `toggle-<stem>` | — | once per stem per session |
-| `seek` | `seek-10`, `seek-50` | pointer scrub and arrow keys both |
-| `loop` | `loop-3`, `loop-10` | an A or B point being set |
+| `seek` | `seek-2` … `seek-4096` | pointer scrub and arrow keys both |
+| `loop` | `loop-2` … `loop-4096` | an A or B point being set |
 | `unmute-all` | — | the `0` key / all-toggle control, v1.6.0 |
 | `lang-en`, `lang-zh-TW` | — | once per session, the active locale |
 
@@ -118,31 +118,44 @@ for them and nothing else would reveal it.
 `toggle-bass` reads identically in both locales. A lane with no recognised stem fires only the
 generic `toggle`, never a name derived from its filename.
 
-### Why cumulative thresholds rather than exclusive buckets
+### Why power-of-two buckets, fired as they are crossed
 
-The requirement was per-session discovery plus intensity. The obvious implementation — count
-occurrences, then fire one of `seek-light`/`seek-medium`/`seek-heavy` at session end — was
-rejected.
+The requirement is per-session discovery plus intensity, **without anyone having to guess what
+"intensive" means** — the frequency distribution is one of the things this instrumentation
+exists to discover, so hard-coding cut points would bake in the guess it is supposed to test.
 
-GoatCounter documents no `sendBeacon` support and no pagehide handling, so a session-end flush
-means hand-building the request. Every session whose flush is dropped (backgrounded tab, browser
-kill, iOS) would then contribute **nothing at all**, not even the base `seek` event, and that
-loss is silently biased toward mobile.
-
-Instead each counter fires its base event on the 1st occurrence and one event per threshold at
-the moment that threshold is crossed. Nothing is deferred, so nothing can be lost:
+Each counter fires its base event on the 1st occurrence, then one event each time the count
+reaches the next power of two, capped at 4096. The result is a cumulative survival curve:
 
 ```
 seek        38     sessions that seeked at all
-seek-10     21     ... of which reached 10+
-seek-50      5     ... of which reached 50+
+seek-2      31     ... reached 2+
+seek-4      24     ... reached 4+
+seek-8      19     ... reached 8+
+seek-16     12     ... reached 16+
+seek-32      7     ... reached 32+
+seek-64      3     ... reached 64+
+seek-128     1     ... reached 128+
 ```
 
-Same distribution, read as a funnel instead of a histogram; light sessions are `38 − 21 = 17`.
-The only thing given up is precise attribution of a session that ends between two thresholds,
-which the exclusive version only gets right when its flush survives anyway.
+That is the whole distribution rather than a summary of it: the median falls where the curve
+crosses half the base count, the tail is directly visible, and named thresholds can be chosen
+later from real data. Log2 bounds itself — a 1,000-seek session fires 10 events, not 1,000 —
+and the 4096 cap makes the name set finite regardless of input.
 
-Cut points: `toggle` 5/20, `seek` 10/50, `loop` 3/10.
+Two alternatives were rejected.
+
+**Exclusive buckets flushed at session end** (`seek-light`/`medium`/`heavy` at `pagehide`).
+GoatCounter documents no `sendBeacon` support and no pagehide handling, so the request would be
+hand-built, and every session whose flush is dropped — backgrounded tab, browser kill, iOS —
+would contribute **nothing at all**, not even the base `seek`. That loss is silently biased
+toward mobile.
+
+**Firing every occurrence** and dividing the total by the visitor count for a mean. A mean is
+precisely the statistic a single power user distorts most, and GoatCounter's documentation does
+not confirm that an event row displays unique visits alongside total fires — so the arithmetic
+rests on an unverified assumption. The bucket rows need no such assumption: each name fires at
+most once per session, so a row's count *is* a session count.
 
 ## `lib/analytics.js`
 
@@ -153,17 +166,22 @@ need it, and the ESM migration is a separate change.
 ```js
 track(name)                  // unconditional
 once(name)                   // first time this page session only
-bump(name, [t1, t2])         // fires name at 1, name-t1 at t1, name-t2 at t2
+bump(name)                   // fires name at 1, then name-2/-4/-8/... on each
+                             // power-of-two crossing, capped at name-4096
 setSink(fn)                  // tests and manual verification
 reset()                      // tests
 ```
+
+`bump` takes no cut points. Removing that parameter is deliberate: there is no call site that
+should be able to invent its own bucket scheme, because comparing two interactions across
+different bucket boundaries is exactly the mistake this design avoids.
 
 **"Session" means one page load.** GoatCounter has its own server-side session concept
 (roughly 8h, IP + user-agent hash); ours is deliberately simpler. The consequence is that a
 reload counts as a new session and can re-fire `once` events. This is an accepted inaccuracy,
 stated rather than hidden.
 
-Each threshold fires exactly once, at the moment the counter reaches the cut point, and never
+Each bucket fires exactly once, at the moment the counter reaches that power of two, and never
 again.
 
 ## Transport and the queue GoatCounter does not have
@@ -218,8 +236,10 @@ fires. That path is dead today (the local-`.onnx` picker was removed in v1.3.0, 
 `tests/analytics.test.js`, registered in `tests/test.html`, against an injected fake sink:
 
 - `once` fires once and not again.
-- `bump` fires the base event at 1, each threshold exactly at its cut point, and never refires.
-- `bump` does not fire a threshold below its cut point.
+- `bump` fires the base event at 1, and `name-2`/`-4`/`-8` exactly at counts 2, 4 and 8.
+- `bump` fires nothing at a non-power-of-two count (3, 5, 6, 7).
+- `bump` never refires a bucket it has already emitted.
+- `bump` stops at `name-4096`; a count of 8192 emits nothing further.
 - `track` fires on every call.
 - The queue drains in order once a sink appears.
 - `reset` clears both fired-names and counters.

@@ -11,7 +11,9 @@ import { test, assert, assertEq } from './assert.js';
 const FILES = ['../index.html', '../separate.js', '../separate.worker.js'];
 
 // Only local assets are versioned; a jsDelivr or Hugging Face URL carries its own version.
-const LOCAL_VERSIONED = /(?:src|href|from|Worker\()\s*=?\s*['"]([^'":]+?\.(?:js|css))(\?v=([^'"]*))?['"]/g;
+// Images are in the list because the icons are local assets like any other — an icon left
+// on a stale ?v= is a stale icon, and nothing else would notice.
+const LOCAL_VERSIONED = /(?:src|href|from|Worker\()\s*=?\s*['"]([^'":]+?\.(?:js|css|png|svg))(\?v=([^'"]*))?['"]/g;
 
 async function fetchAll() {
   const out = {};

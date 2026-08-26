@@ -10,3 +10,6 @@ stems/**
 
 # Local Claude Code settings
 .claude/settings.local.json
+
+# Superpowers brainstorm scratch (visual companion mockups)
+.superpowers/

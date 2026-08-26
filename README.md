@@ -380,9 +380,12 @@ lib/zip.js                CRC-32 + store-method ZIP writer
 lib/overlap.js            segment planning + overlap-add windows
 separate.js               in-browser separation panel
 separate.worker.js        ONNX Runtime + htdemucs_6s inference loop
+icons/icon.svg            favicon + iOS home-screen artwork (source of truth)
+icons/*.png               rasterised from icon.svg by scripts/make-icons.sh
 tests/test.html           unit tests   (read window.__testResults)
 tests/parity.html         separation accuracy vs native stems (read window.__parity)
 scripts/serve.sh          serve over http://localhost:8777
+scripts/make-icons.sh     icons/icon.svg    → the committed PNG icons (needs librsvg)
 scripts/rip-cd.sh         mounted audio CD  → lossless FLAC
 scripts/prep-stems.sh     one song          → separated, web-ready stems
 rips/                     your ripped tracks; one subfolder per album

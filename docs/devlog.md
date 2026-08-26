@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [v1.9.0](#v190--favicon-and-home-screen-icon-2026-08-26-1425) | Favicon and iPhone home-screen icon: six stem bars with the bass lane flattened, so the mark is the song *sans bass*. |
+| [v1.9.0](#v190--favicon-and-home-screen-icon-2026-08-26-1429) | Favicon and iPhone home-screen icon: six stem bars with the bass lane flattened, so the mark is the song *sans bass*. |
 | [v1.8.0](#v180--separation-is-a-desktop-feature-2026-08-21-2225) | Separation hidden on phones and tablets, with an honest message; the crash is unfixable from this repo. |
 | [v1.7.0](#v170--usage-analytics-2026-08-21-1736) | Cookieless GoatCounter events: loads, separations, and interaction intensity in power-of-two buckets. |
 | [v1.6.0](#v160--beta-test-refinements-2026-08-21-1600) | Seven things beta testers tripped over: the two Load buttons become one, `0` becomes a real mute/unmute-all toggle instead of a disabled no-op, the mode dropdown stops eating every hotkey, the keyboard hint gets legible, and the lane's click target finally looks like one. |
@@ -30,7 +30,7 @@ Running log of what was built and what was learned building it.
 
 ---
 
-## v1.9.0 — favicon and home-screen icon (2026-08-26 14:25)
+## v1.9.0 — favicon and home-screen icon (2026-08-26 14:29)
 
 **Review:** not yet
 

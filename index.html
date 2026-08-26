@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>sans_bass — stem player</title>
+<!-- Icons. Relative paths, never root-relative: the per-PR preview at /pr-<N>/ would 404 on
+     a leading slash. apple-touch-icon must be a PNG — iOS ignores an SVG here — and it is
+     180x180 full bleed because iOS applies its own corner mask. theme-color stops Safari
+     painting default light chrome above a near-black page. -->
+<link rel="icon" href="icons/icon.svg?v=1.8.0" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png?v=1.8.0" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.8.0">
+<meta name="theme-color" content="#0d0d10">
 <link rel="stylesheet" href="styles.css?v=1.8.0">
 <!-- i18n loads in <head>, before anything paints, so `lang` and the tab title are already
      right and the DOM walk can run the moment the body exists. init() is called explicitly

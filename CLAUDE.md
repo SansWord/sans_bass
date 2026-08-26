@@ -153,7 +153,7 @@ out of the project; never commit them.
   returning visitor can run a stale `app.js` against a fresh `index.html`. That is not a
   degraded page — the old script throws on an element the new markup dropped, and because
   `app.js` wires everything from one flat run of top-level statements, every listener *below*
-  the throw silently never registers. Bump the version in `index.html` (11), `separate.js` (3)
+  the throw silently never registers. Bump the version in `index.html` (12), `separate.js` (3)
   and `separate.worker.js` (1); `tests/versions.test.js` fails if they drift — and it
   covers `.png` and `.svg` as well as `.js`/`.css`, so the icons are included. Currently
   `v1.9.0`.

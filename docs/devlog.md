@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.9.0](#v190--favicon-and-home-screen-icon-2026-08-26-1425) | Favicon and iPhone home-screen icon: six stem bars with the bass lane flattened, so the mark is the song *sans bass*. |
 | [v1.8.0](#v180--separation-is-a-desktop-feature-2026-08-21-2225) | Separation hidden on phones and tablets, with an honest message; the crash is unfixable from this repo. |
 | [v1.7.0](#v170--usage-analytics-2026-08-21-1736) | Cookieless GoatCounter events: loads, separations, and interaction intensity in power-of-two buckets. |
 | [v1.6.0](#v160--beta-test-refinements-2026-08-21-1600) | Seven things beta testers tripped over: the two Load buttons become one, `0` becomes a real mute/unmute-all toggle instead of a disabled no-op, the mode dropdown stops eating every hotkey, the keyboard hint gets legible, and the lane's click target finally looks like one. |
@@ -28,6 +29,50 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.9.0 — favicon and home-screen icon (2026-08-26 14:25)
+
+**Review:** not yet
+
+**Design docs:**
+- Favicon: [Spec](superpowers/specs/2026-08-26-favicon-design.md) [Plan](superpowers/plans/2026-08-26-favicon.md)
+
+**What was built:**
+- `icons/icon.svg` — six bars in the stem colours, in lane order, with the bass lane
+  flattened to a grey stub. The gap is the point: the app exists so you can play that part
+  yourself, so the mark is the song *sans bass*.
+- `scripts/make-icons.sh` rasterises it to a committed 32 px favicon and a 180×180
+  apple-touch-icon. Regeneration only — nothing runs it at serve or deploy time, so the
+  no-build-step constraint is untouched.
+- Three `<link>`s and a `<meta name="theme-color">` in `<head>`, all relative paths so the
+  per-PR preview at `/pr-<N>/` resolves them.
+- The same mark in the header, left of the wordmark, as an `<img>` pointing at
+  `icons/icon.svg` — reused, not inlined a second time.
+- `tests/versions.test.js` widened from `.js|.css` to `.js|.css|png|svg`.
+
+**Key technical learnings:**
+- `[gotcha]` iOS ignores an SVG `apple-touch-icon`. The home-screen tile has to be a PNG,
+  which is the entire reason a rasterising script exists in a project that has no build step.
+- `[gotcha]` `rsvg-convert` leaves the canvas transparent wherever the SVG does not paint,
+  and iOS composites a transparent tile onto black. `--background-color` is what guarantees
+  an opaque icon — the background `<rect>` inside the artwork is not, because a later margin
+  or viewBox change would silently reintroduce transparency.
+- `[insight]` The cache-buster guard only protects the file types its regex lists. It had
+  been `.js|.css` since v1.4.0, so adding image assets without widening it would have created
+  exactly the silent staleness the test exists to prevent — and the suite would have stayed
+  green while doing it. Verified by adding the three `<link>`s unversioned first and watching
+  the widened test name all three.
+- `[note]` Chrome fetches the favicon outside the page's network panel, so
+  `read_network_requests` shows nothing. The `serve.sh` access log is the observation that
+  works: a 200 for `icons/icon.svg?v=1.9.0`, and no `/favicon.ico` probe.
+- `[note]` iOS applies its own corner mask to a home-screen icon, so the artwork ships full
+  bleed. Pre-rounded corners render as a visible double radius.
+- `[gotcha]` The header mark costs 36 px, which is enough to push the bar into horizontal
+  overflow below ~348 px — the five items had been fitting with almost nothing to spare.
+  Chrome will not resize a window narrower than about 500 px, so the honest way to measure
+  this is an `<iframe>` at the target width: it gets its own viewport and evaluates `@media`
+  for real, where a cloned element in the main document does not. Hence
+  `@media (max-width: 359px) { .brand-mark { display: none } }`.
 
 ## v1.8.0 — separation is a desktop feature (2026-08-21 22:25)
 

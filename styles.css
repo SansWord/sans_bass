@@ -51,6 +51,26 @@ body { min-height: 100vh; }
 }
 .bar h1 span { color: var(--accent); }
 
+.brand { display: flex; align-items: center; gap: 10px; }
+
+/* Sized and rounded like an app icon rather than a logo, so it reads as the same mark the
+   user sees on their home screen. `flex: none` keeps it square when the header gets tight. */
+.brand-mark {
+  display: block;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+/* Below ~348px the header's items stop fitting and the bar scrolls sideways — measured by
+   cloning the bar at a range of widths, not guessed. The mark is the only decorative item
+   in there, so it is the one that goes. Every current phone is 375px or wider; this is
+   iPhone SE 1st-generation territory. */
+@media (max-width: 359px) {
+  .brand-mark { display: none; }
+}
+
 .bar-right { display: flex; align-items: center; gap: 14px; }
 
 /* Sits at --dim so it never competes with the pink Load button, and comes up to --fg on

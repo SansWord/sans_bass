@@ -29,7 +29,14 @@
 <body>
 
 <header class="bar">
-  <h1>sans<span>_</span>bass</h1>
+  <!-- The favicon, reused rather than inlined a second time: one artwork file, so a lane
+       colour change cannot leave the header and the tab icon disagreeing. It is the same
+       URL the <link rel="icon"> above already fetched, so it costs no extra request.
+       alt="" because the <h1> beside it already says the name — the mark is decorative. -->
+  <div class="brand">
+    <img class="brand-mark" src="icons/icon.svg?v=1.9.0" alt="" width="26" height="26">
+    <h1>sans<span>_</span>bass</h1>
+  </div>
   <div class="bar-right">
     <!-- Icon-only, because the header already carries three controls and a fourth text item
          crowds it. The mark is an inline path — no outbound asset fetch, same as everything

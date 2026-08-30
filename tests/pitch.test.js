@@ -243,3 +243,47 @@ test('pitch: notesToChroma survives an empty note list', () => {
   assertEq(chroma.length, 12, 'still twelve bins');
   for (let i = 0; i < 12; i++) assertClose(chroma[i], 0, 1e-9, 'all zero, no NaN');
 });
+
+import { detectKey, relativeKey, KS_MAJOR, KS_MINOR } from '../lib/pitch.js';
+
+function rotate(profile, tonic) {
+  const out = new Float32Array(12);
+  for (let i = 0; i < 12; i++) out[i] = profile[(i - tonic + 12) % 12];
+  return out;
+}
+
+test('pitch: relativeKey pairs each key with its relative', () => {
+  assertEq(relativeKey(0, 'major').tonic, 9, 'C major -> A minor');
+  assertEq(relativeKey(0, 'major').mode, 'minor', 'mode flips');
+  assertEq(relativeKey(9, 'minor').tonic, 0, 'A minor -> C major');
+  assertEq(relativeKey(7, 'major').tonic, 4, 'G major -> E minor');
+});
+
+test('pitch: detectKey recovers the profile it was built from', () => {
+  assertEq(detectKey(rotate(KS_MAJOR, 0)).key, 'C major', 'C major profile');
+  assertEq(detectKey(rotate(KS_MINOR, 9)).key, 'A minor', 'A minor profile');
+  assertEq(detectKey(rotate(KS_MAJOR, 7)).key, 'G major', 'G major profile');
+});
+
+test('pitch: detectKey reports its relative and a positive margin', () => {
+  const r = detectKey(rotate(KS_MAJOR, 0));
+  assertEq(r.relative, 'A minor', 'the caveat names the relative minor');
+  assertEq(r.tonic, 0, 'tonic pitch class');
+  assertEq(r.mode, 'major', 'mode');
+  assert(r.margin > 0, 'the winner beats the runner-up');
+});
+
+test('pitch: detectKey ranks descending and returns five candidates', () => {
+  const r = detectKey(rotate(KS_MINOR, 9));
+  assertEq(r.ranked.length, 5, 'top five');
+  for (let i = 1; i < r.ranked.length; i++) {
+    assert(r.ranked[i - 1].score >= r.ranked[i].score, `ranked descending at ${i}`);
+  }
+  assertClose(r.margin, r.ranked[0].score - r.ranked[1].score, 1e-6, 'margin is the gap to second');
+});
+
+test('pitch: detectKey survives an all-zero chroma', () => {
+  const r = detectKey(new Float32Array(12));
+  assertEq(typeof r.key, 'string', 'still returns a key rather than throwing');
+  assertClose(r.ranked[0].score, 0, 1e-6, 'a flat profile correlates with nothing');
+});

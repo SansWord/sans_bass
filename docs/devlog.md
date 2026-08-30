@@ -43,9 +43,14 @@ Running log of what was built and what was learned building it.
   median smoothing, note segmentation, duration-weighted chroma, Krumhansl-Schmuckler key.
   No DOM, no `AudioContext`, no Worker — it takes `Float32Array`s and returns data, so the
   app can wrap it in a Worker later without the module changing.
-- `tests/pitch.test.js` — 30 tests over synthesised input. No audio files, no network.
-- `tests/notes.html` — bench page: key block, phrase view, note table, `window.__notes`.
-  Every threshold is overridable from the query string.
+- `tests/pitch.test.js` and `tests/sonify.test.js` — 36 tests over synthesised input.
+  No audio files, no network.
+- `lib/sonify.js` — pure ESM: plays the detected notes back as tones (piano or guitar
+  timbre) so a transcription can be judged by ear against the stem it came from.
+- `tests/notes.html` — bench page: key block, phrase view, note table, `window.__notes`,
+  and a transport that plays the synthesised transcription **against** the stem on one
+  shared `t0`, with independent synth and stem gain. Every threshold is overridable from
+  the query string; phrase lines carry their start second for seeking.
 - No UI, no app wiring. Separation is unchanged, and the `?v=` asset version stays at
   v1.9.0 because nothing `index.html` loads was touched.
 
@@ -93,6 +98,21 @@ Roughly 7 s per 4-minute track, about 33x realtime, single-threaded on the main 
   it could flake.
 - `[gotcha]` A 32-bit LCG written `seed * 1103515245` exceeds 2^53 and loses precision as a
   double before `&` coerces it. `Math.imul` is the 32-bit multiply.
+- `[insight]` The rAF lesson demonstrated itself, in the good way. Driving the bench page's
+  transport from an automated (hidden) tab, the playhead advanced 2.00 s over 2 s of wall
+  clock and every note landed correctly — while `requestAnimationFrame` fired **zero**
+  frames in 1.2 seconds, so the on-screen readout never moved. Transport on the audio
+  graph, drawing on rAF: the split is what let one half keep working while the other was
+  suspended entirely. The corollary is that a hidden tab cannot verify anything drawn.
+- `[gotcha]` Sonify the **quantised** MIDI pitch, not the measured cents. Replaying the
+  measured pitch reproduces the performance and therefore always sounds "right"; playing
+  what the transcription claims is what makes a wrong note audible against the singer.
+- `[note]` `exponentialRampToValueAtTime` cannot reach or leave zero, so a note envelope
+  needs a small floor (1e-4) at both ends rather than a clean 0.
+- `[note]` An `OfflineAudioContext` never advances `currentTime` on its own, so a
+  lookahead scheduler queues nothing there. `lib/sonify.js` takes `aheadSeconds`, and the
+  tests pass `Infinity` to schedule everything up front — which is what makes the note
+  scheduler testable by rendering and inspecting actual samples.
 
 ## v1.9.0 — favicon and home-screen icon (2026-08-26 14:29)
 

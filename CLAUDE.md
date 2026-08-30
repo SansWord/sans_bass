@@ -82,6 +82,7 @@ lib/i18n.js                        zh-TW/en dictionary + runtime, classic script
 lib/platform.js                    isHandheld() device predicate, classic script
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
 lib/pitch.js                       ESM — YIN pitch tracking, note segmentation, key
+lib/sonify.js                      ESM — plays detected notes back as tones
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 tests/test.html                    units      → window.__testResults
 tests/parity.html                  accuracy   → window.__parity

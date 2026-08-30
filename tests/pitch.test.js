@@ -135,3 +135,52 @@ test('pitch: f0Track marks silence unvoiced', () => {
   const track = f0Track(new Float32Array(11025), 11025);
   assert([...track.cents].every((c) => c === 0), 'nothing in silence is voiced');
 });
+
+import { segmentNotes } from '../lib/pitch.js';
+
+// Build a track by hand so segmentation is tested without YIN in the way.
+// `spec` is a list of [centsOrZero, frameCount].
+function fakeTrack(spec, frameSeconds = 128 / 11025) {
+  const cents = [];
+  for (const [c, n] of spec) for (let i = 0; i < n; i++) cents.push(c);
+  const arr = Float32Array.from(cents);
+  const t = new Float32Array(arr.length);
+  const conf = new Float32Array(arr.length);
+  for (let i = 0; i < arr.length; i++) { t[i] = i * frameSeconds; conf[i] = arr[i] ? 0.9 : 0; }
+  return { t, f0: new Float32Array(arr.length), conf, cents: arr, frameSeconds };
+}
+
+test('pitch: segmentNotes splits on an unvoiced gap', () => {
+  const notes = segmentNotes(fakeTrack([[6000, 40], [0, 5], [6400, 40]]));
+  assertEq(notes.length, 2, 'two notes');
+  assertEq(notes[0].name, 'C4', 'first note');
+  assertEq(notes[1].name, 'E4', 'second note');
+  assert(notes[0].end <= notes[1].start, 'notes do not overlap');
+});
+
+test('pitch: segmentNotes splits on a sustained pitch change with no gap', () => {
+  const notes = segmentNotes(fakeTrack([[6000, 40], [6400, 40]]));
+  assertEq(notes.length, 2, 'a 400-cent step is well past the 60-cent threshold');
+  assertEq(notes[0].midi, 60, 'C4');
+  assertEq(notes[1].midi, 64, 'E4');
+});
+
+test('pitch: segmentNotes ignores a one-frame excursion', () => {
+  const notes = segmentNotes(fakeTrack([[6000, 20], [6400, 1], [6000, 20]]));
+  assertEq(notes.length, 1, 'one frame off pitch is not a new note');
+  assertEq(notes[0].midi, 60, 'the median holds it at C4');
+});
+
+test('pitch: segmentNotes drops notes shorter than the floor', () => {
+  // 3 frames is ~35 ms, under the 80 ms default.
+  const notes = segmentNotes(fakeTrack([[6000, 40], [0, 5], [6400, 3], [0, 5], [6000, 40]]));
+  assertEq(notes.length, 2, 'the blip between the two long notes is discarded');
+});
+
+test('pitch: segmentNotes reports duration, name and confidence', () => {
+  const notes = segmentNotes(fakeTrack([[6900, 43]]));
+  assertEq(notes.length, 1, 'one note');
+  assertEq(notes[0].name, 'A4', '6900 cents is concert A');
+  assertClose(notes[0].end - notes[0].start, 43 * (128 / 11025), 1e-3, 'duration covers every frame');
+  assertClose(notes[0].confidence, 0.9, 1e-3, 'mean frame confidence');
+});

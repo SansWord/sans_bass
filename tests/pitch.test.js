@@ -213,3 +213,33 @@ test('pitch: detectNotes finds nothing in silence', () => {
   const { notes } = detectNotes([new Float32Array(44100)], 44100);
   assertEq(notes.length, 0, 'no notes in silence');
 });
+
+import { notesToChroma } from '../lib/pitch.js';
+
+test('pitch: notesToChroma weights by duration, not by note count', () => {
+  const notes = [
+    { start: 0, end: 1, midi: 60, cents: 6000, name: 'C4', confidence: 1 },   // 1 s of C
+    { start: 1, end: 4, midi: 67, cents: 6700, name: 'G4', confidence: 1 },   // 3 s of G
+  ];
+  const chroma = notesToChroma(notes);
+  assertEq(chroma.length, 12, 'twelve pitch classes');
+  assertClose(chroma[0], 0.25, 1e-6, 'C holds a quarter of the time');
+  assertClose(chroma[7], 0.75, 1e-6, 'G holds three quarters');
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += chroma[i];
+  assertClose(sum, 1, 1e-6, 'normalised');
+});
+
+test('pitch: notesToChroma folds octaves together', () => {
+  const notes = [
+    { start: 0, end: 1, midi: 60, cents: 6000, name: 'C4', confidence: 1 },
+    { start: 1, end: 2, midi: 72, cents: 7200, name: 'C5', confidence: 1 },
+  ];
+  assertClose(notesToChroma(notes)[0], 1, 1e-6, 'C4 and C5 land in the same bin');
+});
+
+test('pitch: notesToChroma survives an empty note list', () => {
+  const chroma = notesToChroma([]);
+  assertEq(chroma.length, 12, 'still twelve bins');
+  for (let i = 0; i < 12; i++) assertClose(chroma[i], 0, 1e-9, 'all zero, no NaN');
+});

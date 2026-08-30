@@ -81,9 +81,11 @@ lib/unzip.js                       zip reading, classic script — window.SansUn
 lib/i18n.js                        zh-TW/en dictionary + runtime, classic script
 lib/platform.js                    isHandheld() device predicate, classic script
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
+lib/pitch.js                       ESM — YIN pitch tracking, note segmentation, key
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 tests/test.html                    units      → window.__testResults
 tests/parity.html                  accuracy   → window.__parity
+tests/notes.html                   notes+key  → window.__notes
 .github/workflows/                 Pages deploy + per-PR previews (see docs/deployment.md)
 scripts/serve.sh                   http://localhost:8777 (required for separation)
 scripts/rip-cd.sh                  CD → rips/*.flac

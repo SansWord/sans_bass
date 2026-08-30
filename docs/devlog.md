@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.10.0](#v1100--notes-and-key-from-a-vocal-stem-2026-08-30-1417) | Notes and key detection from a stem: decimated YIN, segmentation, Krumhansl-Schmuckler key with a confidence margin. Bench page only, no UI. |
 | [v1.9.0](#v190--favicon-and-home-screen-icon-2026-08-26-1429) | Favicon and iPhone home-screen icon: six stem bars with the bass lane flattened, so the mark is the song *sans bass*. |
 | [v1.8.0](#v180--separation-is-a-desktop-feature-2026-08-21-2225) | Separation hidden on phones and tablets, with an honest message; the crash is unfixable from this repo. |
 | [v1.7.0](#v170--usage-analytics-2026-08-21-1736) | Cookieless GoatCounter events: loads, separations, and interaction intensity in power-of-two buckets. |
@@ -29,6 +30,69 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.10.0 — notes and key from a vocal stem (2026-08-30 14:17)
+
+**Review:** not yet
+
+**Design docs:**
+- Notes and key detection: [Spec](superpowers/specs/2026-08-30-pitch-detection-design.md) [Plan](superpowers/plans/2026-08-30-pitch-detection.md)
+
+**What was built:**
+- `lib/pitch.js` — pure ESM, 433 lines: 4:1 anti-aliased decimation, YIN, voicing gate and
+  median smoothing, note segmentation, duration-weighted chroma, Krumhansl-Schmuckler key.
+  No DOM, no `AudioContext`, no Worker — it takes `Float32Array`s and returns data, so the
+  app can wrap it in a Worker later without the module changing.
+- `tests/pitch.test.js` — 30 tests over synthesised input. No audio files, no network.
+- `tests/notes.html` — bench page: key block, phrase view, note table, `window.__notes`.
+  Every threshold is overridable from the query string.
+- No UI, no app wiring. Separation is unchanged, and the `?v=` asset version stays at
+  v1.9.0 because nothing `index.html` loads was touched.
+
+**Measured on three tracks** (233 s, 209 s, 244 s vocal stems):
+
+| track | notes | key | margin | runner-up | mean dev |
+|---|---|---|---|---|---|
+| 6 南國的風 | 437 | D# major | 0.244 | C minor | +2.2¢ |
+| 12 早安台灣 | 368 | G# major | 0.037 | D# major | −1.1¢ |
+| 9 繼續向前行 | 496 | B major | 0.039 | F# major | −1.9¢ |
+
+Roughly 7 s per 4-minute track, about 33x realtime, single-threaded on the main thread.
+
+**Key technical learnings:**
+- `[insight]` Decimating to 11025 Hz before YIN is what makes pure-DSP pitch tracking
+  viable here. The lag search is 16x cheaper, taking a 4-minute track from ~2.1e10
+  operations to ~1.3e9. Measured 7.0 s for 233 s of audio — no model download needed, and
+  unlike separation there is no reason to gate this to desktop.
+- `[gotcha]` Decimating without an anti-alias lowpass folds everything above 5512 Hz into
+  the f0 search range, where it is indistinguishable from a real fundamental. The 63-tap
+  windowed sinc is load-bearing, not polish.
+- `[gotcha]` YIN's cumulative mean must be accumulated from tau = 1 even when the search
+  starts at tauMin. Starting the running mean at tauMin changes the normalisation and moves
+  the threshold comparison.
+- `[insight]` **The predicted key confusion was the wrong one.** The design expected
+  tonic-vs-relative errors (A minor read as C major), because a key and its relative share
+  all seven pitch classes. What actually showed up on two of three tracks was
+  **tonic vs dominant** — Ab 0.718 against Eb 0.680, B 0.853 against F# 0.813. A sung
+  melody leans hard on degrees 1 and 5, and the dominant key's profile weights those two
+  the same way. The bass stem fixes this at least as well as it fixes the relative case,
+  since bass notes land on roots.
+- `[insight]` Reporting the margin to the runner-up is what made the above visible at all.
+  Track 1 at 0.244 and tracks 2-3 at ~0.038 are qualitatively different answers, and
+  without the margin all three would have read as equally confident.
+- `[note]` Mean deviation from equal temperament came out within ±2.2 cents on all three
+  tracks, so these records sit on A440 and a wrong note cannot be blamed on tuning.
+- `[note]` Duration-weighted chroma, rather than note counts, is what lets a held tonic
+  outrank a flurry of passing notes.
+
+**Process learnings:**
+- `[gotcha]` A synthesised two-note test needs its silent gap sized against the *analysis
+  window*, not the gap threshold. Only `gap - window` worth of frames fall entirely inside
+  the silence, so an 80 ms gap with a 46 ms window yields ~2 fully-silent frames — exactly
+  `gapFrames`, leaving the test balanced on its threshold. Caught in plan review, before
+  it could flake.
+- `[gotcha]` A 32-bit LCG written `seed * 1103515245` exceeds 2^53 and loses precision as a
+  double before `&` coerces it. `Math.imul` is the 32-bit multiply.
 
 ## v1.9.0 — favicon and home-screen icon (2026-08-26 14:29)
 

@@ -74,3 +74,35 @@ test('pitch: decimate averages channels to mono', () => {
   const { samples } = decimate([left, right], 44100);
   assert(interiorRms(samples, 200) < 1e-6, 'anti-phase channels cancel to silence');
 });
+
+import { yinFrame } from '../lib/pitch.js';
+
+test('pitch: yinFrame resolves sines across the whole search range', () => {
+  const SR = 11025;
+  // 20 cents is a fifth of a semitone. Parabolic interpolation over the CMND curve has a
+  // small systematic bias, worst at the top of the range where a period is only ~10
+  // samples, so a 1-cent assertion would be flaky without being any more convincing.
+  for (const hz of [82.41, 220, 440, 1046.5]) {
+    const buf = sine(hz, 0.2, SR);
+    const r = yinFrame(buf, 0, SR);
+    assertClose(centsFromHz(r.f0), centsFromHz(hz), 20, `${hz} Hz within 20 cents`);
+    assert(r.confidence > 0.9, `${hz} Hz reads as strongly periodic (${r.confidence})`);
+  }
+});
+
+test('pitch: yinFrame reports low confidence on noise', () => {
+  const buf = new Float32Array(1024);
+  let seed = 12345;
+  for (let i = 0; i < buf.length; i++) {
+    // Math.imul, not *: a 32-bit LCG product exceeds 2^53 and loses precision as a double.
+    // Deterministic on purpose — a Math.random() buffer would make this test able to flake.
+    seed = (Math.imul(seed, 1103515245) + 12345) | 0;
+    buf[i] = ((seed >>> 8) / 0x800000) - 1;
+  }
+  assert(yinFrame(buf, 0, 11025).confidence < 0.5, 'white noise is not periodic');
+});
+
+test('pitch: yinFrame reports zero confidence on silence', () => {
+  const r = yinFrame(new Float32Array(1024), 0, 11025);
+  assertClose(r.confidence, 0, 1e-6, 'digital silence has no periodicity to find');
+});

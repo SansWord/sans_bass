@@ -184,3 +184,32 @@ test('pitch: segmentNotes reports duration, name and confidence', () => {
   assertClose(notes[0].end - notes[0].start, 43 * (128 / 11025), 1e-3, 'duration covers every frame');
   assertClose(notes[0].confidence, 0.9, 1e-3, 'mean frame confidence');
 });
+
+import { detectNotes } from '../lib/pitch.js';
+
+test('pitch: detectNotes finds two notes in synthesised audio at 44.1 kHz', () => {
+  const SR = 44100;
+  // A3 (220 Hz), a short silence, then C#4 (277.18 Hz).
+  const a = sine(220, 0.6, SR);
+  // 150 ms, not 80: the 46 ms analysis window means only (gap - window) worth of frames
+  // fall entirely inside the silence. An 80 ms gap yields ~2 of them, exactly gapFrames,
+  // so the split would sit right on the threshold.
+  const gap = new Float32Array(Math.round(0.15 * SR));
+  const b = sine(277.18, 0.6, SR);
+  const buf = new Float32Array(a.length + gap.length + b.length);
+  buf.set(a, 0);
+  buf.set(gap, a.length);
+  buf.set(b, a.length + gap.length);
+
+  const { notes, frames } = detectNotes([buf], SR);
+  assertEq(notes.length, 2, `two notes, got ${notes.map((n) => n.name).join(',')}`);
+  assertEq(notes[0].name, 'A3', 'first note');
+  assertEq(notes[1].name, 'C#4', 'second note');
+  assert(notes[0].end < notes[1].start, 'the silence separates them');
+  assert(frames.cents.length > 0, 'diagnostic frames come back too');
+});
+
+test('pitch: detectNotes finds nothing in silence', () => {
+  const { notes } = detectNotes([new Float32Array(44100)], 44100);
+  assertEq(notes.length, 0, 'no notes in silence');
+});

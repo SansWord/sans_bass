@@ -110,6 +110,10 @@ out of the project; never commit them.
   observable outcomes with a way to observe each one, plus the browser-test harness (faking
   a separation run, reading gain ramps, the traps that make a working app look broken).
   **Read this before changing UI behaviour, and update it in the same commit when you do.**
+- [`docs/transcription.md`](docs/transcription.md) — how a stem becomes notes: the four
+  layers (audio → frames → notes → edits), which are re-derivable and which can be lost,
+  what each interpretation parameter measurably does, and why beat tracking is not the fix
+  for spiky notes. **Read this before touching `lib/pitch.js` or anything consuming it.**
 - [`docs/deployment.md`](docs/deployment.md) — how the site is hosted: GitHub Pages off the
   `gh-pages` branch, the three CI workflows, per-PR preview URLs, and the rules that keep
   `rips/`, `stems/` and the model unpublished. **Read this before touching

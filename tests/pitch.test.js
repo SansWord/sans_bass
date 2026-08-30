@@ -106,3 +106,32 @@ test('pitch: yinFrame reports zero confidence on silence', () => {
   const r = yinFrame(new Float32Array(1024), 0, 11025);
   assertClose(r.confidence, 0, 1e-6, 'digital silence has no periodicity to find');
 });
+
+import { f0Track, medianFilterVoiced } from '../lib/pitch.js';
+
+test('pitch: medianFilterVoiced removes an isolated outlier', () => {
+  const cents = Float32Array.from([5000, 5000, 6200, 5000, 5000]);
+  medianFilterVoiced(cents, 5);
+  assertClose(cents[2], 5000, 1e-6, 'the octave jump is replaced by its neighbours');
+});
+
+test('pitch: medianFilterVoiced leaves unvoiced frames unvoiced', () => {
+  const cents = Float32Array.from([5000, 0, 5000, 5000, 5000]);
+  medianFilterVoiced(cents, 5);
+  assertClose(cents[1], 0, 1e-6, 'zero is the unvoiced sentinel and must survive');
+});
+
+test('pitch: f0Track tracks a steady tone', () => {
+  const SR = 11025;
+  const track = f0Track(sine(220, 1, SR), SR);
+  assert(track.cents.length > 60, `enough frames for one second (${track.cents.length})`);
+  assertClose(track.frameSeconds, 128 / SR, 1e-9, 'frame spacing is hop / rate');
+  const voiced = [...track.cents].filter((c) => c !== 0);
+  assert(voiced.length > track.cents.length * 0.9, 'a pure tone is voiced nearly everywhere');
+  for (const c of voiced) assertClose(c, centsFromHz(220), 20, 'every voiced frame reads A3');
+});
+
+test('pitch: f0Track marks silence unvoiced', () => {
+  const track = f0Track(new Float32Array(11025), 11025);
+  assert([...track.cents].every((c) => c === 0), 'nothing in silence is voiced');
+});

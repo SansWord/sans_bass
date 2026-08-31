@@ -27,7 +27,9 @@ const ZOOM_SEC_DEFAULT = 10;
 const ZOOM_BPS = 80;              // peak buckets per second — see SansRibbon.zoomPeaks
 const ZOOM_H = 240;   // the reading view: tall enough for a label per semitone
 
-const clampZoomSec = (n) => Math.max(ZOOM_SEC_MIN, Math.min(ZOOM_SEC_MAX, n));
+// Rounded: this value is persisted and shown, and 22.24662355096794 is neither.
+const clampZoomSec = (n) =>
+  Math.round(Math.max(ZOOM_SEC_MIN, Math.min(ZOOM_SEC_MAX, n)) * 100) / 100;
 
 let ribbon = null;         // { notes, frames, params, clip } from notes.js, or null
 let ribbonEl = null;       // { lane, canvas, txt, grip } — rebuilt with the lanes each load
@@ -545,7 +547,21 @@ function buildUI(title) {
     zTxt.textContent = tr('notes.zoom');
     const zOut = document.createElement('span');
     zOut.className = 'zoom-secs';
-    zName.append(zTxt, zOut);
+
+    /* Buttons as well as the wheel: a trackpad wheel is easy to overshoot, and on a
+     * touch device there is no wheel at all. Both routes go through zoomBy. */
+    const zBtns = document.createElement('span');
+    zBtns.className = 'zoom-btns';
+    const mkBtn = (label, factor, key) => {
+      const b = document.createElement('button');
+      b.className = 'zoom-btn';
+      b.textContent = label;
+      b.title = tr(key);
+      b.addEventListener('click', () => zoomBy(factor));
+      return b;
+    };
+    zBtns.append(mkBtn('\u2212', 1.5, 'notes.zoomOut'), mkBtn('+', 1 / 1.5, 'notes.zoomIn'));
+    zName.append(zTxt, zOut, zBtns);
 
     const zCanvas = document.createElement('canvas');
     zCanvas.className = 'wave zoomwave';
@@ -1352,30 +1368,46 @@ function attachZoom(canvas) {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const before = zoomTimeAt(canvas, e.clientX);
-    zoomSeconds = clampZoomSec(zoomSeconds * (e.deltaY > 0 ? 1.15 : 1 / 1.15));
+    zoomBy(e.deltaY > 0 ? 1.15 : 1 / 1.15);
     // Keep the instant under the cursor pinned, so zooming feels like a lens rather
     // than a jump.
-    const after = zoomTimeAt(canvas, e.clientX);
-    zoomCenter += before - after;
-    writeZoomSeconds(zoomSeconds);
+    zoomCenter += before - zoomTimeAt(canvas, e.clientX);
     draw();
   }, { passive: false });
 
+  /* A click seeks, a drag pans. Distinguished by distance travelled rather than by a
+   * modifier: panning a few pixels and expecting the playhead not to jump is the more
+   * common accident, so the threshold is generous. */
+  const DRAG_SLOP = 4;
+  let travelled = 0;
+
   canvas.addEventListener('pointerdown', (e) => {
     panning = true;
+    travelled = 0;
     lastX = e.clientX;
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!panning) return;
     const r = canvas.getBoundingClientRect();
+    travelled += Math.abs(e.clientX - lastX);
     zoomCenter -= ((e.clientX - lastX) / r.width) * zoomSeconds;
     lastX = e.clientX;
     draw();
   });
-  const end = () => { panning = false; };
-  canvas.addEventListener('pointerup', end);
-  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerup', (e) => {
+    if (!panning) return;
+    panning = false;
+    if (travelled <= DRAG_SLOP) seek(zoomTimeAt(canvas, e.clientX));
+  });
+  canvas.addEventListener('pointercancel', () => { panning = false; });
+}
+
+/** Change the zoom window width about its centre, and persist it. */
+function zoomBy(factor) {
+  zoomSeconds = clampZoomSec(zoomSeconds * factor);
+  writeZoomSeconds(zoomSeconds);
+  draw();
 }
 
 /** Song time under a client x position in the zoomed pane. */

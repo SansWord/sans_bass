@@ -446,6 +446,15 @@ input[type=range] { width: 110px; }
 .zoomwave { cursor: grab; touch-action: none; }
 .zoomwave:active { cursor: grabbing; }
 .zoom-secs { color: var(--dim); font-weight: 400; font-variant-numeric: tabular-nums; }
+.zoom-btns { display: inline-flex; gap: 4px; margin-left: 8px; }
+.zoom-btn {
+  font: 600 12px var(--mono); line-height: 1;
+  width: 22px; height: 22px; padding: 0;
+  background: #2a2a35; color: var(--text);
+  border: 1px solid var(--line); border-radius: 5px; cursor: pointer;
+}
+.zoom-btn:hover { background: #343442; }
+.zoom-btn:focus-visible { outline: 2px solid #9ad; outline-offset: 1px; }
 
 .notes { margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px; }
 .notes-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }

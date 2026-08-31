@@ -8,7 +8,7 @@
  * A module, so it cannot share scope with app.js. It talks to the player only through
  * window.sansBass, exactly as separate.js does. */
 
-import { interpret } from './lib/pitch.js?v=1.13.0';
+import { interpret, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.13.0';
 import { scheduleNotes } from './lib/sonify.js?v=1.13.0';
 
 const el = {
@@ -44,6 +44,10 @@ let frames = null;           // the immutable analysis result
 let notes = [];
 let analysedBuffer = null;   // identity of the AudioBuffer `frames` was computed from
 let sonifier = null;         // the running note schedule, or null
+
+/* The 簡譜 reading. `auto` stays true until the user touches a control, so a fresh detection
+ * on a newly loaded song adopts its key — but never overrides a choice already made. */
+let jianpu = { on: false, tonic: 0, mode: 'major', auto: true };
 
 /* Parameters carry the interpreter that understands them: params written by one are
  * meaningless to another, so the name travels with them. The checkbox picks which — both
@@ -110,7 +114,16 @@ function reinterpret() {
   el.count.textContent = tr('notes.count', { n: notes.length });
   el.minOut.textContent = `${el.min.value} ms`;
   syncFoldControls();
-  window.sansBass.setNotes({ notes, frames, params: p, clip: el.clip.checked });
+  if (jianpu.auto && notes.length) {
+    const k = detectKey(notesToChroma(notes));
+    jianpu.tonic = k.tonic;
+    jianpu.mode = k.mode;
+    syncJianpuControls();
+  }
+  window.sansBass.setNotes({
+    notes, frames, params: p, clip: el.clip.checked,
+    jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
+  });
   resync();
 }
 

@@ -287,3 +287,50 @@ test('pitch: detectKey survives an all-zero chroma', () => {
   assertEq(typeof r.key, 'string', 'still returns a key rather than throwing');
   assertClose(r.ranked[0].score, 0, 1e-6, 'a flat profile correlates with nothing');
 });
+
+/* A signal whose second harmonic is stronger than its fundamental. YIN's CMND curve dips
+ * at BOTH the true period and twice it; the deeper dip is the wrong one. This is the shape
+ * that produces a sustained octave error, and the candidate list must keep both. */
+function subharmonicSignal(f0, seconds, sampleRate) {
+  const out = new Float32Array(Math.round(seconds * sampleRate));
+  for (let i = 0; i < out.length; i++) {
+    const t = i / sampleRate;
+    out[i] = 0.25 * Math.sin(2 * Math.PI * f0 * t)
+           + 0.60 * Math.sin(2 * Math.PI * 2 * f0 * t)
+           + 0.30 * Math.sin(2 * Math.PI * 3 * f0 * t);
+  }
+  return out;
+}
+
+test('pitch: yinFrame returns weighted candidates, normalised and ordered', () => {
+  const r = yinFrame(sine(220, 0.2, 11025), 0, 11025);
+  assert(Array.isArray(r.candidates), 'candidates come back as an array');
+  assert(r.candidates.length >= 1, 'at least one candidate');
+  let sum = 0;
+  for (let i = 0; i < r.candidates.length; i++) {
+    const c = r.candidates[i];
+    assert(c.f0 > 0 && Number.isFinite(c.cents), `candidate ${i} carries a usable pitch`);
+    assert(c.p > 0, `candidate ${i} has positive probability`);
+    if (i > 0) assert(r.candidates[i - 1].p >= c.p, 'ordered most likely first');
+    sum += c.p;
+  }
+  assertClose(sum, 1, 1e-6, 'probabilities are normalised');
+});
+
+test('pitch: yinFrame keeps the true period alive when the octave-down dip is deeper', () => {
+  const SR = 11025;
+  const TRUE_HZ = 220;
+  const r = yinFrame(subharmonicSignal(TRUE_HZ, 0.2, SR), 0, SR);
+  const wanted = centsFromHz(TRUE_HZ);
+  const near = r.candidates.filter((c) => Math.abs(c.cents - wanted) < 60);
+  assert(near.length > 0,
+    `the true period survives as a candidate (got ${r.candidates.map(c => Math.round(c.cents)).join(', ')} want ~${Math.round(wanted)})`);
+});
+
+test('pitch: yinFrame candidates do not change the single tau it already returned', () => {
+  // The guard on the whole phase: threshold-v1 must see identical input.
+  for (const hz of [82.41, 220, 440, 1046.5]) {
+    const r = yinFrame(sine(hz, 0.2, 11025), 0, 11025);
+    assertClose(centsFromHz(r.f0), centsFromHz(hz), 20, `${hz} Hz unchanged`);
+  }
+});

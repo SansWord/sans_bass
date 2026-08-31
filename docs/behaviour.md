@@ -218,8 +218,15 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N10 | A note outside the clipped range is drawn at the lane edge in the A–B orange, never dropped. A hidden note would be a silent lie. | Load a track with octave errors; orange marks appear on the edge. |
 | N11 | The contour line breaks at every unvoiced run and never bridges one. | `SansRibbon.contourSegments` returns more than one segment for a track with rests. |
 | N12 | Loading a new song clears the ribbon, even when the new song also has vocals. The old frames describe the old audio. | Load a second zip; `.lane.ribbon` computed `display` is `none` and its canvas `__layers` is `null`. |
-| N13 | The lane is **not** a track: no mute, no volume, no number key, and absent from `tracks`. Mute-all, solo and the stem count ignore it. | With six stems loaded, `.lane` counts 7 but `.lane:not(.ribbon)` counts 6. The ribbon lane has no `.lane-vol` child and no `.kbd`, and pressing `0` (mute all) never adds `.muted` to it. |
+| N13 | The lane is not in `tracks`. It has its own mute and volume but **no number key**, and mute-all, solo and the stem count all ignore it. | Press `0`: every `.lane:not(.ribbon):not(.ribbon-zoom)` gains `.muted` while `window.sansBass.ribbonMuted()` is unchanged. The ribbon lane has no `.kbd` child. |
 | N14 | The lane label follows the language toggle. The note **names** drawn inside it never translate, exactly as stem ids and filenames do not. | Switch locale: the label changes, the block labels stay `C#4`. |
+| N15 | The lane plays its notes as tones, **muted by default**. Clicking the lane name toggles it. | `window.sansBass.ribbonMuted()` is `true` on load; after clicking `.lane.ribbon .lane-name` it is `false` and the lane loses `.muted`. |
+| N16 | The synth is locked to the same `t0` as the stems, and follows A–B repeat by generating laps. | Set A–B, play with the lane unmuted: the notes repeat with the audio rather than drifting or stopping after one pass. |
+| N17 | Dragging the lane's bottom grip resizes it, and the height survives a reload. | Drag `.ribbon-grip`; the canvas `style.height` changes and `localStorage['sans_bass.ribbonHeight']` is written. |
+| N18 | A zoomed pane sits directly above the notes lane, showing a window of the song rather than all of it. It follows the playhead while playing and pans by dragging when stopped. | `.ribbon-zoom` exists; drag `.zoomwave` and the ruler labels change while the lanes below do not move. |
+| N19 | The wheel zooms the pane about the cursor, between 2 s and 60 s, and the width survives a reload. | Scroll on `.zoomwave`; `.zoom-secs` changes and `localStorage['sans_bass.zoomSeconds']` is written. |
+| N20 | At whole-song width the lane draws the contour as a per-pixel band, not a polyline. A polyline there joins pitches ~26 frames apart and buries the notes under vertical strokes. | Compare: `SansRibbon.contourColumns` is what the lane uses; the zoomed pane draws the line directly. |
+| N21 | Note names are labelled on every semitone when there is room (≥7 px per semitone), and fall back to marking C only when there is not. | Shrink the lane to its 96 px minimum: only C labels remain. |
 
 ## Saving stems
 

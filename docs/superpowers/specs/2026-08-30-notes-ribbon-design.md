@@ -83,9 +83,10 @@ The lane is built like a waveform lane and reuses the existing machinery wholesa
 mean `paint()` stays a blit plus a clip. A–B shading paints on it through the existing
 `paintLoopRegion`, so the lane behaves like every other lane under looping.
 
-**It is not a track.** No audio, no gain node, no mute, no volume slider, no number-key
-binding. It needs its own class rather than reuse of the track lane, and `tracks` must not
-grow an entry for it — `laneLabel`, `applyGains`, `toggleTrack` and the stem-count logic all
+**It is not a track.** *(Reversed after review — see the amendment at the end of this
+document. The lane gained audio, a mute and a volume slider; it is still absent from
+`tracks`, which is what keeps mute-all and solo away from it.)* It needs its own class
+rather than reuse of the track lane, and `tracks` must not grow an entry for it — `laneLabel`, `applyGains`, `toggleTrack` and the stem-count logic all
 assume a track has a buffer.
 
 **Layers, back to front:** octave stripes at each C → the pitch contour → note blocks.
@@ -190,3 +191,38 @@ page is a dev tool with one user.
 
 **A vocals stem is not guaranteed.** Loading a zip with no vocals lane, or a single
 unseparated song, must hide the button rather than fail on a null buffer.
+
+
+---
+
+## Amendment — audio, height and a zoomed pane (2026-08-30)
+
+Requested after the ribbon was working and reviewed in the browser. Recorded here rather
+than as a new spec, because it changes this feature rather than adding another.
+
+**The lane plays.** It gained a `GainNode` into `master`, muted by default and toggled from
+its own name, plus a volume slider in the third column. It stays out of `tracks`, so
+mute-all and solo continue to ignore it — pressing `0` must not silence the reference you
+are checking against. `lib/sonify.js` gained lap generation so the synth follows A–B
+repeat: a BufferSource loops on the audio thread via `src.loop`, which a sequence of
+oscillators cannot do, so lap *k* of a note is computed as a pure `+ k · period` offset
+from the same `t0`.
+
+**Height is drag state**, persisted in `localStorage`, clamped 96–600 px. The grid became a
+piano roll — a band per semitone, black keys shaded, C brighter, names overlaid at the left
+edge. A gutter would have moved `x = 0` away from `t = 0` and broken alignment with the
+waveform lanes, which every other decision here protects.
+
+**A zoomed pane** sits directly above the lane, showing a window (default 10 s, 2–60 s by
+wheel) rather than the whole song. It follows the playhead while playing and pans by
+dragging when stopped. This does **not** cost the shared time grid: the full-width lanes
+keep it and the pane has its own mapping, which is why a separate pane was the right answer
+and zooming the lane itself was not. It needs its own peak resolution — the lane peaks are
+1400 buckets across the whole song, which is ~60 buckets for a 10 s window.
+
+**Two things the browser showed that assertions did not.** At whole-song width the contour
+drawn as a polyline joins pitches ~26 frames apart and fills the lane with near-vertical
+strokes; it is now a per-pixel min/max band, the same way waveforms solve the same problem.
+And the pitch range is routinely ~27 semitones because octave errors stretch it, so the
+per-semitone label threshold had to drop to 7 px or the common case fell back to labelling
+C only.

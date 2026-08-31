@@ -85,3 +85,81 @@ test('ribbon: a leading silence does not produce an empty segment', () => {
   assertEq(segs.length, 1, 'exactly one segment');
   assert(segs[0].length > 0, 'and it is not empty');
 });
+
+/* At whole-song width a pixel spans ~26 frames, and a polyline between them draws
+ * near-vertical strokes across the whole lane — the contour becomes a smear that buries
+ * the notes. Waveforms solve this with per-pixel min/max; so does this. */
+
+test('ribbon: contourColumns aggregates many frames into one column', () => {
+  // 40 frames of a rising line, into 4 columns.
+  const spec = [];
+  for (let i = 0; i < 40; i++) spec.push([5000 + i * 25, 1]);
+  const cols = R().contourColumns(fakeFrames(spec), 40 * (128 / 11025), 4);
+  assertEq(cols.length, 4, 'one entry per pixel column');
+  for (const c of cols) {
+    if (!c) continue;
+    assert(c.hi >= c.lo, 'each column spans a range');
+  }
+  const voiced = cols.filter(Boolean);
+  assert(voiced.length === 4, 'every column has voiced content here');
+  assert(voiced[3].lo > voiced[0].lo, 'the range climbs with the line');
+});
+
+test('ribbon: contourColumns reports an unvoiced column as null', () => {
+  // Voiced, then a long silence, then voiced — into 3 columns.
+  const cols = R().contourColumns(fakeFrames([[6000, 10], [0, 10], [6400, 10]]), 30 * (128 / 11025), 3);
+  assertEq(cols.length, 3, 'three columns');
+  assertEq(cols[1], null, 'the silent middle column is null, not zero');
+  assert(cols[0] && cols[2], 'the voiced columns either side survive');
+});
+
+test('ribbon: contourColumns keeps an octave error visible as a tall column', () => {
+  // A steady A#3 with one frame an octave down: that column must span the octave.
+  const spec = [[5800, 5], [4600, 1], [5800, 5]];
+  const cols = R().contourColumns(fakeFrames(spec), 11 * (128 / 11025), 1);
+  assertEq(cols.length, 1, 'one column');
+  assert(cols[0].hi - cols[0].lo > 10, `the column spans the octave error (${(cols[0].hi - cols[0].lo).toFixed(1)} semitones)`);
+});
+
+/* The lane peaks are 1400 buckets across the WHOLE song. Slice 10 s out of a 233 s track
+ * and you get 60 buckets — blockier than the thing the zoom exists to make readable. The
+ * zoomed view needs its own resolution. */
+
+test('ribbon: zoomPeaks resolves at the requested buckets per second', () => {
+  const SR = 44100;
+  const ch = new Float32Array(SR * 2);            // 2 seconds
+  for (let i = 0; i < ch.length; i++) ch[i] = 0.5 * Math.sin((2 * Math.PI * 220 * i) / SR);
+  const p = R().zoomPeaks(ch, SR, 80);
+  assertEq(p.bps, 80, 'buckets per second is reported back');
+  assertEq(p.mins.length, 160, '2 s at 80 buckets/s');
+  assertEq(p.maxs.length, 160, 'both envelopes');
+  assert(p.maxs[40] > 0.4 && p.mins[40] < -0.4, 'a full-scale sine fills its bucket');
+});
+
+test('ribbon: zoomPeaks marks a silent stretch as empty', () => {
+  const SR = 44100;
+  const ch = new Float32Array(SR);                // one second of digital silence
+  const p = R().zoomPeaks(ch, SR, 80);
+  assert(p.maxs.every((v) => v === 0) && p.mins.every((v) => v === 0), 'silence reads as zero');
+});
+
+test('ribbon: zoomWindow clamps to the song and keeps its width', () => {
+  // Hard against the start: the window must slide, not shrink.
+  const a = R().zoomWindow(1, 10, 200);
+  assertClose(a.to - a.from, 10, 1e-9, 'width preserved at the start');
+  assertClose(a.from, 0, 1e-9, 'and it does not run off the front');
+
+  const b = R().zoomWindow(199, 10, 200);
+  assertClose(b.to - b.from, 10, 1e-9, 'width preserved at the end');
+  assertClose(b.to, 200, 1e-9, 'and it does not run off the back');
+
+  const c = R().zoomWindow(100, 10, 200);
+  assertClose(c.from, 95, 1e-9, 'centred in the middle');
+  assertClose(c.to, 105, 1e-9, 'centred in the middle');
+});
+
+test('ribbon: zoomWindow handles a window wider than the song', () => {
+  const r = R().zoomWindow(5, 60, 20);
+  assertClose(r.from, 0, 1e-9, 'starts at zero');
+  assertClose(r.to, 20, 1e-9, 'ends at the song end rather than past it');
+});

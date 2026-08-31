@@ -121,15 +121,46 @@ Not built yet. When it is: overrides anchored to time ranges, layered over deriv
 that re-deriving with different parameters — or swapping the interpreter entirely — leaves
 them standing.
 
-## The interpretation the field would use instead
+## The interpretation the field uses — built, as `hmm-v1`
 
-Our segmenter makes 437 independent local decisions. [Tony](https://sonicvisualiser.org/tony/)
+`threshold-v1` makes 437 independent local decisions. [Tony](https://sonicvisualiser.org/tony/)
 and pYIN instead marginalise over many threshold settings and Viterbi-decode an HMM, which
 optimises the whole sequence at once: a one-frame octave jump and an 80 ms note become
 *expensive* rather than *forbidden*, and no hard duration floor is needed.
 
-This is a drop-in replacement at layer 3 and changes nothing stored. It is the highest-value
-improvement available to note quality, and it is deliberately deferred.
+`hmm-v1` is that, approximated. It does not marginalise over a distribution of thresholds;
+it reads the local minima of the one CMND curve `yinFrame` already computes and weights them
+by depth. Two Viterbi passes follow — `viterbiPitch()` picks a pitch path through those
+candidates, `segmentNotesHmm()` segments that path into notes — and `interpret()` selects
+between the two interpreters. It is a drop-in replacement at layer 3 and changes nothing
+stored.
+
+**What it measurably does.** Both interpreters run on byte-identical frames, so every
+difference below is attributable to the interpreter alone. Vocals, `minDurationMs: 80`,
+percentages are the share of note time more than 8 semitones from the duration-weighted
+median pitch:
+
+| track | notes | an octave **low** | an octave **high** |
+|---|---|---|---|
+| 6 南國的風 | 437 → 357 | 20.2% → **8.5%** | 1.6% → 1.1% |
+| 12 早安台灣 | 368 → 311 | 15.3% → **10.3%** | 1.4% → 3.2% |
+| 9 繼續向前行 | 496 → 486 | 19.6% → **12.5%** | 1.8% → 4.8% |
+
+The octave-down errors the phase set out to fix drop by a third to a half on every track.
+But on two of three, part of that is **traded for octave-up errors** rather than eliminated:
+the candidate list keeps the dip at half the true period as well as the one at twice it, and
+the whole-sequence optimum sometimes latches onto the harmonic instead. Net off-melody time
+still improves everywhere (21.8→9.6, 16.7→13.5, 21.4→17.3), so it is a real gain — but it is
+a trade, not a clean win, which is why the checkbox is **off by default**.
+
+Two traps in reading that table. The `pitch range` metric on the bench page can *widen*
+under `hmm-v1` — that is this same octave-up tail, not a wider melody. And `touching
+same-pitch` is always 0 for `hmm-v1` **by construction**: runs of one note state are maximal,
+so two adjacent notes can never share a pitch. It measures nothing about fragmentation there.
+
+The remaining gap to real pYIN is threshold marginalisation — running YIN across a
+distribution of thresholds rather than reading one curve's minima. That is the next step if
+the octave-up trade is to be closed, and it is deliberately deferred.
 
 Beat tracking is **not** that improvement. A grid is required for 簡譜 and useful for
 display, but beat times derived from accompaniment are systematically offset from vocal
@@ -142,7 +173,8 @@ errors rather than removing them.
 | layer | state | where it surfaces |
 |---|---|---|
 | frames | built — `lib/pitch.js`, `decimate()` + `f0Track()` | computed in `notes.worker.js` |
-| notes | built — `segmentNotes()`, `threshold-v1` | re-derived live in `notes.js` |
+| notes | built — `segmentNotes()` (`threshold-v1`) and `segmentNotesHmm()` (`hmm-v1`) | chosen by `interpret()`; the checkbox picks |
+| pitch decoding | built — `viterbiPitch()` over per-frame candidates | part of `hmm-v1` |
 | key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer | **bench page only** (`tests/notes.html`); no player UI |
 | sonification | built — `lib/sonify.js`, with lap generation for A–B repeat | the notes lane plays it, muted by default |
 | notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals |

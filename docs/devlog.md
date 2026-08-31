@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.12.0](#v1120--hmm-note-decoding-switchable-2026-08-30-2241) | A second note interpreter, `hmm-v1`: `yinFrame` keeps every CMND local minimum as a weighted candidate, and two Viterbi passes decode a pitch path and segment it into notes. Off by default — it cuts octave-down errors by a third to a half, but trades some of that for octave-up errors on two of three tracks. |
 | [v1.11.0](#v1110--notes-ribbon-in-the-player-2026-08-30-2059) | A notes lane under the vocals stem: detected notes drawn over the pitch contour they came from, on the shared time grid, seekable. Analysis once in a worker; interpretation re-derived live at ~12 ms. |
 | [v1.10.0](#v1100--notes-and-key-from-a-vocal-stem-2026-08-30-1417) | Notes and key detection from a stem: decimated YIN, segmentation, Krumhansl-Schmuckler key with a confidence margin. Bench page only, no UI. |
 | [v1.9.0](#v190--favicon-and-home-screen-icon-2026-08-26-1429) | Favicon and iPhone home-screen icon: six stem bars with the bass lane flattened, so the mark is the song *sans bass*. |
@@ -31,6 +32,88 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.12.0 — HMM note decoding, switchable (2026-08-30 22:41)
+
+**Review:** not yet
+
+**Design docs:**
+- HMM note decoder: [Spec](superpowers/specs/2026-08-30-hmm-decoder-design.md) [Plan](superpowers/plans/2026-08-30-hmm-decoder.md)
+
+**What was built:**
+- `yinFrame` returns `candidates` — every local minimum of the CMND curve below a generous
+  0.6 threshold, parabolically refined and weighted by depth, normalised and ordered. The
+  single `tau` it already returned is untouched.
+- `f0Track` carries a per-frame `candidates` array, populated **above** the confidence gate
+  so a frame rejected as unvoiced still offers its candidates to the decoder.
+- `viterbiPitch()` — Viterbi over those candidates, pricing movement per semitone and
+  voicing transitions. This is the octave fix.
+- `segmentNotesHmm()` — Viterbi over note states, one per semitone plus silence, pricing
+  onsets instead of flooring duration. O(states) per frame via one precomputed minimum.
+- `interpret()` — dispatches on the interpreter name, degrading to `threshold-v1` for an
+  unknown name or a track with no candidates.
+- A **Whole-phrase detection** checkbox under Advanced, off by default, both locales.
+- An `== INTERPRETERS ==` comparison table in `tests/notes.html`, both interpreters over
+  identical frames.
+
+**Measured** (vocals, `minDurationMs: 80`; percentages are the share of note time more than
+8 semitones from the duration-weighted median pitch):
+
+| track | notes | an octave low | an octave high |
+|---|---|---|---|
+| 6 南國的風 | 437 → 357 | 20.2% → **8.5%** | 1.6% → 1.1% |
+| 12 早安台灣 | 368 → 311 | 15.3% → **10.3%** | 1.4% → 3.2% |
+| 9 繼續向前行 | 496 → 486 | 19.6% → **12.5%** | 1.8% → 4.8% |
+
+The verdict is the plan's **mixed** outcome: a real, consistent gain on the error the phase
+existed to fix, partly traded for a new one. It stays opt-in.
+
+**Key technical learnings:**
+
+- `[insight]` A local rule cannot see a 16-frame excursion. The 5-frame median filter was
+  never going to reach sustained octave errors, and widening it blurs real melody instead —
+  the fix had to be a whole-sequence optimum, not a bigger window. A 13-frame median is
+  still an octave low mid-dip; there is a test that asserts exactly that, so the thing being
+  solved stays visible.
+- `[insight]` The information needed was already in the CMND curve and was being thrown
+  away. `yinFrame` returned the first dip below threshold; the true period's dip was still
+  there, just above it. No new signal processing was required — only not discarding.
+- `[insight]` Fixing octave-*down* errors introduced octave-*up* ones. The candidate list
+  keeps the dip at half the true period as well as the one at twice it, and the
+  whole-sequence optimum sometimes latches onto the harmonic. Net off-melody time still
+  improves on all three tracks, but assuming "fewer low outliers" means "better" would have
+  missed this — measure both tails.
+- `[gotcha]` The bench page's `pitch range` metric **widens** under `hmm-v1` on tracks where
+  it got better. It is reading the octave-up tail, not a wider melody. The plan named it one
+  of "the two that decide this phase"; on its own it points the wrong way.
+- `[gotcha]` `touching same-pitch` is always 0 for `hmm-v1` **by construction** — runs of one
+  note state are maximal, so two adjacent notes can never share a pitch. Reading 8 → 0 as
+  reduced fragmentation would be reading an artifact of the metric's definition.
+- `[gotcha]` **The worker builds its frames message from an explicit field list.** Adding
+  `candidates` to `f0Track` was not enough: `notes.worker.js` names each array it posts, so
+  the new one silently never crossed the boundary. Every unit test stayed green — the pure
+  functions never cross `postMessage` — while `hmm-v1` threw on `undefined.length` in the
+  app and the note count just never updated. A green suite plus a stale number is the
+  signature. There is now a test at that boundary.
+- `[note]` Making the analysis change purely additive is what made the comparison
+  trustworthy — both interpreters run on byte-identical frames, so any difference is
+  attributable to the interpreter alone. Verified on real audio, not just synthetically:
+  running `detectNotes` through the pre-change module and the current one over all 20,086
+  frames of `6 南國的風` gave 0 differing cents, 0 differing confidences, and byte-identical
+  437-note lists.
+
+**Process learnings:**
+
+- `[gotcha]` The plan's recorded baseline ("229 notes, 4.8% an octave low, 8 touching") mixed
+  two different `minDurationMs` settings — 229 notes is the bench default of 120, while the
+  4.8%/8-touching figures came from the spec's 437-note run at 80. Three of the four numbers
+  matched exactly once measured at the same setting, and the fourth turned out to be a
+  metric-definition difference. Before treating a baseline mismatch as a broken invariant,
+  check that both numbers were taken under the same conditions.
+- `[note]` An ESM named import of a missing export fails the **whole module** at link time,
+  so the red step for a not-yet-written function is an empty `window.__testResults` and one
+  console `SyntaxError` — not the "is not a function" the plan predicted. Read the console,
+  not the results object, when the suite reports nothing at all.
 
 ## v1.11.0 — notes ribbon in the player (2026-08-30 20:59)
 

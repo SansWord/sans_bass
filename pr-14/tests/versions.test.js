@@ -39,7 +39,7 @@ test('versions: every local asset URL carries a ?v=', async () => {
   assertEq(missing.length, 0, `unversioned local assets: ${missing.join(', ')}`);
 });
 
-test('versions: all three files agree on one version', async () => {
+test('versions: every versioned file agrees on one version', async () => {
   const sources = await fetchAll();
   const found = new Map();
   for (const [file, text] of Object.entries(sources)) {

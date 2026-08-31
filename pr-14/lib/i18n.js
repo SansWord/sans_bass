@@ -109,7 +109,7 @@
       'notes.clip': '裁切八度異常值',
       'notes.muteTip': '點擊以播放或靜音合成的音符',
       'notes.resizeTip': '拖曳以調整高度',
-      'notes.zoom': '放大',
+      'notes.zoom': '局部放大',
       'notes.zoomTip': '點擊以跳轉，拖曳以平移，滾輪縮放',
       'notes.zoomIn': '放大',
       'notes.zoomOut': '縮小',

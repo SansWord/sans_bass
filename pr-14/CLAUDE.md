@@ -163,7 +163,7 @@ out of the project; never commit them.
   degraded page — the old script throws on an element the new markup dropped, and because
   `app.js` wires everything from one flat run of top-level statements, every listener *below*
   the throw silently never registers. Bump the version in `index.html` (14), `separate.js` (3),
-  `separate.worker.js` (1), `notes.js` (2) and `notes.worker.js` (1);
+  `separate.worker.js` (1), `notes.js` (3) and `notes.worker.js` (1) — 22 in all;
   `tests/versions.test.js` fails if they drift — and it
   covers `.png` and `.svg` as well as `.js`/`.css`, so the icons are included. Currently
   `v1.11.0`.

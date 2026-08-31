@@ -45,7 +45,7 @@ Running log of what was built and what was learned building it.
 - `notes.worker.js` — ESM, runs `decimate` + `f0Track` off the main thread.
 - `notes.js` — ESM, mirrors `separate.js`: owns the worker, and re-derives notes on the
   main thread whenever a parameter moves.
-- `app.js` — a ribbon lane built inside `buildLanes()`, `renderRibbon`, and new
+- `app.js` — a ribbon lane built inside `buildUI()`, `renderRibbon`, and new
   `window.sansBass` members (`stemBuffer`, `setNotes`, `notesAudio`, `transport`).
 - The lane **plays**: a `GainNode` into `master`, muted by default, toggled from its own
   name, with a volume slider. It stays out of `tracks`, so mute-all and solo ignore it.
@@ -71,7 +71,7 @@ ratio.
 
 **Key technical learnings:**
 - `[gotcha]` `el.lanes.innerHTML = ''` destroys anything parked inside `#lanes`, so the
-  ribbon lane is built in `buildLanes()` rather than declared in `index.html`. A static
+  ribbon lane is built in `buildUI()` rather than declared in `index.html`. A static
   element would have worked for exactly one song.
 - `[gotcha]` Canvas width must come from `canvas.clientWidth`, not
   `canvas.parentElement.clientWidth`. The parent is the `.lane` grid, 224 px wider than
@@ -103,6 +103,21 @@ ratio.
 - `[gotcha]` The zoomed view needs its own peak resolution. Lane peaks are 1400 buckets
   across the *whole song*; slice 10 s out of a 233 s track and you get 60 buckets, blockier
   than the thing the zoom exists to make readable.
+- `[gotcha]` **Clamping a past event to "now" turns a mute into a detonation.** The synth
+  scheduler did `Math.max(e.at, ctx.currentTime)`, which reads as defensive and is not:
+  press play with the notes lane muted, unmute a minute later, and `resync()` re-schedules
+  against the original `t0`, mapping every elapsed note to a time before now. All of them
+  fired on the same sample — measured at **7.3x full scale**. A past event must be
+  *dropped*; the lap-0 filter already said so and this one line disagreed.
+- `[gotcha]` **A running median over an unbounded window is O(n² log n).** `segmentNotes`
+  re-mapped and re-sorted the whole open note every frame. Real vocal stems hid it by
+  breaking into short notes; a sustained 120 s tone took **5.9 s** — on the main thread,
+  during the slider drag the whole layer split exists to keep fast. Bounded to a trailing
+  32 frames: **21 ms**, linear, and real-track note counts moved by one note in 437.
+- `[insight]` A code review with fresh context found both of those, plus a `seek()` that
+  had quietly come to depend on `lib/ribbon.js` — an optional visualisation library
+  becoming load-bearing for core transport. Ten browser sessions of my own testing had not
+  surfaced any of them, because I only ever exercised the paths I had just written.
 - `[gotcha]` `aheadSeconds: Infinity` plus a loop region is an infinite generator: the
   horizon is never reached, so laps are produced for ever. It froze the test page. Bounded
   by the context's own render length, which an `OfflineAudioContext` knows and a live one

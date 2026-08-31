@@ -72,6 +72,26 @@ test('sonify: offset skips notes that already finished', async () => {
   scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset: 2.0, aheadSeconds: Infinity });
   const out = (await ctx.startRendering()).getChannelData(0);
   assert(rms(out, Math.round(0.05 * SR), Math.round(0.35 * SR)) > 0.01, 'the note at the seek point plays');
+  // And the skipped one is genuinely absent. Asserting only that the wanted note sounds
+  // would pass against code that plays BOTH — which is precisely the bug below.
+  assert(rms(out, Math.round(0.45 * SR), Math.round(0.95 * SR)) < 1e-3, 'the skipped note never sounds');
+});
+
+/* Scheduling against a t0 that is already in the past happens for real: press play with the
+ * notes lane muted, then unmute a minute later. The transport still reports the t0 it
+ * started from, so every elapsed note maps to a time before now. Those must be DROPPED. */
+test('sonify: a schedule whose t0 is in the past does not dump elapsed notes at once', async () => {
+  const ctx = new OfflineAudioContext(1, SR * 2, SR);
+  const notes = [];
+  // Thirty notes spanning 0-2.9 s. With when = -3 every one of them maps to a time before
+  // the clock, so the correct behaviour is silence — not thirty notes on one sample.
+  for (let i = 0; i < 30; i++) {
+    notes.push({ start: i * 0.1, end: i * 0.1 + 0.08, midi: 60 + (i % 5), cents: 0, name: 'C4', confidence: 1 });
+  }
+  scheduleNotes(ctx, ctx.destination, notes, { when: -3, offset: 0, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  const peak = Math.max(...Array.from(out, Math.abs));
+  assert(peak < 0.01, `elapsed notes are dropped, not stacked onto now (peak ${peak.toFixed(3)})`);
 });
 
 test('sonify: stop() silences a running schedule', () => {

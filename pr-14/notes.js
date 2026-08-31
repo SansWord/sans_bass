@@ -71,6 +71,11 @@ function syncShowLabel() {
 
 function reset() {
   if (sonifier) { sonifier.stop(); sonifier = null; }
+  /* Terminate an analysis still in flight. Left running it burns a core to completion and
+   * then writes the PREVIOUS song's frames into module state — self-correcting on the next
+   * refresh tick, but until then a slider drag or a play press schedules the old song's
+   * notes against the new one. */
+  if (worker) { worker.terminate(); worker = null; el.go.disabled = false; }
   el.show.hidden = true;
   el.go.hidden = false;
   frames = null;

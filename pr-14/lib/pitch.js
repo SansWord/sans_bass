@@ -203,6 +203,10 @@ export function medianFilterVoiced(cents, span) {
  * Returns parallel arrays { t, f0, conf, cents } plus frameSeconds. An unvoiced frame has
  * f0 = 0 and cents = 0; conf is still reported, so a frame rejected for low confidence can
  * be told apart from one rejected for silence.
+ *
+ * `cents` is the authoritative pitch: it alone is median-filtered, so after smoothing it
+ * no longer matches `f0` frame for frame. Voicing agrees between them (zero stays zero),
+ * but read `cents` for pitch and treat `f0` as the raw, unsmoothed estimate.
  */
 export function f0Track(samples, sampleRate, opts = {}) {
   const W = opts.window ?? YIN_DEFAULTS.window;
@@ -251,6 +255,22 @@ export const SEGMENT_DEFAULTS = {
 const medianOf = (values) => {
   const s = [...values].sort((a, b) => a - b);
   return s[(s.length - 1) >> 1];
+};
+
+/* Frames considered for the RUNNING median while a note is open.
+ *
+ * Unbounded, this was O(n^2 log n) in the length of a single note: every frame re-mapped
+ * and re-sorted the whole note. A sustained 120 s tone measured 5.9 s to segment — on the
+ * main thread, during a slider drag, which is exactly what the analysis/interpretation
+ * split exists to keep fast. A trailing window is also the better definition: a note that
+ * drifts should be judged against its recent pitch, not against where it began. */
+const RUNNING_MEDIAN_FRAMES = 32;
+
+const runningMedian = (open) => {
+  const from = Math.max(0, open.length - RUNNING_MEDIAN_FRAMES);
+  const window = [];
+  for (let i = from; i < open.length; i++) window.push(open[i].c);
+  return medianOf(window);
 };
 
 /**
@@ -306,7 +326,7 @@ export function segmentNotes(track, opts = {}) {
     const frame = { c, conf: track.conf[i], i };
     if (!open.length) { open = [frame]; pending = []; continue; }
 
-    if (Math.abs(c - medianOf(open.map((f) => f.c))) > driftCents) {
+    if (Math.abs(c - runningMedian(open)) > driftCents) {
       pending.push(frame);
       if (pending.length >= driftFrames) {
         close();                 // the old note ends at its own last frame

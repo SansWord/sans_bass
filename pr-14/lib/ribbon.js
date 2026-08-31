@@ -48,6 +48,11 @@
   /**
    * The pitch contour as a list of polylines, each point [timeFraction, midi].
    *
+   * NOT used by the player: the full-width lane uses contourColumns, and the zoomed pane
+   * draws its line inline because it already walks the frames in its window. Kept because
+   * it is the correct primitive for any consumer drawing at a width where a column is one
+   * frame or less, and it is covered by tests.
+   *
    * A new polyline starts after every unvoiced frame. Never join across one: a line drawn
    * through a rest says the singer held a note through a silence, which is exactly the
    * kind of quiet lie that makes a visualisation untrustworthy.

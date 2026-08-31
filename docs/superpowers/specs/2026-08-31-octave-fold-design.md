@@ -216,7 +216,20 @@ The band is fixed before this loop, so the result does not depend on the order n
 visited. Because step 3 only considers shifts landing inside the band, no folded note can
 still be out of band, and no second pass is needed.
 
-Measured on `ng_kipin`: `threshold-v1` → 19 folded (15% of note time), 4 doubtful (1.6%);
+Measured on `ng_kipin` **at the original `confidentWithin: 5`**: `threshold-v1` → 19 folded
+(15% of note time), 4 doubtful (1.6%). **Those figures are obsolete** — that threshold folded
+octave-plus-a-fifth errors and tagged them confident. At the shipped **1.5**, measured across
+four tracks at `minDurationMs: 100`, the split is very different and track-dependent:
+
+| track | notes | folded | doubtful | doubtful, as note time |
+|---|---|---|---|---|
+| ng_kipin | 187 | 9 | 14 | **7.5%** |
+| 6 南國的風 | 313 | 7 | 17 | — |
+| 12 早安台灣 | 270 | 13 | 6 | — |
+| 9 繼續向前行 | 342 | 22 | 37 | **8.1%** |
+
+The note count is identical with and without folding on every track and interpreter — the
+invariant holds. But the doubtful bucket is **five times larger than the original estimate**:
 `hmm-v1` → 36 folded (11.9%), 4 doubtful (1.8%). Every shift is downward, −1 to −3 octaves.
 
 ### Where it runs
@@ -237,7 +250,10 @@ chroma vector. That is asserted in the tests rather than assumed.
 - A **folded** note sounds at its corrected pitch.
 - A **doubtful** note is **not scheduled at all**. Sounding a note already flagged as
   untrusted would re-introduce precisely the wrong-octave blurt this feature removes. The
-  cost is that ~1.6% of note time goes quiet; the note stays visible throughout.
+  cost was estimated at ~1.6% of note time when `confidentWithin` was 5. At the shipped 1.5
+  it is **7.5–8.1% of note time** — roughly one note in ten on the worst track. The note stays
+  visible throughout, and the alternative is that it sounds an octave or more wrong, but this
+  is a materially larger silence than the figure the design was first approved against.
 
 ### Controls
 

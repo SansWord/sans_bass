@@ -509,7 +509,7 @@ test('sonify: a doubtful note is never scheduled', () => {
   const ctx = new OfflineAudioContext(1, 44100, 44100);
   const notes = [
     { start: 0.0, end: 0.2, midi: 60, cents: 6000, name: 'C4', confidence: 0.9 },
-    { start: 0.3, end: 0.5, midi: 84, cents: 8400, name: 'C6', confidence: 0.9, fix: { from: 84, doubt: true } },
+    { start: 0.3, end: 0.5, midi: 84, cents: 8400, name: 'C6', confidence: 0.9, fix: { from: 84, state: 'doubt', doubt: true } },
     { start: 0.6, end: 0.8, midi: 62, cents: 6200, name: 'D4', confidence: 0.9 },
   ];
   const started = [];

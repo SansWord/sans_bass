@@ -13,8 +13,19 @@ const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
 let audio = null;          // AudioContext (created on first user gesture)
 let master = null;         // master GainNode
 let tracks = [];           // loaded tracks
+const RIBBON_H_KEY = 'sans_bass.ribbonHeight';
+const RIBBON_H_MIN = 96;
+const RIBBON_H_MAX = 600;
+const RIBBON_H_DEFAULT = 220;
+
+const clampRibbonH = (n) => Math.max(RIBBON_H_MIN, Math.min(RIBBON_H_MAX, Math.round(n)));
+
 let ribbon = null;         // { notes, frames, params, clip } from notes.js, or null
-let ribbonEl = null;       // { lane, canvas, txt } — rebuilt with the lanes on every load
+let ribbonEl = null;       // { lane, canvas, txt, grip } — rebuilt with the lanes each load
+let ribbonGain = null;     // GainNode for the synthesised notes, into master
+let ribbonMuted = true;    // silent until asked for: the lane is a reference, not a part
+let ribbonVolume = 1;
+let ribbonHeight = readRibbonHeight();
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
 let startedAt = 0;         // audio.currentTime at which playback began
@@ -92,9 +103,27 @@ function ensureAudio() {
     master = audio.createGain();
     master.gain.value = parseFloat(el.masterVol.value);
     master.connect(audio.destination);
+    // Into master, so master volume governs the synth exactly as it governs the stems.
+    ribbonGain = audio.createGain();
+    ribbonGain.gain.value = ribbonMuted ? 0 : ribbonVolume;
+    ribbonGain.connect(master);
   }
   if (audio.state === 'suspended') audio.resume();
   return audio;
+}
+
+/* Height survives a reload the way the language toggle does. Storage can throw outright
+ * in a private window, so every read and write is guarded — a lane that refuses to render
+ * because localStorage is disabled would be a poor trade for remembering a number. */
+function readRibbonHeight() {
+  try {
+    const v = parseInt(localStorage.getItem(RIBBON_H_KEY), 10);
+    return Number.isFinite(v) ? clampRibbonH(v) : RIBBON_H_DEFAULT;
+  } catch (_) { return RIBBON_H_DEFAULT; }
+}
+
+function writeRibbonHeight(h) {
+  try { localStorage.setItem(RIBBON_H_KEY, String(h)); } catch (_) { /* private window */ }
 }
 
 function fmt(t) {
@@ -445,20 +474,37 @@ function buildUI(title) {
 
     const name = document.createElement('div');
     name.className = 'lane-name';
+    name.title = tr('notes.muteTip');
+    const dot = document.createElement('span');
+    dot.className = 'dot';
     const txt = document.createElement('span');
     txt.className = 'txt';
     txt.textContent = tr('notes.lane');
-    name.appendChild(txt);
+    name.append(dot, txt);
+    name.addEventListener('click', toggleRibbon);
 
     const canvas = document.createElement('canvas');
     canvas.className = 'wave';
 
-    const spacer = document.createElement('div');
+    const vol = document.createElement('div');
+    vol.className = 'lane-vol';
+    const slider = document.createElement('input');
+    Object.assign(slider, { type: 'range', min: 0, max: 1.5, step: 0.01, value: ribbonVolume });
+    slider.addEventListener('input', () => { ribbonVolume = parseFloat(slider.value); applyRibbonGain(); });
+    vol.appendChild(slider);
 
-    lane.append(name, canvas, spacer);
+    /* Drag the bottom edge to grow the lane. Height is the only way to read pitch: at the
+     * default the range can span 27 semitones, and note names need roughly 9 px each. */
+    const grip = document.createElement('div');
+    grip.className = 'ribbon-grip';
+    grip.title = tr('notes.resizeTip');
+    attachRibbonResize(grip);
+
+    lane.append(name, canvas, vol, grip);
     el.lanes.insertBefore(lane, vocals.laneEl.nextSibling);
     attachSeek(canvas);
-    ribbonEl = { lane, canvas, txt };
+    ribbonEl = { lane, canvas, txt, grip };
+    lane.classList.toggle('muted', ribbonMuted);
   }
 
   attachSeek(el.mainWave);
@@ -534,7 +580,9 @@ function renderWave(canvas, peaks, color, cssWidth, kind, scale) {
   return layers;
 }
 
-const RIBBON_H = 96;
+const NOTE_LETTERS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);      // C# D# F# G# A#
+const LABEL_MIN_PX = 9;                            // below this, twelve labels are a smear
 
 /* Pre-rendered idle/active layers, the same shape renderWave produces, so paint() draws
  * the ribbon with the identical blit-and-clip it uses for every waveform — playhead,
@@ -543,7 +591,7 @@ const RIBBON_H = 96;
 function renderRibbon(canvas, payload, cssWidth) {
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(1, Math.round(cssWidth || canvas.clientWidth || 600));
-  const h = RIBBON_H;
+  const h = ribbonHeight;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
   canvas.style.height = h + 'px';
@@ -563,12 +611,45 @@ function renderRibbon(canvas, payload, cssWidth) {
     const c = off.getContext('2d');
     c.scale(dpr, dpr);
 
-    // Octave stripes at each C, so vertical distance reads as pitch rather than height.
-    c.fillStyle = dim ? 'rgba(255,255,255,.030)' : 'rgba(255,255,255,.055)';
-    for (let m = Math.ceil(loM); m <= hiM; m++) {
-      if (m % 12) continue;
+    /* Piano-roll grid: a band per semitone, black keys shaded, a rule on every boundary
+     * and a brighter one at each C. This is what turns vertical distance into a pitch you
+     * can name rather than a height you have to estimate. */
+    const lo = Math.ceil(loM);
+    const hi = Math.floor(hiM);
+    for (let m = lo; m <= hi; m++) {
+      if (!BLACK_KEYS.has(((m % 12) + 12) % 12)) continue;
       const top = y(m + 0.5);
+      c.fillStyle = dim ? 'rgba(255,255,255,.022)' : 'rgba(255,255,255,.040)';
       c.fillRect(0, top, w, Math.max(1, y(m - 0.5) - top));
+    }
+    for (let m = lo; m <= hi + 1; m++) {
+      const isC = ((m % 12) + 12) % 12 === 0;
+      c.fillStyle = isC
+        ? (dim ? 'rgba(255,255,255,.13)' : 'rgba(255,255,255,.22)')
+        : (dim ? 'rgba(255,255,255,.045)' : 'rgba(255,255,255,.075)');
+      c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
+    }
+
+    /* Labels overlay the left edge rather than sitting in a gutter. A gutter would move
+     * x = 0 away from t = 0 and the ribbon would stop lining up with the waveform lanes,
+     * which is the one property every other decision here protects. */
+    if (semi >= 6) {
+      const everySemitone = semi >= LABEL_MIN_PX;
+      c.font = `500 ${Math.min(10, Math.max(8, semi * 0.62)).toFixed(1)}px ui-monospace, Menlo, monospace`;
+      c.textBaseline = 'middle';
+      for (let m = lo; m <= hi; m++) {
+        const pc = ((m % 12) + 12) % 12;
+        if (!everySemitone && pc !== 0) continue;
+        const label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+        const ty = y(m);
+        const tw = c.measureText(label).width;
+        c.fillStyle = dim ? 'rgba(13,13,16,.72)' : 'rgba(13,13,16,.82)';
+        c.fillRect(0, ty - semi / 2, tw + 7, semi);
+        c.fillStyle = pc === 0
+          ? (dim ? '#7b7b8b' : '#c9c9d6')
+          : (dim ? '#5d5d6b' : '#8a8a99');
+        c.fillText(label, 3, ty + 0.5);
+      }
     }
 
     c.strokeStyle = dim ? '#41566b' : '#7fb2d9';
@@ -736,7 +817,24 @@ function play() {
   playing = true;
   el.play.classList.add('playing');
   applyGains();
+  announceTransport(t0);
   tick();
+}
+
+/* notes.js is an ES module and cannot share scope with this file, so the transport is
+ * broadcast the way the language switch already is. It carries t0 and offset rather than
+ * "we started": the synth has to schedule against the SAME clock reading the stems were
+ * started from, or it lands near them instead of with them. */
+function announceTransport(t0) {
+  window.dispatchEvent(new CustomEvent('sansbass:transport', {
+    detail: {
+      playing,
+      t0: t0 ?? 0,
+      offset,
+      loopA: loopOn() ? loopA : null,
+      loopB: loopOn() ? loopB : null,
+    },
+  }));
 }
 
 function stop(keepPosition) {
@@ -748,6 +846,7 @@ function stop(keepPosition) {
   el.play.classList.remove('playing');
   cancelAnimationFrame(raf);
   if (!keepPosition) offset = 0;
+  announceTransport(0);
   draw();
 }
 
@@ -822,6 +921,21 @@ function tick() {
 }
 
 // ---------------------------------------------------------------- routing
+
+/* The ribbon is deliberately NOT in `tracks`, so mute-all and solo skip it for free —
+ * pressing 0 must never silence the reference you are checking against. */
+function applyRibbonGain() {
+  if (ribbonGain && audio) {
+    ribbonGain.gain.setTargetAtTime(ribbonMuted ? 0 : ribbonVolume, audio.currentTime, 0.012);
+  }
+  ribbonEl?.lane.classList.toggle('muted', ribbonMuted);
+}
+
+function toggleRibbon() {
+  ribbonMuted = !ribbonMuted;
+  applyRibbonGain();
+  window.dispatchEvent(new CustomEvent('sansbass:ribbonmute', { detail: { muted: ribbonMuted } }));
+}
 
 function applyGains() {
   if (!audio) return;
@@ -989,6 +1103,39 @@ function toggleTrack(t) {
 
 // ---------------------------------------------------------------- input
 
+/* Pointer capture, so the drag survives the cursor leaving the 6px grip — without it a
+ * fast drag detaches the moment you outrun the element. */
+function attachRibbonResize(grip) {
+  let startY = 0;
+  let startH = 0;
+  let dragging = false;
+
+  grip.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    startY = e.clientY;
+    startH = ribbonHeight;
+    grip.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const next = clampRibbonH(startH + (e.clientY - startY));
+    if (next === ribbonHeight) return;
+    ribbonHeight = next;
+    if (ribbon && ribbonEl) {
+      renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
+      draw();
+    }
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    writeRibbonHeight(ribbonHeight);
+  };
+  grip.addEventListener('pointerup', end);
+  grip.addEventListener('pointercancel', end);
+}
+
 function attachSeek(canvas) {
   const posToTime = (e) => {
     const r = canvas.getBoundingClientRect();
@@ -1143,5 +1290,13 @@ window.sansBass = {
   },
   /** Hand detected notes to the player, or null to clear the lane. */
   setNotes,
+  /** Where notes.js connects its oscillators, and the clock they must use. */
+  notesAudio: () => (audio && ribbonGain ? { ctx: audio, destination: ribbonGain } : null),
+  /** Current transport, for scheduling a synth that starts mid-playback. */
+  transport: () => ({ playing, t0: startedAt, offset: playing ? offset : offset,
+                      loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null }),
+  /** True while the notes lane is silent. */
+  ribbonMuted: () => ribbonMuted,
+  setRibbonVolume: (v) => { ribbonVolume = v; applyRibbonGain(); },
   say,
 };

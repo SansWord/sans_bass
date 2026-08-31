@@ -9,6 +9,7 @@
  * window.sansBass, exactly as separate.js does. */
 
 import { segmentNotes } from './lib/pitch.js?v=1.11.0';
+import { scheduleNotes } from './lib/sonify.js?v=1.11.0';
 
 const el = {
   panel: document.getElementById('notes'),
@@ -26,6 +27,7 @@ let worker = null;
 let frames = null;           // the immutable analysis result
 let notes = [];
 let analysedBuffer = null;   // identity of the AudioBuffer `frames` was computed from
+let sonifier = null;         // the running note schedule, or null
 
 /* Parameters carry the interpreter that understands them. Nothing reads this yet; it
  * exists so a file written today survives the segmenter being replaced by an HMM decoder,
@@ -42,9 +44,26 @@ function reinterpret() {
   el.count.textContent = tr('notes.count', { n: notes.length });
   el.minOut.textContent = `${el.min.value} ms`;
   window.sansBass.setNotes({ notes, frames, params: p, clip: el.clip.checked });
+  resync();
+}
+
+/* Start (or restart) the synth against the transport's OWN t0 and offset. Scheduling
+ * from `ctx.currentTime` instead would put the notes near the stems rather than with
+ * them, which is the entire difference between a reference and a distraction. */
+function resync() {
+  if (sonifier) { sonifier.stop(); sonifier = null; }
+  if (!frames || !notes.length) return;
+  if (window.sansBass.ribbonMuted()) return;      // muted: schedule nothing at all
+  const audio = window.sansBass.notesAudio();
+  const t = window.sansBass.transport();
+  if (!audio || !t.playing) return;
+  sonifier = scheduleNotes(audio.ctx, audio.destination, notes, {
+    when: t.t0, offset: t.offset, loopA: t.loopA, loopB: t.loopB,
+  });
 }
 
 function reset() {
+  if (sonifier) { sonifier.stop(); sonifier = null; }
   frames = null;
   notes = [];
   analysedBuffer = null;
@@ -110,3 +129,15 @@ el.clip.addEventListener('change', reinterpret);   // clip rides in the payload
 window.addEventListener('sansbass:langchange', () => {
   if (frames) el.count.textContent = tr('notes.count', { n: notes.length });
 });
+
+/* The player broadcasts its transport because app.js is a classic script and this file is
+ * a module — the same seam the language switch uses. `seek()` is composed of stop() then
+ * play(), so those two events cover scrubbing as well. */
+window.addEventListener('sansbass:transport', (e) => {
+  if (!e.detail.playing) {
+    if (sonifier) { sonifier.stop(); sonifier = null; }
+    return;
+  }
+  resync();
+});
+window.addEventListener('sansbass:ribbonmute', resync);

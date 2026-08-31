@@ -21,6 +21,9 @@ const el = {
   clip: document.getElementById('notes-clip'),
   hmm: document.getElementById('notes-hmm'),
   fold: document.getElementById('notes-fold'),
+  foldTol: document.getElementById('notes-fold-tol'),
+  foldTolOut: document.getElementById('notes-fold-tol-out'),
+  foldStats: document.getElementById('notes-fold-stats'),
   show: document.getElementById('notes-show'),
 };
 
@@ -32,6 +35,7 @@ const syncTips = () => {
   el.hmm.parentElement.title = tr('notes.hmmTip');
   el.clip.parentElement.title = tr('notes.clipTip');
   el.fold.parentElement.title = tr('notes.foldTip');
+  el.foldTol.parentElement.title = tr('notes.foldTolTip');
 };
 syncTips();
 
@@ -53,8 +57,44 @@ let sonifier = null;         // the running note schedule, or null
 function currentParams() {
   return {
     interpreter: el.hmm.checked ? 'hmm-v1' : 'threshold-v1',
-    params: { minDurationMs: Number(el.min.value), fold: el.fold.checked },
+    params: {
+      minDurationMs: Number(el.min.value),
+      fold: el.fold.checked,
+      confidentWithin: Number(el.foldTol.value),
+    },
   };
+}
+
+/* The tolerance slider only means anything while folding is on, so it goes visibly inert
+ * rather than silently doing nothing. The counts are the point of the slider: without them
+ * you are dragging blind, since the note total deliberately never moves. */
+function syncFoldControls() {
+  const on = el.fold.checked;
+  el.foldTol.disabled = !on;
+  el.foldTolOut.textContent = tr('notes.foldTolVal', { n: el.foldTol.value });
+  el.foldStats.hidden = !on;
+  if (!on) return;
+  let folded = 0;
+  let muted = 0;
+  for (const n of notes) {
+    if (!n.fix) continue;
+    if (n.fix.state === 'folded') folded++;
+    else if (n.fix.state === 'doubt') muted++;
+  }
+  /* Two independently translated fragments rather than one string with two placeholders:
+   * the number leads in English ("9 corrected") and trails in Chinese (「已修正 9」), and
+   * each half needs its own colour. textContent throughout, never innerHTML. */
+  const frag = (key, n, cls) => {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = tr(key, { n });
+    return span;
+  };
+  el.foldStats.replaceChildren(
+    frag('notes.foldStatsFolded', folded, 'n-fold'),
+    document.createTextNode(' · '),
+    frag('notes.foldStatsMuted', muted, 'n-mute'),
+  );
 }
 
 /** Re-derive notes from the existing frames. No worker, no re-analysis. */
@@ -64,6 +104,7 @@ function reinterpret() {
   notes = interpret(frames, p);
   el.count.textContent = tr('notes.count', { n: notes.length });
   el.minOut.textContent = `${el.min.value} ms`;
+  syncFoldControls();
   window.sansBass.setNotes({ notes, frames, params: p, clip: el.clip.checked });
   resync();
 }
@@ -165,6 +206,7 @@ el.min.addEventListener('input', reinterpret);
 el.clip.addEventListener('change', reinterpret);   // clip rides in the payload
 el.hmm.addEventListener('change', reinterpret);
 el.fold.addEventListener('change', reinterpret);
+el.foldTol.addEventListener('input', reinterpret);
 el.show.addEventListener('click', () => {
   window.sansBass.setRibbonVisible(!window.sansBass.ribbonVisible());
   syncShowLabel();

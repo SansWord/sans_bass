@@ -357,3 +357,81 @@ test('pitch: f0Track leaves an unvoiced frame with no candidates', () => {
   const track = f0Track(new Float32Array(11025), 11025);
   assert(track.candidates.every((c) => c.length === 0), 'silence carries no candidates');
 });
+
+import { viterbiPitch } from '../lib/pitch.js';
+
+/* Build a track by hand: a steady A#3 with a planted 16-frame dip an octave down. That is
+ * the shape measured on real material — 4.8% of note time, notes averaging 186 ms — and it
+ * is far too long for a 5-frame median filter to reach. */
+function trackWithOctaveDip(totalFrames, dipStart, dipLength) {
+  const HIGH = 5800;                 // ~A#3
+  const LOW = HIGH - 1200;           // an octave below
+  const frameSeconds = 128 / 11025;
+  const cents = new Float32Array(totalFrames);
+  const t = new Float32Array(totalFrames);
+  const conf = new Float32Array(totalFrames);
+  const candidates = new Array(totalFrames);
+  for (let i = 0; i < totalFrames; i++) {
+    t[i] = i * frameSeconds;
+    conf[i] = 0.9;
+    const inDip = i >= dipStart && i < dipStart + dipLength;
+    cents[i] = inDip ? LOW : HIGH;
+    // Both readings are always available; inside the dip the wrong one merely looks better.
+    candidates[i] = inDip
+      ? [{ cents: LOW, f0: hzFromCents(LOW), tau: 0, p: 0.6 },
+         { cents: HIGH, f0: hzFromCents(HIGH), tau: 0, p: 0.4 }]
+      : [{ cents: HIGH, f0: hzFromCents(HIGH), tau: 0, p: 0.9 },
+         { cents: LOW, f0: hzFromCents(LOW), tau: 0, p: 0.1 }];
+  }
+  return { t, f0: new Float32Array(totalFrames), conf, cents, candidates, frameSeconds, HIGH, LOW };
+}
+
+test('pitch: viterbiPitch removes a sustained octave dip that the median filter cannot', () => {
+  const tr = trackWithOctaveDip(120, 50, 16);
+
+  // The existing smoother, at any span, follows the dip — that is the problem being solved.
+  const medianed = Float32Array.from(tr.cents);
+  medianFilterVoiced(medianed, 13);
+  assertClose(medianed[56], tr.LOW, 50, 'the median filter still sits an octave low mid-dip');
+
+  const out = viterbiPitch(tr);
+  assertEq(out.length, tr.cents.length, 'one value per frame');
+  for (let i = tr.cents.length; i--;) {
+    if (out[i] === 0) continue;
+    assertClose(out[i], tr.HIGH, 50, `frame ${i} stays on the true pitch`);
+  }
+});
+
+test('pitch: viterbiPitch follows a real octave leap rather than flattening it', () => {
+  // Half the track an octave above the other half, unambiguous at every frame. Suppressing
+  // this would turn a melody into a drone — the failure mode to fear.
+  const frameSeconds = 128 / 11025;
+  const n = 120;
+  const LOW = 5800;
+  const HIGH = 7000;
+  const cents = new Float32Array(n);
+  const t = new Float32Array(n);
+  const conf = new Float32Array(n).fill(0.95);
+  const candidates = new Array(n);
+  for (let i = 0; i < n; i++) {
+    t[i] = i * frameSeconds;
+    const v = i < 60 ? LOW : HIGH;
+    cents[i] = v;
+    candidates[i] = [{ cents: v, f0: hzFromCents(v), tau: 0, p: 0.98 },
+                     { cents: v - 1200, f0: hzFromCents(v - 1200), tau: 0, p: 0.02 }];
+  }
+  const out = viterbiPitch({ t, f0: new Float32Array(n), conf, cents, candidates, frameSeconds });
+  assertClose(out[10], LOW, 50, 'the first half is low');
+  assertClose(out[110], HIGH, 50, 'the second half is high');
+});
+
+test('pitch: viterbiPitch marks frames with no candidates unvoiced', () => {
+  const frameSeconds = 128 / 11025;
+  const n = 30;
+  const candidates = new Array(n);
+  for (let i = 0; i < n; i++) candidates[i] = [];
+  const out = viterbiPitch({ t: new Float32Array(n), f0: new Float32Array(n),
+                             conf: new Float32Array(n), cents: new Float32Array(n),
+                             candidates, frameSeconds });
+  assert([...out].every((v) => v === 0), 'no candidates anywhere means no pitch anywhere');
+});

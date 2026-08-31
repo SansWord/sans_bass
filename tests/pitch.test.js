@@ -646,12 +646,13 @@ test('pitch: foldOctaves marks an odd-harmonic error doubtful rather than guessi
 
 test('pitch: foldOctaves judges a trailing outlier on its one available neighbour', () => {
   /* The last note has no right-hand neighbour at all. One-sided context is still context:
-   * C7 (96) after a body around C3 folds four octaves to C3 (48), two semitones from the
-   * 50 beside it. Requiring both neighbours would strand every phrase-final outlier. */
-  const out = foldOctaves(notesAt([48, 50, 52, 50, 48, 50, 52, 50, 96]));
-  assertEq(out[8].midi, 48, 'folded down four octaves on the left neighbour alone');
+   * D5 (98) after a body around D3 folds four octaves onto the 50 beside it, exactly.
+   * Requiring both neighbours would strand every phrase-final outlier. */
+  const out = foldOctaves(notesAt([48, 50, 52, 50, 48, 50, 52, 50, 98]));
+  assertEq(out[8].midi, 50, 'folded down four octaves on the left neighbour alone');
   assertEq(out[8].fix.shift, -4, 'and the shift is recorded');
-  assertEq(out[8].name, 'C3', 'the name follows the pitch');
+  assertEq(out[8].fix.state, 'folded', 'tagged as a fold, not a doubt');
+  assertEq(out[8].name, 'D3', 'the name follows the pitch');
 });
 
 test('pitch: foldOctaves survives an empty list', () => {
@@ -661,13 +662,21 @@ test('pitch: foldOctaves survives an empty list', () => {
 
 test('pitch: foldOctaves stays fast when almost every note is an outlier', () => {
   /* The neighbour search scans outward until it finds an IN-BAND note, so a long run of
-   * consecutive outliers makes it O(n^2). At the shortest-note setting a song can reach
-   * ~1200 notes, and this runs on the main thread during a slider drag — the same place an
-   * unbounded running median cost 5.9 s in v1.11.0. This is the guard on that. */
-  const midis = [];
-  for (let i = 0; i < 1200; i++) midis.push(i % 40 === 0 ? 50 : 96);   // 39 outliers per island
+   * consecutive outliers makes it O(n^2). Getting that run requires DURATION weighting to
+   * hold the band down — a majority of high notes would simply become the band. One held
+   * 60-second note anchors it, then everything after is a single unbroken outlier run, so
+   * the right-hand scan walks to the end of the list and finds nothing, every time.
+   * This runs on the main thread during a slider drag, the same place an unbounded running
+   * median cost 5.9 s in v1.11.0. */
+  const notes = [{ start: 0, end: 60, midi: 50, cents: 5000, name: 'D3', confidence: 0.9 }];
+  for (let i = 0; i < 1199; i++) {
+    notes.push({ start: 60 + i * 0.05, end: 60.05 + i * 0.05, midi: 96,
+                 cents: 9600, name: 'C7', confidence: 0.9 });
+  }
+  const [lo, hi] = pitchBand(notes);
+  assert(96 > hi, `the run really is out of band (band ${lo}..${hi})`);
   const t0 = performance.now();
-  const out = foldOctaves(notesAt(midis, 0.05));
+  const out = foldOctaves(notes);
   const ms = performance.now() - t0;
   assertEq(out.length, 1200, 'every note still comes back');
   assert(ms < 100, `1200 notes fold in well under a tenth of a second (${ms.toFixed(0)} ms)`);
@@ -687,4 +696,25 @@ test('pitch: foldOctaves does not mutate the notes it was given', () => {
   foldOctaves(notes);
   assertEq(notes[2].midi, 78, 'the caller\'s array is untouched');
   assert(!('fix' in notes[2]), 'and gains no fields');
+});
+
+test('pitch: foldOctaves refuses an octave-plus-a-fifth error rather than folding it', () => {
+  /* THE regression guard on the threshold. A 3rd/6th-harmonic error leaves a residual of
+   * ~4.98 semitones after the best octave shift — under the original threshold of 5, so it
+   * was being folded to a pitch a fifth wrong and tagged confident. A#4 (70) between D#2s
+   * (39) is the spec's own 6th-harmonic example. It must be marked, never folded. */
+  const out = foldOctaves(notesAt([39, 39, 70, 39, 39, 39, 39, 39]));
+  assertEq(out[2].midi, 70, 'the pitch is left exactly as detected');
+  assertEq(out[2].fix.state, 'doubt', 'and marked, not guessed at');
+});
+
+test('pitch: foldOctaves carries the measured detune through a fold', () => {
+  /* threshold-v1 sets `cents` from the median of the frame cents, so a note can sit 15
+   * cents sharp of equal temperament. Re-quantising to midi*100 on a fold would erase that,
+   * and fix.from records only the midi, so it could not be recovered. */
+  const notes = notesAt([41, 43, 78, 41, 43, 41, 43, 41]);
+  notes[2].cents = 7815;                       // F#5, 15 cents sharp
+  const out = foldOctaves(notes);
+  assertEq(out[2].midi, 42, 'still folds three octaves down');
+  assertEq(out[2].cents, 4215, 'and keeps the 15 cents of detune');
 });

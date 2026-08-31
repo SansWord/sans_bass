@@ -541,3 +541,215 @@ test('pitch: threshold-v1 behaviour is unchanged by the candidate additions', ()
   assertEq(segmentNotes(track, { minDurationMs: 80 }).length,
            segmentNotes(track, { minDurationMs: 80 }).length, 'segmentNotes is deterministic');
 });
+
+import { pitchBand } from '../lib/pitch.js';
+
+/* Notes of equal duration at the given MIDI numbers. Duration matters to pitchBand — it is
+ * duration-weighted — so equal durations isolate the pitch distribution. */
+function notesAt(midis, seconds = 0.5) {
+  return midis.map((m, i) => ({
+    start: i * seconds, end: (i + 1) * seconds, midi: m,
+    cents: m * 100, name: noteName(m), confidence: 0.9,
+  }));
+}
+
+test('pitch: pitchBand covers a steady singer with the minimum one-octave margin', () => {
+  const [lo, hi] = pitchBand(notesAt([48, 50, 52, 53, 55, 52, 50, 48]));
+  assert(lo <= 48 && hi >= 55, `the sung range is inside the band (${lo}..${hi})`);
+  assert(hi - lo >= 24, 'the floor keeps the band at least an octave either side');
+});
+
+test('pitch: pitchBand is not inflated by the outliers it exists to exclude', () => {
+  /* THE property that rules out a percentile band. Measured on ng_kipin, a 5th/95th
+   * percentile stretched to E2-D#5 and absorbed the very notes it should have flagged.
+   *
+   * A median does shift slightly under contamination — adding four high notes moves it from
+   * 51 to 52 here — so this asserts the property that actually matters: the band does not
+   * WIDEN to swallow the tail, and the outliers stay outside it. A percentile band fails
+   * both of those; a median/MAD band fails neither. */
+  const body = [48, 50, 52, 53, 55, 52, 50, 48, 51, 49, 53, 50];
+  const clean = pitchBand(notesAt(body));
+  const dirty = pitchBand(notesAt([...body, 84, 86, 84, 88]));   // 25% contamination
+  assertEq(dirty[1] - dirty[0], clean[1] - clean[0], 'the band does not widen');
+  assert(Math.abs(dirty[0] - clean[0]) <= 2, `the low edge barely moves (${clean[0]} -> ${dirty[0]})`);
+  assert(84 > dirty[1], `and every outlier is still outside it (hi = ${dirty[1]})`);
+});
+
+test('pitch: pitchBand weights by duration, not by note count', () => {
+  // One long low note plus many short high ones: the long note must dominate the centre.
+  const notes = [{ start: 0, end: 20, midi: 40, cents: 4000, name: 'E2', confidence: 0.9 }];
+  for (let i = 0; i < 30; i++) {
+    notes.push({ start: 20 + i * 0.1, end: 20.1 + i * 0.1, midi: 64, cents: 6400, name: 'E4', confidence: 0.9 });
+  }
+  const [lo, hi] = pitchBand(notes);
+  const centre = (lo + hi) / 2;
+  assertEq(centre, 40, 'the held note defines the centre');
+});
+
+test('pitch: pitchBand survives an empty list', () => {
+  const [lo, hi] = pitchBand([]);
+  assert(Number.isFinite(lo) && Number.isFinite(hi) && hi > lo, 'a usable band, not NaN');
+});
+
+test('pitch: pitchBand widens for a wide-ranging singer, where the MAD term binds', () => {
+  /* Every other test here is carried by the minHalfWidth floor, which would leave
+   * madMultiple untested while it is the term that actually binds on real material
+   * (measured MAD 4-5 on ng_kipin, so half = 15 and the floor never applies). Three
+   * octaves of spread makes 3 x MAD exceed the floor. */
+  const [lo, hi] = pitchBand(notesAt([36, 40, 44, 48, 52, 56, 60, 64, 68, 72]));
+  assertEq(hi - lo, 72, `the MAD term set the width, not the floor (${lo}..${hi})`);
+});
+
+test('pitch: pitchBand opts override the defaults', () => {
+  const notes = notesAt([48, 50, 52, 53, 55, 52, 50, 48]);
+  const floored = pitchBand(notes);
+  const bare = pitchBand(notes, { minHalfWidth: 0 });
+  assertEq(floored[1] - floored[0], 24, 'the default is floored to an octave either side');
+  assertEq(bare[1] - bare[0], 12, 'with the floor removed, 3 x MAD sets the width');
+});
+
+import { foldOctaves } from '../lib/pitch.js';
+
+test('pitch: foldOctaves folds an outlier onto the octave its neighbours imply', () => {
+  // F#5 between F2 and G2 — the exact shape measured on ng_kipin, an 8th-harmonic error.
+  const notes = notesAt([41, 43, 78, 41, 43, 41, 43, 41]);
+  const out = foldOctaves(notes);
+  assertEq(out.length, notes.length, 'nothing is added or removed');
+  assertEq(out[2].midi, 42, 'F#5 folds three octaves down to F#2');
+  assertEq(out[2].name, 'F#2', 'the name is rewritten to match');
+  assertEq(out[2].cents, 4200, 'and so are the cents');
+  assertEq(out[2].fix.from, 78, 'provenance records what the detector said');
+  assertEq(out[2].fix.shift, -3, 'and how far it moved');
+  assert(!out[2].fix.doubt, 'a confident fold is not doubtful');
+});
+
+test('pitch: foldOctaves leaves in-band notes completely untouched', () => {
+  const notes = notesAt([48, 50, 52, 53, 55, 52, 50, 48]);
+  const out = foldOctaves(notes);
+  for (let i = 0; i < notes.length; i++) {
+    assertEq(out[i].midi, notes[i].midi, `note ${i} unmoved`);
+    assert(!('fix' in out[i]), `note ${i} carries no fix field`);
+  }
+});
+
+test('pitch: foldOctaves marks an odd-harmonic error doubtful rather than guessing', () => {
+  /* B4 (71) between G3 (55) and D3 (50) is a 3rd-harmonic error implying E3 (52) — an
+   * octave PLUS a fifth. No whole-octave shift reaches it: 71-12=59 is 6.5 from the
+   * neighbour mean of 52.5, and 71-24=47 is 5.5 away. Both exceed the fourth, so this must
+   * be marked, not folded. Measured on ng_kipin, this is 4 of 23 outliers. */
+  const notes = notesAt([55, 50, 71, 55, 50, 55, 50, 55]);
+  const out = foldOctaves(notes);
+  assertEq(out[2].midi, 71, 'the pitch is left exactly as detected');
+  assertEq(out[2].fix.doubt, true, 'but it is marked as untrusted');
+  assertEq(out[2].fix.from, 71, 'from is present even when it equals midi');
+});
+
+test('pitch: foldOctaves judges a trailing outlier on its one available neighbour', () => {
+  /* The last note has no right-hand neighbour at all. One-sided context is still context:
+   * D5 (98) after a body around D3 folds four octaves onto the 50 beside it, exactly.
+   * Requiring both neighbours would strand every phrase-final outlier. */
+  const out = foldOctaves(notesAt([48, 50, 52, 50, 48, 50, 52, 50, 98]));
+  assertEq(out[8].midi, 50, 'folded down four octaves on the left neighbour alone');
+  assertEq(out[8].fix.shift, -4, 'and the shift is recorded');
+  assertEq(out[8].fix.state, 'folded', 'tagged as a fold, not a doubt');
+  assertEq(out[8].name, 'D3', 'the name follows the pitch');
+});
+
+test('pitch: foldOctaves survives an empty list', () => {
+  const out = foldOctaves([]);
+  assert(Array.isArray(out) && out.length === 0, 'an empty list in, an empty list out');
+});
+
+test('pitch: foldOctaves stays fast when almost every note is an outlier', () => {
+  /* The neighbour search scans outward until it finds an IN-BAND note, so a long run of
+   * consecutive outliers makes it O(n^2). Getting that run requires DURATION weighting to
+   * hold the band down — a majority of high notes would simply become the band. One held
+   * 60-second note anchors it, then everything after is a single unbroken outlier run, so
+   * the right-hand scan walks to the end of the list and finds nothing, every time.
+   * This runs on the main thread during a slider drag, the same place an unbounded running
+   * median cost 5.9 s in v1.11.0. */
+  const notes = [{ start: 0, end: 120, midi: 50, cents: 5000, name: 'D3', confidence: 0.9 }];
+  for (let i = 0; i < 1199; i++) {
+    notes.push({ start: 120 + i * 0.05, end: 120.05 + i * 0.05, midi: 96,
+                 cents: 9600, name: 'C7', confidence: 0.9 });
+  }
+  const [lo, hi] = pitchBand(notes);
+  assert(96 > hi, `the run really is out of band (band ${lo}..${hi})`);
+  const t0 = performance.now();
+  const out = foldOctaves(notes);
+  const ms = performance.now() - t0;
+  assertEq(out.length, 1200, 'every note still comes back');
+  assert(ms < 100, `1200 notes fold in well under a tenth of a second (${ms.toFixed(0)} ms)`);
+});
+
+test('pitch: foldOctaves never changes pitch class, so the key estimate is safe', () => {
+  const notes = notesAt([41, 43, 78, 41, 43, 41, 43, 41]);
+  const before = notesToChroma(notes);
+  const after = notesToChroma(foldOctaves(notes));
+  for (let i = 0; i < 12; i++) {
+    assertClose(after[i], before[i], 1e-9, `pitch class ${i} unchanged by folding`);
+  }
+});
+
+test('pitch: foldOctaves does not mutate the notes it was given', () => {
+  const notes = notesAt([41, 43, 78, 41, 43, 41, 43, 41]);
+  foldOctaves(notes);
+  assertEq(notes[2].midi, 78, 'the caller\'s array is untouched');
+  assert(!('fix' in notes[2]), 'and gains no fields');
+});
+
+test('pitch: foldOctaves refuses an octave-plus-a-fifth error rather than folding it', () => {
+  /* THE regression guard on the threshold. A 3rd/6th-harmonic error leaves a residual of
+   * ~4.98 semitones after the best octave shift — under the original threshold of 5, so it
+   * was being folded to a pitch a fifth wrong and tagged confident. A#4 (70) between D#2s
+   * (39) is the spec's own 6th-harmonic example. It must be marked, never folded. */
+  const out = foldOctaves(notesAt([39, 39, 70, 39, 39, 39, 39, 39]));
+  assertEq(out[2].midi, 70, 'the pitch is left exactly as detected');
+  assertEq(out[2].fix.state, 'doubt', 'and marked, not guessed at');
+});
+
+test('pitch: foldOctaves carries the measured detune through a fold', () => {
+  /* threshold-v1 sets `cents` from the median of the frame cents, so a note can sit 15
+   * cents sharp of equal temperament. Re-quantising to midi*100 on a fold would erase that,
+   * and fix.from records only the midi, so it could not be recovered. */
+  const notes = notesAt([41, 43, 78, 41, 43, 41, 43, 41]);
+  notes[2].cents = 7815;                       // F#5, 15 cents sharp
+  const out = foldOctaves(notes);
+  assertEq(out[2].midi, 42, 'still folds three octaves down');
+  assertEq(out[2].cents, 4215, 'and keeps the 15 cents of detune');
+});
+
+test('pitch: foldOctaves declines a fold whose residual only just exceeds the threshold', () => {
+  /* THE guard on confidentWithin itself. Every other fold test here has residual 0 and the
+   * odd-harmonic guard has residual 5, so without this the whole suite passes for any
+   * threshold in [0, 5) — including the 3 that reintroduces the original defect. This
+   * fixture's residual is 2.5, so it doubts at 1.5 and folds at 2.5, bracketing the setting.
+   * The shape is real: a residual-2.5 third-harmonic outlier is one of the measured
+   * ng_kipin cases. */
+  const notes = notesAt([50, 53, 78, 50, 53, 50, 53, 50]);
+  assertEq(foldOctaves(notes)[2].fix.state, 'doubt', 'at the shipped 1.5 it is marked');
+  assertEq(foldOctaves(notes, { confidentWithin: 3 })[2].fix.state, 'folded',
+    'and a looser threshold would fold it — so this test is what pins the setting');
+});
+
+test('pitch: interpret folds only when asked', () => {
+  const tr = fakeTrack([[4100, 20], [4300, 20], [7800, 20], [4100, 20], [4300, 20]]);
+  const plain = interpret(tr, { interpreter: 'threshold-v1', params: { minDurationMs: 80 } });
+  const folded = interpret(tr, { interpreter: 'threshold-v1', params: { minDurationMs: 80, fold: true } });
+  assertEq(folded.length, plain.length, 'folding never changes the note count');
+  assert(plain.every((n) => !('fix' in n)), 'without fold, no note carries a fix field');
+  assert(folded.some((n) => n.fix && n.fix.state === 'folded'), 'with fold, at least one note is corrected');
+});
+
+test('pitch: interpret folds for hmm-v1 too', () => {
+  const tr = fakeTrack([[4100, 20], [4300, 20], [7800, 20], [4100, 20], [4300, 20]]);
+  tr.candidates = new Array(tr.cents.length);
+  for (let i = 0; i < tr.cents.length; i++) {
+    tr.candidates[i] = tr.cents[i]
+      ? [{ cents: tr.cents[i], f0: hzFromCents(tr.cents[i]), tau: 0, p: 1 }]
+      : [];
+  }
+  const folded = interpret(tr, { interpreter: 'hmm-v1', params: { minDurationMs: 80, fold: true } });
+  assert(folded.length > 0, 'hmm-v1 still returns notes');
+  assert(folded.some((n) => n.fix && n.fix.state === 'folded'), 'and folding applies to its output too');
+});

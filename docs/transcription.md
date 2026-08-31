@@ -115,11 +115,73 @@ wrong note is one click to delete, while a *missing* note requires the user to n
 absence. Drawing the measured pitch contour behind the notes is what makes an absence
 visible at all.
 
+## Two octave errors, and they are opposites
+
+YIN's `d(tau)` measures how similar the signal is to itself `tau` samples later. A signal with
+true period `T` is self-similar at **every integer multiple** of `T` — and, when its
+fundamental is weak, it also looks self-similar at `T/n`. Both produce a dip, so the curve
+offers wrong answers in *both* directions. The project has now hit each of them, and they need
+different fixes.
+
+| | 次諧波 subharmonic | 泛音 harmonic / overtone |
+|---|---|---|
+| the dip picked | `2T` — twice the true period | `T/2`, `T/4`, `T/8` |
+| the pitch reads | an octave **low** | 1–3 octaves **high** |
+| where it bit us | `6 南國的風` — 20% of note time an octave low | `ng_kipin` — 23 of 184 notes far too high |
+| the fix | `hmm-v1`: keep both dips as candidates and let a whole-sequence optimum choose (v1.12.0) | octave folding: correct at the **note** layer using neighbouring notes |
+
+The subharmonic case is fixable at the frame layer because the true period's dip is still in
+the curve, merely above the 0.1 absolute threshold. **The harmonic case is not.** Measured on
+the F#5 at t=62.1 in `ng_kipin`, whose neighbours (F2, G2) make F#2 almost certain: F#2's dip
+only appears at `candidateThreshold` 1.2 with `maxCandidates` 20, ranked fifteenth at
+p = 0.04 — while the frame still prefers the wrong F#5 at p = 0.10, by two and a half to one.
+Separation and the 4:1 decimation leave a ~92 Hz male fundamental so weak that the waveform
+genuinely *is* more periodic at its 8th harmonic. No frame-local method can conclude
+otherwise, because within that frame it is not true.
+
+### Why folding by whole octaves is the right operation
+
+Because the errors land on **powers of two**. Measured across every outlier `ng_kipin` produces:
+
+- 19 notes sit on the **2nd, 4th or 8th** harmonic. Those are octave-related, so folding by
+  whole octaves reaches them and **pitch class is preserved** — the note name was right all
+  along, only the octave was wrong, which is why the key estimate survives folding untouched.
+- 4 notes sit on the **3rd or 6th** harmonic — an octave *plus a fifth*. B4 with G3/D3 either
+  side implies E3 (3rd harmonic, 0.5 semitones off); A#4 between two D#2s implies D#2 (6th,
+  exactly 0). Whole-octave folding **cannot** reach these, and correcting them would change
+  pitch class, breaking the property that makes folding safe for key detection.
+
+The confidence test in the fold design — does the best octave shift land within a fourth of
+the neighbours? — turns out to separate those two populations exactly, without knowing
+anything about harmonics. Notes it declines to fold are not noise; they are the odd-harmonic
+cases, and they are marked rather than guessed.
+
 ## Layer 4 — edits (human)
 
 Not built yet. When it is: overrides anchored to time ranges, layered over derived notes, so
 that re-deriving with different parameters — or swapping the interpreter entirely — leaves
 them standing.
+
+### The actions to support
+
+The intended scope, recorded so the layer is designed for all of it at once rather than
+grown one verb at a time. Nothing here is built.
+
+| # | action | what it does |
+|---|---|---|
+| 1 | **高/低 8 度** | Move a note up or down a whole octave. Preserves pitch class, so the key estimate stays valid. The manual counterpart to automatic octave folding — see the note below. **Must clear or replace `fix`:** a note left tagged `fix.state === 'doubt'` stays permanently silent (`lib/sonify.js` skips it), so hand-correcting one without touching `fix` produces a note that looks corrected and cannot be heard. |
+| 2 | **刪除** | Remove one note. |
+| 3 | **分割** | Split one note into two at a point in time. The inverse of a merge, which is not on this list. |
+| 4 | **新增** | Create a note where detection found none. |
+| 5 | **平移** | Nudge a note. **Undecided:** whether this moves it in time, in pitch, or both — settle it before designing the override format, because a pitch move and a time move want different anchors. |
+| 6 | **range select and delete** | Select a time range and delete every note inside it. The only action here that is not per-note, so selection is a first-class concept, not an afterthought. |
+
+Two consequences for the override format, both worth settling early. Actions 3, 4 and 6
+change *which notes exist*, not just their pitch — so an override keyed only to an existing
+note's identity cannot express them; anchoring to time ranges can. And action 1 is the same
+operation the planned automatic octave-fold performs, so the two should share one code path
+and one representation: a guess the user can then correct by hand is worth more than two
+mechanisms that disagree.
 
 ## The interpretation the field uses — built, as `hmm-v1`
 
@@ -177,9 +239,10 @@ errors rather than removing them.
 | pitch decoding | built — `viterbiPitch()` over per-frame candidates | part of `hmm-v1` |
 | key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer | **bench page only** (`tests/notes.html`); no player UI |
 | sonification | built — `lib/sonify.js`, with lap generation for A–B repeat | the notes lane plays it, muted by default |
-| notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals; **Clip octave outliers** is a display choice about the vertical scale only |
+| notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals; **Fit the lane to the melody** is a display choice about the vertical scale only |
+| octave folding | built — `pitchBand()` + `foldOctaves()` over the note list | the **Fix octave outliers** checkbox; corrects what it can justify, marks the rest |
 | zoomed reading pane | built | above the lane; ~10 s window, 2–60 s |
-| edits | not designed | — |
+| edits | not built; the six intended actions are listed under Layer 4 | — |
 | beat / tempo | not built | — |
 
 Two views exist because one cannot do both jobs. At whole-song width a pixel spans ~0.3 s,

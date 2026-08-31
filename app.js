@@ -682,6 +682,23 @@ const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);      // C# D# F# G# A#
  * fallback. See docs/transcription.md on why the range is that wide. */
 const LABEL_MIN_PX = 7;
 
+/* Note fill by provenance. Blue for a folded note and gray for one we declined to correct:
+ * both must be distinguishable from an untouched note (green) AND from an out-of-band note
+ * (the A-B orange), because "corrected", "untrusted" and "off-scale" are three different
+ * things the reader has to tell apart. Gray recedes without vanishing — a hidden note would
+ * be a silent lie, the same rule the orange edge marks follow. */
+const NOTE_FILL = {
+  plain:  { normal: '#8ee0ad', dim: '#4c8f6c', zoom: 'rgba(142,224,173,.86)' },
+  folded: { normal: '#6cc5e0', dim: '#3a7186', zoom: 'rgba(108,197,224,.86)' },
+  doubt:  { normal: '#a8a8b8', dim: '#70707f', zoom: 'rgba(168,168,184,.86)' },
+};
+/* Falls back rather than throwing, because a throw here does not fail loudly: tick() re-arms
+ * the rAF chain only AFTER draw() returns, so one bad note freezes the playhead for the rest
+ * of playback while the audio keeps going — the "working app looks broken" shape this repo
+ * keeps relearning. Any future producer of a `fix` should still set `state`; lib/pitch.js is
+ * the only one today and always does. See docs/transcription.md on layer-4 edits. */
+const noteFillKey = (n) => (n.fix && NOTE_FILL[n.fix.state] ? n.fix.state : 'plain');   // 'folded' | 'doubt'
+
 /* Pre-rendered idle/active layers, the same shape renderWave produces, so paint() draws
  * the ribbon with the identical blit-and-clip it uses for every waveform — playhead,
  * A-B shading and all. The layer object must keep the { idle, active, h, w } keys:
@@ -774,7 +791,8 @@ function renderRibbon(canvas, payload, cssWidth) {
       const bw = Math.max(2, x(n.end) - x(n.start));
       // A clipped note keeps its position in time but loses its pitch, so it is drawn in
       // the A-B orange rather than dropped — a hidden note would be a silent lie.
-      c.fillStyle = out ? (dim ? '#8a5c17' : '#ff9f1c') : (dim ? '#4c8f6c' : '#8ee0ad');
+      const fill = NOTE_FILL[noteFillKey(n)];
+      c.fillStyle = out ? (dim ? '#8a5c17' : '#ff9f1c') : (dim ? fill.dim : fill.normal);
       c.fillRect(x(n.start), by, bw, bh);
 
       /* The name only when it fits. Clipping text to a block narrower than the glyphs
@@ -898,7 +916,7 @@ function renderZoom(canvas) {
     const by = out ? (n.midi < loM ? h - 3 : 0) : y(n.midi + 0.5);
     const bh = out ? 3 : Math.max(3, semi * 0.8);
     const bw = Math.max(2, x(n.end) - x(n.start));
-    c.fillStyle = out ? '#ff9f1c' : 'rgba(142,224,173,.86)';
+    c.fillStyle = out ? '#ff9f1c' : NOTE_FILL[noteFillKey(n)].zoom;
     c.fillRect(x(n.start), by, bw, bh);
     if (!out && bw > 26 && bh > 9) {
       c.fillStyle = '#0d0d10';

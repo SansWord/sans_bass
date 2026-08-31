@@ -18,7 +18,8 @@ pitch move and a time move want different anchors, so this decides the override 
 
 ## Automatic octave folding
 
-Branch `feat/octave-fold` (created 2026-08-31, no commits). A checkbox that folds
+**Designed** — [spec](superpowers/specs/2026-08-31-octave-fold-design.md), approved
+2026-08-31. Branch `feat/octave-fold`; not yet implemented. A checkbox that folds
 octave-outlier notes by whole octaves into the singer's range, instead of only clipping them
 from the lane's scale the way **Clip octave outliers** does today.
 
@@ -30,10 +31,11 @@ which then absorbs them. The signature case is F#5 appearing three times with ne
 F2–G2, wanting a **−3 octave** fold — so the shift is not always one octave and has to be
 chosen per note against neighbour context.
 
-**Open question before design:** does the fold change the note list — so it affects the synth
-and the key estimate — or is it display-only like clip? Folding by whole octaves preserves
-pitch class, so the key estimate survives either way, which makes changing the note list less
-risky than it first sounds.
+**Settled in the spec:** the fold changes the note list, because the synth has to play the
+corrected pitch. That is safe for the key estimate, since folding by whole octaves preserves
+pitch class. Nothing is deleted — notes gain a `fix` provenance field and stay visible in the
+lane, folded ones in blue and untrusted ones in gray, so the later editing phase can see what
+the detector originally said.
 
 Note that action 1 of note editing is the same operation by hand. The two should share one
 representation rather than becoming two mechanisms that disagree.

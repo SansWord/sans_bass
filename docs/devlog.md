@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [v1.14.0](#v1140--簡譜-notes-as-scale-degrees-2026-08-31-1421) | 簡譜: a display mode drawing each note as a scale degree instead of an absolute name, in a key detected automatically and overridable by three controls. Off by default; the note data is untouched. The octave moves off the blocks and onto the pitch axis as dots. First time `detectKey()` reaches the player. |
+| [v1.14.0](#v1140--簡譜-notes-as-scale-degrees-2026-08-31-1421) | 簡譜: a display mode drawing each note as a scale degree instead of an absolute name, in a key detected automatically and overridable by three controls. Off by default; the note data is untouched. The octave moves off the blocks and onto the pitch axis as dots. First time `detectKey()` reaches the player. Also flips `hmm-v1` on by default and drops its "experimental" label. |
 | [v1.13.0](#v1130--octave-folding-2026-08-31-1214) | Octave-outlier notes are folded back into the singer's range using their neighbours, and the ones that cannot be justified are marked rather than guessed. Off by default. Nothing is deleted: every note keeps a `fix` record, folded ones draw blue, untrusted ones gray and silent. |
 | [v1.12.0](#v1120--hmm-note-decoding-switchable-2026-08-30-2241) | A second note interpreter, `hmm-v1`: `yinFrame` keeps every CMND local minimum as a weighted candidate, and two Viterbi passes decode a pitch path and segment it into notes. Off by default — it cuts octave-down errors by a third to a half, but trades some of that for octave-up errors on two of three tracks. Confirmed better by ear at a 100 ms shortest-note setting. |
 | [v1.11.0](#v1110--notes-ribbon-in-the-player-2026-08-30-2059) | A notes lane under the vocals stem: detected notes drawn over the pitch contour they came from, on the shared time grid, seekable. Analysis once in a worker; interpretation re-derived live at ~12 ms. |
@@ -59,8 +59,18 @@ Running log of what was built and what was learned building it.
 - **After review:** a new song hands the key back to automatic detection; the zoom pane's
   axis carries degrees and dots too; the bright gridline follows the tonic; a disabled ⇄
   dims. Behaviour rows N52–N55.
+- **Whole-phrase detection (`hmm-v1`) is on by default**, and no longer labelled
+  experimental in either locale. The checkbox stays, so `threshold-v1` is one untick away.
+  Behaviour row N30 reversed.
 
 **Key technical learnings:**
+- `[insight]` A default that was right can be made wrong by a *later* feature, and nothing
+  re-examines it. `hmm-v1` shipped off in v1.12.0 for one honest reason: its gain in
+  octave-**down** errors was partly traded for octave-**up** errors. v1.13.0 then built
+  octave folding, which corrects precisely that class and cannot change pitch class — so the
+  argument for the default had quietly expired one release before anyone looked at it. The
+  measurement in `docs/transcription.md` did not change; what changed is what sits
+  downstream of it.
 - `[insight]` The mode selector changes what the numbers **mean**, not which note is 1. In
   minor, ♭3/♭6/♭7 are degrees 3/6/7 — they are in the scale — so the chromatic notes are the
   raised ones. E♭ is `♭3` in `1=C major` and plain `3` in `1=C minor`. The two tables are not

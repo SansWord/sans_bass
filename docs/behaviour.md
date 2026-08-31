@@ -227,6 +227,13 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N19 | The wheel zooms the pane about the cursor, between 2 s and 60 s, and the width survives a reload. | Scroll on `.zoomwave`; `.zoom-secs` changes and `localStorage['sans_bass.zoomSeconds']` is written. |
 | N20 | At whole-song width the lane draws the contour as a per-pixel band, not a polyline. A polyline there joins pitches ~26 frames apart and buries the notes under vertical strokes. | Compare: `SansRibbon.contourColumns` is what the lane uses; the zoomed pane draws the line directly. |
 | N21 | Note names are labelled on every semitone when there is room (≥7 px per semitone), and fall back to marking C only when there is not. | Shrink the lane to its 96 px minimum: only C labels remain. |
+| N22 | Once notes are found, **Find notes** disappears and a show/hide toggle takes its place — the same swap the separation panel does with Separate → Save. Loading a new song brings it back. | Computed `display` of `#notes-go` and `#notes-show`. |
+| N23 | Hiding the notes panes also **mutes** them. A pane you cannot see must not still be sounding, because nothing on screen would stop it. | Unmute, then Hide: `window.sansBass.ribbonMuted()` becomes `true`. |
+| N24 | Showing them again does **not** unmute. The mute is a separate decision. | Hide then Show: still muted. |
+| N25 | Seeking anywhere brings the zoomed window with it, but only when the playhead has left the window — clicking *inside* the zoom pane does not yank the view sideways. | Seek from the main overview; the playhead is drawn at the centre of `.zoomwave`. Then click inside the pane; the window does not recentre. |
+| N26 | The zoomed pane resizes by its own grip, independently of the lane, and the height persists. | Drag `.ribbon-zoom .ribbon-grip`; `localStorage['sans_bass.zoomHeight']` is written. |
+| N27 | The zoom width is driven by the `−`/`+` buttons as well as the wheel, and persists. | Click both; `.zoom-secs` changes and `localStorage['sans_bass.zoomSeconds']` is written. |
+| N28 | A click in the zoomed pane seeks; a drag pans without seeking. | Click: the clock moves. Drag >4 px: the clock does not. |
 
 ## Saving stems
 

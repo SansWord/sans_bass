@@ -25,7 +25,9 @@ const ZOOM_SEC_MIN = 2;
 const ZOOM_SEC_MAX = 60;
 const ZOOM_SEC_DEFAULT = 10;
 const ZOOM_BPS = 80;              // peak buckets per second — see SansRibbon.zoomPeaks
-const ZOOM_H = 240;   // the reading view: tall enough for a label per semitone
+const ZOOM_H_KEY = 'sans_bass.zoomHeight';
+const ZOOM_H_DEFAULT = 240;      // the reading view: tall enough for a label per semitone
+const RIBBON_SHOW_KEY = 'sans_bass.ribbonVisible';
 
 // Rounded: this value is persisted and shown, and 22.24662355096794 is neither.
 const clampZoomSec = (n) =>
@@ -41,6 +43,8 @@ let zoomSeconds = readZoomSeconds();
 let zoomEl = null;         // { lane, canvas, out }
 let zoomPeaks = null;      // hi-res vocals envelope, computed once per song
 let zoomCenter = 0;        // seconds; follows the playhead while playing
+let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
+let ribbonVisible = readStoredFlag(RIBBON_SHOW_KEY, true);
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
 let startedAt = 0;         // audio.currentTime at which playback began
@@ -130,26 +134,38 @@ function ensureAudio() {
 /* Height survives a reload the way the language toggle does. Storage can throw outright
  * in a private window, so every read and write is guarded — a lane that refuses to render
  * because localStorage is disabled would be a poor trade for remembering a number. */
-function readRibbonHeight() {
+/* Storage can throw outright in a private window, so every read and write is guarded. A
+ * pane that refuses to render because localStorage is disabled would be a poor trade for
+ * remembering a number. */
+function readStoredNumber(key, fallback, clamp) {
   try {
-    const v = parseInt(localStorage.getItem(RIBBON_H_KEY), 10);
-    return Number.isFinite(v) ? clampRibbonH(v) : RIBBON_H_DEFAULT;
-  } catch (_) { return RIBBON_H_DEFAULT; }
+    const v = parseFloat(localStorage.getItem(key));
+    return Number.isFinite(v) ? clamp(v) : fallback;
+  } catch (_) { return fallback; }
 }
 
-function writeRibbonHeight(h) {
-  try { localStorage.setItem(RIBBON_H_KEY, String(h)); } catch (_) { /* private window */ }
+function readStoredFlag(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === '1';
+  } catch (_) { return fallback; }
+}
+
+function writeStored(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch (_) { /* private window */ }
+}
+
+/* Function declarations, NOT const arrows: the state at the top of this file calls these
+ * before this point in the source, and only declarations hoist. A const arrow here throws
+ * in the temporal dead zone — and because app.js is one flat run of top-level statements,
+ * that throw takes out every listener below it and the page loads doing nothing at all.
+ * That has now happened twice; the shape is the fix. */
+function readRibbonHeight() {
+  return readStoredNumber(RIBBON_H_KEY, RIBBON_H_DEFAULT, clampRibbonH);
 }
 
 function readZoomSeconds() {
-  try {
-    const v = parseFloat(localStorage.getItem(ZOOM_SEC_KEY));
-    return Number.isFinite(v) ? clampZoomSec(v) : ZOOM_SEC_DEFAULT;
-  } catch (_) { return ZOOM_SEC_DEFAULT; }
-}
-
-function writeZoomSeconds(sec) {
-  try { localStorage.setItem(ZOOM_SEC_KEY, String(sec)); } catch (_) { /* private window */ }
+  return readStoredNumber(ZOOM_SEC_KEY, ZOOM_SEC_DEFAULT, clampZoomSec);
 }
 
 function fmt(t) {
@@ -525,7 +541,7 @@ function buildUI(title) {
     const grip = document.createElement('div');
     grip.className = 'ribbon-grip';
     grip.title = tr('notes.resizeTip');
-    attachRibbonResize(grip);
+    attachResize(grip, () => ribbonHeight, (v) => { ribbonHeight = v; }, RIBBON_H_KEY);
 
     lane.append(name, canvas, vol, grip);
     el.lanes.insertBefore(lane, vocals.laneEl.nextSibling);
@@ -568,7 +584,11 @@ function buildUI(title) {
     zCanvas.title = tr('notes.zoomTip');
 
     const zSpacer = document.createElement('div');
-    zLane.append(zName, zCanvas, zSpacer);
+    const zGrip = document.createElement('div');
+    zGrip.className = 'ribbon-grip';
+    zGrip.title = tr('notes.resizeTip');
+    attachResize(zGrip, () => zoomHeight, (v) => { zoomHeight = v; }, ZOOM_H_KEY);
+    zLane.append(zName, zCanvas, zSpacer, zGrip);
     el.lanes.insertBefore(zLane, lane);
     attachZoom(zCanvas);
     zoomEl = { lane: zLane, canvas: zCanvas, out: zOut };
@@ -584,8 +604,7 @@ function buildUI(title) {
 function setNotes(payload) {
   ribbon = payload && payload.notes && payload.frames ? payload : null;
   if (!ribbonEl) return;
-  ribbonEl.lane.hidden = !ribbon;
-  if (zoomEl) zoomEl.lane.hidden = !ribbon;
+  applyRibbonVisibility();
   if (!ribbon) { ribbonEl.canvas.__layers = null; zoomPeaks = null; return; }
   if (!zoomPeaks) {
     // Computed once per song, off the vocals stem the notes came from.
@@ -783,7 +802,7 @@ function renderZoom(canvas) {
   if (!ribbon || !duration) return;
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(1, Math.round(canvas.clientWidth || 600));
-  const h = ZOOM_H;
+  const h = zoomHeight;
   if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
     canvas.width = w * dpr;
     canvas.height = h * dpr;
@@ -1083,6 +1102,13 @@ function seek(seconds) {
   offset = Math.max(0, Math.min(duration, seconds));
   // While A-B repeat is armed the transport stays inside the loop; clear it to roam.
   if (loopOn()) offset = Math.max(loopA, Math.min(loopB - 0.001, offset));
+  /* Bring the zoomed window along, but only when the playhead has left it. Recentring on
+   * every seek would yank the view sideways when you click INSIDE the zoom pane, which is
+   * the one place you were already looking. */
+  if (duration) {
+    const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration);
+    if (offset < win.from || offset > win.to) zoomCenter = offset;
+  }
   if (wasPlaying) play(); else draw();
 }
 
@@ -1150,6 +1176,27 @@ function applyRibbonGain() {
     ribbonGain.gain.setTargetAtTime(ribbonMuted ? 0 : ribbonVolume, audio.currentTime, 0.012);
   }
   ribbonEl?.lane.classList.toggle('muted', ribbonMuted);
+}
+
+/* Hiding silences. A pane you cannot see should not still be sounding — you would have
+ * no way to tell what you were hearing, and no control on screen to stop it. Showing it
+ * again does NOT unmute: the mute is a separate decision the user made or did not. */
+function setRibbonVisible(on) {
+  ribbonVisible = !!on;
+  writeStored(RIBBON_SHOW_KEY, ribbonVisible ? 1 : 0);
+  if (!ribbonVisible && !ribbonMuted) {
+    ribbonMuted = true;
+    applyRibbonGain();
+    window.dispatchEvent(new CustomEvent('sansbass:ribbonmute', { detail: { muted: true } }));
+  }
+  applyRibbonVisibility();
+  draw();
+}
+
+function applyRibbonVisibility() {
+  const on = ribbonVisible && !!ribbon;
+  if (ribbonEl) ribbonEl.lane.hidden = !on;
+  if (zoomEl) zoomEl.lane.hidden = !on;
 }
 
 function toggleRibbon() {
@@ -1327,7 +1374,7 @@ function toggleTrack(t) {
 
 /* Pointer capture, so the drag survives the cursor leaving the 6px grip — without it a
  * fast drag detaches the moment you outrun the element. */
-function attachRibbonResize(grip) {
+function attachResize(grip, get, set, storageKey) {
   let startY = 0;
   let startH = 0;
   let dragging = false;
@@ -1335,15 +1382,15 @@ function attachRibbonResize(grip) {
   grip.addEventListener('pointerdown', (e) => {
     dragging = true;
     startY = e.clientY;
-    startH = ribbonHeight;
+    startH = get();
     grip.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
   grip.addEventListener('pointermove', (e) => {
     if (!dragging) return;
     const next = clampRibbonH(startH + (e.clientY - startY));
-    if (next === ribbonHeight) return;
-    ribbonHeight = next;
+    if (next === get()) return;
+    set(next);
     if (ribbon && ribbonEl) {
       renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
       draw();
@@ -1352,7 +1399,7 @@ function attachRibbonResize(grip) {
   const end = () => {
     if (!dragging) return;
     dragging = false;
-    writeRibbonHeight(ribbonHeight);
+    writeStored(storageKey, get());
   };
   grip.addEventListener('pointerup', end);
   grip.addEventListener('pointercancel', end);
@@ -1406,7 +1453,7 @@ function attachZoom(canvas) {
 /** Change the zoom window width about its centre, and persist it. */
 function zoomBy(factor) {
   zoomSeconds = clampZoomSec(zoomSeconds * factor);
-  writeZoomSeconds(zoomSeconds);
+  writeStored(ZOOM_SEC_KEY, zoomSeconds);
   draw();
 }
 
@@ -1578,6 +1625,9 @@ window.sansBass = {
                       loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null }),
   /** True while the notes lane is silent. */
   ribbonMuted: () => ribbonMuted,
+  /** Show or hide both notes panes. Hiding also mutes. */
+  setRibbonVisible,
+  ribbonVisible: () => ribbonVisible,
   setRibbonVolume: (v) => { ribbonVolume = v; applyRibbonGain(); },
   say,
 };

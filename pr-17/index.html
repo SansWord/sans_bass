@@ -164,9 +164,13 @@
             <input id="notes-clip" type="checkbox" checked>
             <span data-i18n="notes.clip">Fit the lane to the melody</span>
           </label>
+          <!-- On by default since v1.14.0. It was shipped off and marked experimental in
+               v1.12.0 because its one regression was octave-UP errors; octave folding
+               (v1.13.0) is the pass that fixes exactly those, so the tradeoff that kept it
+               off no longer stands. Unticking still gives the old threshold-v1 output. -->
           <label class="notes-ctl">
-            <input id="notes-hmm" type="checkbox">
-            <span data-i18n="notes.hmm">Whole-phrase detection (experimental)</span>
+            <input id="notes-hmm" type="checkbox" checked>
+            <span data-i18n="notes.hmm">Whole-phrase detection</span>
           </label>
           <!-- The count sits OUTSIDE the label on purpose: inside it, clicking the number
                would toggle the checkbox, which is not what a readout should do. -->

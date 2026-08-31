@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [v1.14.0](#v1140--簡譜-notes-as-scale-degrees-2026-08-31-1336) | 簡譜: a display mode drawing each note as a scale degree instead of an absolute name, in a key detected automatically and overridable by three controls. Off by default; the note data is untouched. The octave moves off the blocks and onto the pitch axis as dots. First time `detectKey()` reaches the player. |
+| [v1.14.0](#v1140--簡譜-notes-as-scale-degrees-2026-08-31-1421) | 簡譜: a display mode drawing each note as a scale degree instead of an absolute name, in a key detected automatically and overridable by three controls. Off by default; the note data is untouched. The octave moves off the blocks and onto the pitch axis as dots. First time `detectKey()` reaches the player. |
 | [v1.13.0](#v1130--octave-folding-2026-08-31-1214) | Octave-outlier notes are folded back into the singer's range using their neighbours, and the ones that cannot be justified are marked rather than guessed. Off by default. Nothing is deleted: every note keeps a `fix` record, folded ones draw blue, untrusted ones gray and silent. |
 | [v1.12.0](#v1120--hmm-note-decoding-switchable-2026-08-30-2241) | A second note interpreter, `hmm-v1`: `yinFrame` keeps every CMND local minimum as a weighted candidate, and two Viterbi passes decode a pitch path and segment it into notes. Off by default — it cuts octave-down errors by a third to a half, but trades some of that for octave-up errors on two of three tracks. Confirmed better by ear at a 100 ms shortest-note setting. |
 | [v1.11.0](#v1110--notes-ribbon-in-the-player-2026-08-30-2059) | A notes lane under the vocals stem: detected notes drawn over the pitch contour they came from, on the shared time grid, seekable. Analysis once in a worker; interpretation re-derived live at ~12 ms. |
@@ -35,7 +35,7 @@ Running log of what was built and what was learned building it.
 
 ---
 
-## v1.14.0 — 簡譜, notes as scale degrees (2026-08-31 13:36)
+## v1.14.0 — 簡譜, notes as scale degrees (2026-08-31 14:21)
 
 **Review:** not yet
 
@@ -56,6 +56,9 @@ Running log of what was built and what was learned building it.
   digits with 簡譜 octave dots — a dot above per octave up, below per octave down, none in
   the reference octave.
 - `tests/jianpu.test.js`, 8 tests. Suite 177 → 185.
+- **After review:** a new song hands the key back to automatic detection; the zoom pane's
+  axis carries degrees and dots too; the bright gridline follows the tonic; a disabled ⇄
+  dims. Behaviour rows N52–N55.
 
 **Key technical learnings:**
 - `[insight]` The mode selector changes what the numbers **mean**, not which note is 1. In
@@ -79,6 +82,24 @@ Running log of what was built and what was learned building it.
   `!window.SansJianpu` guard fell straight back to note names. The feature rendered
   *identically* to before — no throw, no console error, the unit suite fully green.
 
+- `[gotcha]` A display mode needs a **reset story**, and `reset()` is where it belongs.
+  `jianpu.auto` was set false on override and never set true again, so a key chosen for one
+  song silently labelled the next one. Every note was wrong and nothing on screen said so —
+  the selectors just sat there reading a value nothing had chosen for that song. Module state
+  that survives a song change is the default, not the exception: `reset()` already existed
+  precisely because `frames` had the same problem.
+- `[insight]` Converting "the axis" is not one site. The lane and the zoom pane each have
+  their own axis, and the first pass changed only the lane — leaving the pane you actually
+  read pitches off showing degree blocks against a note-name axis. A spec table that says
+  "pitch axis" in the singular will hide a second one; count the draw sites in the code, not
+  the rows in the table.
+- `[gotcha]` Changing which row is *labelled* without changing which row is *highlighted*
+  half-undoes the change. The axis label moved from C to the tonic but the bright gridline
+  did not, so in 1=G the bright rule and the bright label sat on different rows.
+- `[note]` `.btn[disabled]` does not match `.mini`. The two `<select>`s beside ⇄ dim from
+  Chrome's UA stylesheet, which made the button the only control in the group that looked
+  live while disabled — easy to miss precisely because its neighbours behaved.
+
 **Process learnings:**
 - `[gotcha]` The lane is ~766 px for a whole song, so a note is a couple of pixels wide and
   **no note-block label is ever drawn there**. A verification that toggles 簡譜 and compares
@@ -88,6 +109,12 @@ Running log of what was built and what was learned building it.
   `fillText` to capture the actual strings found the truth in one call where four pixel
   comparisons had said nothing; the repo's standing rule — observe the outcome, not the
   parameters — extends to checking that the outcome you sampled *exists*.
+- `[insight]` The fresh-context review earned its keep on the one thing the building session
+  structurally could not see: the **second song**. Every verification run during
+  implementation loaded one zip, so the whole class of "state that should reset" was outside
+  the test. A reviewer starting cold asked "what happens on the next load?" as an ordinary
+  question. Worth writing into the next plan's verification section explicitly — load a
+  second song and re-check — rather than relying on a reviewer to think of it.
 
 ## v1.13.0 — octave folding (2026-08-31 12:14)
 

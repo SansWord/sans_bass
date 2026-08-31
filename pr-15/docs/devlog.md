@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [v1.12.0](#v1120--hmm-note-decoding-switchable-2026-08-30-2241) | A second note interpreter, `hmm-v1`: `yinFrame` keeps every CMND local minimum as a weighted candidate, and two Viterbi passes decode a pitch path and segment it into notes. Off by default — it cuts octave-down errors by a third to a half, but trades some of that for octave-up errors on two of three tracks. |
+| [v1.12.0](#v1120--hmm-note-decoding-switchable-2026-08-30-2241) | A second note interpreter, `hmm-v1`: `yinFrame` keeps every CMND local minimum as a weighted candidate, and two Viterbi passes decode a pitch path and segment it into notes. Off by default — it cuts octave-down errors by a third to a half, but trades some of that for octave-up errors on two of three tracks. Confirmed better by ear at a 100 ms shortest-note setting. |
 | [v1.11.0](#v1110--notes-ribbon-in-the-player-2026-08-30-2059) | A notes lane under the vocals stem: detected notes drawn over the pitch contour they came from, on the shared time grid, seekable. Analysis once in a worker; interpretation re-derived live at ~12 ms. |
 | [v1.10.0](#v1100--notes-and-key-from-a-vocal-stem-2026-08-30-1417) | Notes and key detection from a stem: decimated YIN, segmentation, Krumhansl-Schmuckler key with a confidence margin. Bench page only, no UI. |
 | [v1.9.0](#v190--favicon-and-home-screen-icon-2026-08-26-1429) | Favicon and iPhone home-screen icon: six stem bars with the bass lane flattened, so the mark is the song *sans bass*. |
@@ -67,6 +67,11 @@ Running log of what was built and what was learned building it.
 
 The verdict is the plan's **mixed** outcome: a real, consistent gain on the error the phase
 existed to fix, partly traded for a new one. It stays opt-in.
+
+**By ear** (the check the numbers cannot make): confirmed better, and most clearly so at a
+**100 ms** shortest-note setting, where it recovers more correct notes than `threshold-v1`.
+The failure mode to fear — the melody flattening into a drone because `pitchStepCost` is too
+high — was not heard, so the cost defaults stand as shipped.
 
 **Key technical learnings:**
 

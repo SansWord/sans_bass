@@ -472,7 +472,7 @@ function setNotes(payload) {
   if (!ribbonEl) return;
   ribbonEl.lane.hidden = !ribbon;
   if (!ribbon) { ribbonEl.canvas.__layers = null; return; }
-  renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.parentElement.clientWidth);
+  renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
   draw();
 }
 
@@ -484,6 +484,7 @@ function renderAll() {
   tracks.forEach(t => {
     t.layers = renderWave(t.canvas, t.peaks, t.color, t.canvas.clientWidth, 'lane', laneScale(t.peaks));
   });
+  if (ribbon && ribbonEl) renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
   draw();
 }
 
@@ -533,11 +534,89 @@ function renderWave(canvas, peaks, color, cssWidth, kind, scale) {
   return layers;
 }
 
+const RIBBON_H = 96;
+
+/* Pre-rendered idle/active layers, the same shape renderWave produces, so paint() draws
+ * the ribbon with the identical blit-and-clip it uses for every waveform — playhead,
+ * A-B shading and all. The layer object must keep the { idle, active, h, w } keys:
+ * paint() reads L.w to place the playhead. */
+function renderRibbon(canvas, payload, cssWidth) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(cssWidth || canvas.clientWidth || 600));
+  const h = RIBBON_H;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.height = h + 'px';
+
+  const { notes, frames } = payload;
+  const [loM, hiM] = window.SansRibbon.pitchRange(notes, { clip: payload.clip !== false });
+  const span = hiM - loM || 1;
+  const y = (midi) => h - ((midi - loM) / span) * h;
+  // The SAME time-to-x mapping every other lane uses. Anything else drifts on resize.
+  const x = (t) => (duration ? t / duration : 0) * w;
+  const semi = Math.abs(y(0) - y(1));
+
+  const make = (dim) => {
+    const off = document.createElement('canvas');
+    off.width = canvas.width;
+    off.height = canvas.height;
+    const c = off.getContext('2d');
+    c.scale(dpr, dpr);
+
+    // Octave stripes at each C, so vertical distance reads as pitch rather than height.
+    c.fillStyle = dim ? 'rgba(255,255,255,.030)' : 'rgba(255,255,255,.055)';
+    for (let m = Math.ceil(loM); m <= hiM; m++) {
+      if (m % 12) continue;
+      const top = y(m + 0.5);
+      c.fillRect(0, top, w, Math.max(1, y(m - 0.5) - top));
+    }
+
+    c.strokeStyle = dim ? '#41566b' : '#7fb2d9';
+    c.lineWidth = 1.4;
+    c.lineJoin = 'round';
+    for (const seg of window.SansRibbon.contourSegments(frames, duration)) {
+      c.beginPath();
+      for (let i = 0; i < seg.length; i++) {
+        const px = seg[i][0] * w;
+        const py = y(seg[i][1]);
+        if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+      }
+      c.stroke();
+    }
+
+    for (const n of notes) {
+      const out = n.midi < loM || n.midi > hiM;
+      const by = out ? (n.midi < loM ? h - 3 : 0) : y(n.midi + 0.5);
+      const bh = out ? 3 : Math.max(3, semi * 0.8);
+      const bw = Math.max(2, x(n.end) - x(n.start));
+      // A clipped note keeps its position in time but loses its pitch, so it is drawn in
+      // the A-B orange rather than dropped — a hidden note would be a silent lie.
+      c.fillStyle = out ? (dim ? '#7a5215' : '#ff9f1c') : (dim ? '#39604c' : '#6fbf8e');
+      c.fillRect(x(n.start), by, bw, bh);
+
+      /* The name only when it fits. Clipping text to a block narrower than the glyphs
+       * produces a smear that reads as corruption rather than as a label — and note names
+       * are never translated, in any locale, exactly as stem ids and filenames are not. */
+      if (!out && bw > 26 && bh > 9) {
+        c.fillStyle = dim ? '#1a1a20' : '#0d0d10';
+        c.font = '600 9px ui-monospace, Menlo, monospace';
+        c.textBaseline = 'middle';
+        c.fillText(n.name, x(n.start) + 3, by + bh / 2 + 0.5);
+      }
+    }
+    return off;
+  };
+
+  canvas.__layers = { idle: make(true), active: make(false), h, w };
+  return canvas.__layers;
+}
+
 function draw() {
   const t = currentTime();
   const frac = duration ? Math.min(1, t / duration) : 0;
   paint(el.mainWave, frac);
   tracks.forEach(tr => paint(tr.canvas, frac));
+  if (ribbon && ribbonEl) paint(ribbonEl.canvas, frac);
   el.tCur.textContent = fmt(t);
 }
 
@@ -795,6 +874,8 @@ function retranslate() {
       if (txt) txt.textContent = laneLabel(t);
     });
   }
+  // Lane labels translate; the note NAMES drawn inside the ribbon never do.
+  if (ribbonEl) ribbonEl.txt.textContent = tr('notes.lane');
   renderLoopBadge();
   // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
   // its text — clobbering "Restore previous". This runs after, and must keep doing so:

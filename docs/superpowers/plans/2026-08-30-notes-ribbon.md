@@ -667,7 +667,9 @@ function setNotes(payload) {
   if (!ribbonEl) return;
   ribbonEl.lane.hidden = !ribbon;
   if (!ribbon) { ribbonEl.canvas.__layers = null; return; }
-  renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.parentElement.clientWidth);
+  // The canvas's own width, matching renderAll's `t.canvas.clientWidth` for track lanes.
+  // NOT parentElement: the parent is the .lane grid, 128px + 96px wider than the canvas.
+  renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
   draw();
 }
 ```
@@ -825,7 +827,7 @@ At the end of `renderAll()`, after the `tracks.forEach(...)` re-render:
 
 ```js
   if (ribbon && ribbonEl) {
-    renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.parentElement.clientWidth);
+    renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
   }
 ```
 

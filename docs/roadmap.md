@@ -47,6 +47,21 @@ the detector originally said.
 Note that action 1 of note editing is the same operation by hand. The two should share one
 representation rather than becoming two mechanisms that disagree.
 
+## 簡譜 — notes as scale degrees
+
+**Built in v1.14.0** — [spec](superpowers/specs/2026-08-31-jianpu-design.md),
+[plan](superpowers/plans/2026-08-31-jianpu.md). See `lib/jianpu.js`.
+
+A display mode showing each note as a scale degree instead of an absolute name, with the key
+picked automatically and overridable: a `1=` selector, a major/minor selector that changes what
+the degrees mean, and a ⇄ button swapping the current key for its relative. This was also the
+first time `detectKey()` reached the player — it had been bench-page-only since v1.10.0.
+
+**Still wanted.** Rhythm notation: 簡譜 proper carries beams and dashes for duration, which
+needs beat tracking — see the note under note editing on why that is its own problem. Export
+and printing, persistence of the chosen key across loads, and surfacing detection confidence
+(`margin`) so a low-confidence guess reads as a guess.
+
 ## Paste a YouTube link, extract the audio for separation
 
 Wanted: paste a URL, get the audio, separate it — without the manual download step.

@@ -699,6 +699,31 @@ const NOTE_FILL = {
  * the only one today and always does. See docs/transcription.md on layer-4 edits. */
 const noteFillKey = (n) => (n.fix && NOTE_FILL[n.fix.state] ? n.fix.state : 'plain');   // 'folded' | 'doubt'
 
+/* A note's label: an absolute name, or a scale degree when 簡譜 is on.
+ *
+ * The octave is deliberately absent from the degree form — it lives on the pitch axis as
+ * dots instead of being repeated on every block, which is the whole point of the notation. */
+function noteLabel(n, jianpu) {
+  if (!jianpu || !jianpu.on || !window.SansJianpu) return n.name;
+  const d = window.SansJianpu.degreeOf(n.midi, jianpu.tonic, jianpu.mode);
+  return d.accidental + d.digit;
+}
+
+/* 簡譜 octave marks: a dot above the number for each octave up, below for each octave down,
+ * nothing in the reference octave. Drawn beside the digit rather than centred over it —
+ * these labels sit against the lane's left edge and a dot above would collide with the
+ * gridline of the semitone above. */
+function drawOctaveDots(c, cx, ty, n, semi) {
+  const r = Math.max(0.7, Math.min(1.5, semi * 0.08));
+  const step = r * 3;
+  for (let i = 0; i < Math.abs(n) && i < 3; i++) {
+    const dy = (n > 0 ? -1 : 1) * (semi * 0.22 + i * step);
+    c.beginPath();
+    c.arc(cx, ty + dy, r, 0, Math.PI * 2);
+    c.fill();
+  }
+}
+
 /* Pre-rendered idle/active layers, the same shape renderWave produces, so paint() draws
  * the ribbon with the identical blit-and-clip it uses for every waveform — playhead,
  * A-B shading and all. The layer object must keep the { idle, active, h, w } keys:
@@ -719,6 +744,15 @@ function renderRibbon(canvas, payload, cssWidth) {
   const x = (t) => (duration ? t / duration : 0) * w;
   const semi = Math.abs(y(0) - y(1));
 
+  /* Resolved once per render, not once per layer: make() runs twice (idle and active) and
+   * referenceOctave walks every note. `home` is the note the grid and the axis both
+   * highlight — degree 1 in 簡譜, C otherwise. Keeping those two on different rows in, say,
+   * 1=G would half-undo the point of labelling the tonic at all. */
+  const jp = payload.jianpu && payload.jianpu.on ? payload.jianpu : null;
+  const refOct = jp && window.SansJianpu
+    ? window.SansJianpu.referenceOctave(notes, jp.tonic) : 0;
+  const isHome = (m) => (((m - (jp ? jp.tonic : 0)) % 12) + 12) % 12 === 0;
+
   const make = (dim) => {
     const off = document.createElement('canvas');
     off.width = canvas.width;
@@ -738,8 +772,7 @@ function renderRibbon(canvas, payload, cssWidth) {
       c.fillRect(0, top, w, Math.max(1, y(m - 0.5) - top));
     }
     for (let m = lo; m <= hi + 1; m++) {
-      const isC = ((m % 12) + 12) % 12 === 0;
-      c.fillStyle = isC
+      c.fillStyle = isHome(m)
         ? (dim ? 'rgba(255,255,255,.13)' : 'rgba(255,255,255,.22)')
         : (dim ? 'rgba(255,255,255,.045)' : 'rgba(255,255,255,.075)');
       c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
@@ -754,16 +787,29 @@ function renderRibbon(canvas, payload, cssWidth) {
       c.textBaseline = 'middle';
       for (let m = lo; m <= hi; m++) {
         const pc = ((m % 12) + 12) % 12;
-        if (!everySemitone && pc !== 0) continue;
-        const label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+        /* When the lane is too tight for every semitone, only the home note is labelled.
+         * In 簡譜 that is degree 1 — the tonic — not C. Labelling C in every key would be
+         * meaningless in, say, 1=G. */
+        const home = isHome(m);
+        if (!everySemitone && !home) continue;
+        let label;
+        let dots = 0;
+        if (jp && window.SansJianpu) {
+          const d = window.SansJianpu.degreeOf(m, jp.tonic, jp.mode);
+          label = d.accidental + d.digit;
+          dots = d.octaveIndex - refOct;
+        } else {
+          label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+        }
         const ty = y(m);
         const tw = c.measureText(label).width;
         c.fillStyle = dim ? 'rgba(13,13,16,.72)' : 'rgba(13,13,16,.82)';
         c.fillRect(0, ty - semi / 2, tw + 7, semi);
-        c.fillStyle = pc === 0
+        c.fillStyle = home
           ? (dim ? '#7b7b8b' : '#c9c9d6')
           : (dim ? '#5d5d6b' : '#8a8a99');
         c.fillText(label, 3, ty + 0.5);
+        if (dots) drawOctaveDots(c, 3 + tw + 2.5, ty, dots, semi);
       }
     }
 
@@ -798,11 +844,15 @@ function renderRibbon(canvas, payload, cssWidth) {
       /* The name only when it fits. Clipping text to a block narrower than the glyphs
        * produces a smear that reads as corruption rather than as a label — and note names
        * are never translated, in any locale, exactly as stem ids and filenames are not. */
-      if (!out && bw > 26 && bh > 9) {
+      /* Reachable only on a short file: at whole-song width a note is ~2 px, so this lane
+       * draws no block labels at all and the threshold never fires. The zoomed pane is
+       * where degrees actually appear on blocks. */
+      const minLabelPx = (payload.jianpu && payload.jianpu.on) ? 14 : 26;
+      if (!out && bw > minLabelPx && bh > 9) {
         c.fillStyle = dim ? '#1a1a20' : '#0d0d10';
         c.font = '600 9px ui-monospace, Menlo, monospace';
         c.textBaseline = 'middle';
-        c.fillText(n.name, x(n.start) + 3, by + bh / 2 + 0.5);
+        c.fillText(noteLabel(n, payload.jianpu), x(n.start) + 3, by + bh / 2 + 0.5);
       }
     }
     return off;
@@ -865,9 +915,16 @@ function renderZoom(canvas) {
     c.fillStyle = 'rgba(255,255,255,.040)';
     c.fillRect(0, top, w, Math.max(1, y(m - 0.5) - top));
   }
+  /* Same 簡譜 resolution as the lane, and for the same reasons — see renderRibbon. This is
+   * the pane a pitch is actually read off, so leaving its axis in note names while its
+   * blocks drew degrees put both notations side by side in the one view where it matters. */
+  const jp = ribbon.jianpu && ribbon.jianpu.on ? ribbon.jianpu : null;
+  const refOct = jp && window.SansJianpu
+    ? window.SansJianpu.referenceOctave(notes, jp.tonic) : 0;
+  const isHome = (m) => (((m - (jp ? jp.tonic : 0)) % 12) + 12) % 12 === 0;
+
   for (let m = lo; m <= hi + 1; m++) {
-    const isC = ((m % 12) + 12) % 12 === 0;
-    c.fillStyle = isC ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.075)';
+    c.fillStyle = isHome(m) ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.075)';
     c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
   }
 
@@ -880,14 +937,24 @@ function renderZoom(canvas) {
     c.textBaseline = 'middle';
     for (let m = lo; m <= hi; m++) {
       const pc = ((m % 12) + 12) % 12;
-      if (!everySemitone && pc !== 0) continue;
-      const label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+      const home = isHome(m);
+      if (!everySemitone && !home) continue;
+      let label;
+      let dots = 0;
+      if (jp && window.SansJianpu) {
+        const d = window.SansJianpu.degreeOf(m, jp.tonic, jp.mode);
+        label = d.accidental + d.digit;
+        dots = d.octaveIndex - refOct;
+      } else {
+        label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+      }
       const ty = y(m);
       const tw = c.measureText(label).width;
       c.fillStyle = 'rgba(13,13,16,.82)';
       c.fillRect(0, ty - semi / 2, tw + 7, semi);
-      c.fillStyle = pc === 0 ? '#c9c9d6' : '#8a8a99';
+      c.fillStyle = home ? '#c9c9d6' : '#8a8a99';
       c.fillText(label, 3, ty + 0.5);
+      if (dots) drawOctaveDots(c, 3 + tw + 2.5, ty, dots, semi);
     }
   }
 
@@ -918,11 +985,12 @@ function renderZoom(canvas) {
     const bw = Math.max(2, x(n.end) - x(n.start));
     c.fillStyle = out ? '#ff9f1c' : NOTE_FILL[noteFillKey(n)].zoom;
     c.fillRect(x(n.start), by, bw, bh);
-    if (!out && bw > 26 && bh > 9) {
+    const minLabelPx = (ribbon.jianpu && ribbon.jianpu.on) ? 14 : 26;
+    if (!out && bw > minLabelPx && bh > 9) {
       c.fillStyle = '#0d0d10';
       c.font = '600 10px ui-monospace, Menlo, monospace';
       c.textBaseline = 'middle';
-      c.fillText(n.name, x(n.start) + 3, by + bh / 2 + 0.5);
+      c.fillText(noteLabel(n, ribbon.jianpu), x(n.start) + 3, by + bh / 2 + 0.5);
     }
   }
 

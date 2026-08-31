@@ -13,6 +13,38 @@ const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
 let audio = null;          // AudioContext (created on first user gesture)
 let master = null;         // master GainNode
 let tracks = [];           // loaded tracks
+const RIBBON_H_KEY = 'sans_bass.ribbonHeight';
+const RIBBON_H_MIN = 96;
+const RIBBON_H_MAX = 600;
+const RIBBON_H_DEFAULT = 220;
+
+const clampRibbonH = (n) => Math.max(RIBBON_H_MIN, Math.min(RIBBON_H_MAX, Math.round(n)));
+
+const ZOOM_SEC_KEY = 'sans_bass.zoomSeconds';
+const ZOOM_SEC_MIN = 2;
+const ZOOM_SEC_MAX = 60;
+const ZOOM_SEC_DEFAULT = 10;
+const ZOOM_BPS = 80;              // peak buckets per second — see SansRibbon.zoomPeaks
+const ZOOM_H_KEY = 'sans_bass.zoomHeight';
+const ZOOM_H_DEFAULT = 240;      // the reading view: tall enough for a label per semitone
+const RIBBON_SHOW_KEY = 'sans_bass.ribbonVisible';
+
+// Rounded: this value is persisted and shown, and 22.24662355096794 is neither.
+const clampZoomSec = (n) =>
+  Math.round(Math.max(ZOOM_SEC_MIN, Math.min(ZOOM_SEC_MAX, n)) * 100) / 100;
+
+let ribbon = null;         // { notes, frames, params, clip } from notes.js, or null
+let ribbonEl = null;       // { lane, canvas, txt, grip } — rebuilt with the lanes each load
+let ribbonGain = null;     // GainNode for the synthesised notes, into master
+let ribbonMuted = true;    // silent until asked for: the lane is a reference, not a part
+let ribbonVolume = 1;
+let ribbonHeight = readRibbonHeight();
+let zoomSeconds = readZoomSeconds();
+let zoomEl = null;         // { lane, canvas, out }
+let zoomPeaks = null;      // hi-res vocals envelope, computed once per song
+let zoomCenter = 0;        // seconds; follows the playhead while playing
+let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
+let ribbonVisible = readStoredFlag(RIBBON_SHOW_KEY, true);
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
 let startedAt = 0;         // audio.currentTime at which playback began
@@ -90,9 +122,48 @@ function ensureAudio() {
     master = audio.createGain();
     master.gain.value = parseFloat(el.masterVol.value);
     master.connect(audio.destination);
+    // Into master, so master volume governs the synth exactly as it governs the stems.
+    ribbonGain = audio.createGain();
+    ribbonGain.gain.value = ribbonMuted ? 0 : ribbonVolume;
+    ribbonGain.connect(master);
   }
   if (audio.state === 'suspended') audio.resume();
   return audio;
+}
+
+/* Pane heights and the zoom width survive a reload the way the language toggle does.
+ * Storage can throw outright in a private window, so every read and write is guarded: a
+ * pane that refuses to render because localStorage is disabled would be a poor trade for
+ * remembering a number. */
+function readStoredNumber(key, fallback, clamp) {
+  try {
+    const v = parseFloat(localStorage.getItem(key));
+    return Number.isFinite(v) ? clamp(v) : fallback;
+  } catch (_) { return fallback; }
+}
+
+function readStoredFlag(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === '1';
+  } catch (_) { return fallback; }
+}
+
+function writeStored(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch (_) { /* private window */ }
+}
+
+/* Function declarations, NOT const arrows: the state at the top of this file calls these
+ * before this point in the source, and only declarations hoist. A const arrow here throws
+ * in the temporal dead zone — and because app.js is one flat run of top-level statements,
+ * that throw takes out every listener below it and the page loads doing nothing at all.
+ * That has now happened twice; the shape is the fix. */
+function readRibbonHeight() {
+  return readStoredNumber(RIBBON_H_KEY, RIBBON_H_DEFAULT, clampRibbonH);
+}
+
+function readZoomSeconds() {
+  return readStoredNumber(ZOOM_SEC_KEY, ZOOM_SEC_DEFAULT, clampZoomSec);
 }
 
 function fmt(t) {
@@ -384,6 +455,10 @@ function buildUI(title) {
   buildModeOptions();
 
   // lanes
+  /* The previous song's frames describe the previous song's audio; drawn against the new
+   * duration they would be silently wrong. Drop them before the lanes are rebuilt. */
+  ribbon = null;
+  zoomPeaks = null;
   el.lanes.innerHTML = '';
   tracks.forEach((t, i) => {
     const lane = document.createElement('div');
@@ -428,8 +503,117 @@ function buildUI(title) {
     attachSeek(canvas);
   });
 
+  /* Built here rather than parked in index.html: el.lanes.innerHTML = '' above destroys
+   * anything inside #lanes, so a static element would vanish on the second song. Built
+   * with the lanes it survives by construction, and lands directly under vocals. */
+  ribbonEl = null;
+  zoomEl = null;
+  const vocals = tracks.find((t) => t.stem === 'vocals');
+  if (vocals) {
+    const lane = document.createElement('div');
+    lane.className = 'lane ribbon';
+    lane.hidden = true;
+
+    const name = document.createElement('div');
+    name.className = 'lane-name';
+    name.title = tr('notes.muteTip');
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    const txt = document.createElement('span');
+    txt.className = 'txt';
+    txt.textContent = tr('notes.lane');
+    name.append(dot, txt);
+    name.addEventListener('click', toggleRibbon);
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'wave';
+
+    const vol = document.createElement('div');
+    vol.className = 'lane-vol';
+    const slider = document.createElement('input');
+    Object.assign(slider, { type: 'range', min: 0, max: 1.5, step: 0.01, value: ribbonVolume });
+    slider.addEventListener('input', () => { ribbonVolume = parseFloat(slider.value); applyRibbonGain(); });
+    vol.appendChild(slider);
+
+    /* Drag the bottom edge to grow the lane. Height is the only way to read pitch: at the
+     * default the range can span 27 semitones, and note names need roughly 9 px each. */
+    const grip = document.createElement('div');
+    grip.className = 'ribbon-grip';
+    grip.title = tr('notes.resizeTip');
+    attachResize(grip, () => ribbonHeight, (v) => { ribbonHeight = v; }, RIBBON_H_KEY);
+
+    lane.append(name, canvas, vol, grip);
+    el.lanes.insertBefore(lane, vocals.laneEl.nextSibling);
+    attachSeek(canvas);
+    ribbonEl = { lane, canvas, txt, grip };
+    lane.classList.toggle('muted', ribbonMuted);
+
+    /* The zoomed pane. It shares the lane grid so its canvas starts on the same pixel as
+     * every waveform, but NOT the time mapping — it shows a window, which is the whole
+     * point. That is why zoom is a separate pane rather than a zoom of the lane itself:
+     * the full-width lanes keep one shared grid, and this gets its own. */
+    const zLane = document.createElement('div');
+    zLane.className = 'lane ribbon-zoom';
+
+    const zName = document.createElement('div');
+    zName.className = 'lane-name';
+    const zTxt = document.createElement('span');
+    zTxt.className = 'txt';
+    zTxt.textContent = tr('notes.zoom');
+    const zOut = document.createElement('span');
+    zOut.className = 'zoom-secs';
+
+    /* Buttons as well as the wheel: a trackpad wheel is easy to overshoot, and on a
+     * touch device there is no wheel at all. Both routes go through zoomBy. */
+    const zBtns = document.createElement('span');
+    zBtns.className = 'zoom-btns';
+    const mkBtn = (label, factor, key) => {
+      const b = document.createElement('button');
+      b.className = 'zoom-btn';
+      b.textContent = label;
+      b.title = tr(key);
+      b.addEventListener('click', () => zoomBy(factor));
+      return b;
+    };
+    zBtns.append(mkBtn('\u2212', 1.5, 'notes.zoomOut'), mkBtn('+', 1 / 1.5, 'notes.zoomIn'));
+    zName.append(zTxt, zOut, zBtns);
+
+    const zCanvas = document.createElement('canvas');
+    zCanvas.className = 'wave zoomwave';
+    zCanvas.title = tr('notes.zoomTip');
+
+    const zSpacer = document.createElement('div');
+    const zGrip = document.createElement('div');
+    zGrip.className = 'ribbon-grip';
+    zGrip.title = tr('notes.resizeTip');
+    attachResize(zGrip, () => zoomHeight, (v) => { zoomHeight = v; }, ZOOM_H_KEY);
+    zLane.append(zName, zCanvas, zSpacer, zGrip);
+    el.lanes.insertBefore(zLane, lane);
+    attachZoom(zCanvas);
+    zoomEl = { lane: zLane, canvas: zCanvas, out: zOut };
+    zLane.hidden = true;
+  }
+
   attachSeek(el.mainWave);
   renderAll();
+}
+
+/* The interpretation layer hands its result over here. Called again on every change of a
+ * detection parameter — see docs/transcription.md — so it must be cheap and idempotent. */
+function setNotes(payload) {
+  ribbon = payload && payload.notes && payload.frames ? payload : null;
+  if (!ribbonEl) return;
+  applyRibbonVisibility();
+  if (!ribbon) { ribbonEl.canvas.__layers = null; zoomPeaks = null; return; }
+  if (!zoomPeaks) {
+    // Computed once per song, off the vocals stem the notes came from.
+    const v = tracks.find((t) => t.stem === 'vocals');
+    if (v) zoomPeaks = window.SansRibbon.zoomPeaks(v.buffer.getChannelData(0),
+                                                   v.buffer.sampleRate, ZOOM_BPS);
+  }
+  zoomCenter = currentTime();
+  renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
+  draw();
 }
 
 function renderAll() {
@@ -440,6 +624,7 @@ function renderAll() {
   tracks.forEach(t => {
     t.layers = renderWave(t.canvas, t.peaks, t.color, t.canvas.clientWidth, 'lane', laneScale(t.peaks));
   });
+  if (ribbon && ribbonEl) renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
   draw();
 }
 
@@ -489,11 +674,269 @@ function renderWave(canvas, peaks, color, cssWidth, kind, scale) {
   return layers;
 }
 
+const NOTE_LETTERS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);      // C# D# F# G# A#
+/* Below this many pixels per semitone there is no room for twelve labels and the grid
+ * falls back to marking C only. 7 rather than 9 because the pitch range is routinely ~27
+ * semitones wide — octave errors stretch it — and 9 pushed the common case into the
+ * fallback. See docs/transcription.md on why the range is that wide. */
+const LABEL_MIN_PX = 7;
+
+/* Pre-rendered idle/active layers, the same shape renderWave produces, so paint() draws
+ * the ribbon with the identical blit-and-clip it uses for every waveform — playhead,
+ * A-B shading and all. The layer object must keep the { idle, active, h, w } keys:
+ * paint() reads L.w to place the playhead. */
+function renderRibbon(canvas, payload, cssWidth) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(cssWidth || canvas.clientWidth || 600));
+  const h = ribbonHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.height = h + 'px';
+
+  const { notes, frames } = payload;
+  const [loM, hiM] = window.SansRibbon.pitchRange(notes, { clip: payload.clip !== false });
+  const span = hiM - loM || 1;
+  const y = (midi) => h - ((midi - loM) / span) * h;
+  // The SAME time-to-x mapping every other lane uses. Anything else drifts on resize.
+  const x = (t) => (duration ? t / duration : 0) * w;
+  const semi = Math.abs(y(0) - y(1));
+
+  const make = (dim) => {
+    const off = document.createElement('canvas');
+    off.width = canvas.width;
+    off.height = canvas.height;
+    const c = off.getContext('2d');
+    c.scale(dpr, dpr);
+
+    /* Piano-roll grid: a band per semitone, black keys shaded, a rule on every boundary
+     * and a brighter one at each C. This is what turns vertical distance into a pitch you
+     * can name rather than a height you have to estimate. */
+    const lo = Math.ceil(loM);
+    const hi = Math.floor(hiM);
+    for (let m = lo; m <= hi; m++) {
+      if (!BLACK_KEYS.has(((m % 12) + 12) % 12)) continue;
+      const top = y(m + 0.5);
+      c.fillStyle = dim ? 'rgba(255,255,255,.022)' : 'rgba(255,255,255,.040)';
+      c.fillRect(0, top, w, Math.max(1, y(m - 0.5) - top));
+    }
+    for (let m = lo; m <= hi + 1; m++) {
+      const isC = ((m % 12) + 12) % 12 === 0;
+      c.fillStyle = isC
+        ? (dim ? 'rgba(255,255,255,.13)' : 'rgba(255,255,255,.22)')
+        : (dim ? 'rgba(255,255,255,.045)' : 'rgba(255,255,255,.075)');
+      c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
+    }
+
+    /* Labels overlay the left edge rather than sitting in a gutter. A gutter would move
+     * x = 0 away from t = 0 and the ribbon would stop lining up with the waveform lanes,
+     * which is the one property every other decision here protects. */
+    if (semi >= 6) {
+      const everySemitone = semi >= LABEL_MIN_PX;
+      c.font = `500 ${Math.min(10, Math.max(8, semi * 0.62)).toFixed(1)}px ui-monospace, Menlo, monospace`;
+      c.textBaseline = 'middle';
+      for (let m = lo; m <= hi; m++) {
+        const pc = ((m % 12) + 12) % 12;
+        if (!everySemitone && pc !== 0) continue;
+        const label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+        const ty = y(m);
+        const tw = c.measureText(label).width;
+        c.fillStyle = dim ? 'rgba(13,13,16,.72)' : 'rgba(13,13,16,.82)';
+        c.fillRect(0, ty - semi / 2, tw + 7, semi);
+        c.fillStyle = pc === 0
+          ? (dim ? '#7b7b8b' : '#c9c9d6')
+          : (dim ? '#5d5d6b' : '#8a8a99');
+        c.fillText(label, 3, ty + 0.5);
+      }
+    }
+
+    /* One column holds many frames at this width, so the contour is drawn as a per-pixel
+     * band rather than a polyline. A polyline here joins pitches that are ~26 frames
+     * apart and fills the lane with near-vertical strokes — it buried the notes entirely.
+     * The zoomed view, where a column is a frame or less, draws the line properly. */
+    /* Deliberately faint. At whole-song width a column spans ~0.3 s and, with octave
+     * errors in the data, routinely covers most of the lane — drawn at full strength it
+     * drowns the notes it is supposed to support. This view is for navigation; the zoomed
+     * pane is where the contour is read. */
+    c.fillStyle = dim ? 'rgba(109,157,192,.16)' : 'rgba(109,157,192,.30)';
+    const cols = window.SansRibbon.contourColumns(frames, duration, w);
+    for (let x = 0; x < cols.length; x++) {
+      const col = cols[x];
+      if (!col) continue;
+      const top = y(col.hi);
+      c.fillRect(x, top, 1, Math.max(1, y(col.lo) - top));
+    }
+
+    for (const n of notes) {
+      const out = n.midi < loM || n.midi > hiM;
+      const by = out ? (n.midi < loM ? h - 3 : 0) : y(n.midi + 0.5);
+      const bh = out ? 3 : Math.max(3, semi * 0.8);
+      const bw = Math.max(2, x(n.end) - x(n.start));
+      // A clipped note keeps its position in time but loses its pitch, so it is drawn in
+      // the A-B orange rather than dropped — a hidden note would be a silent lie.
+      c.fillStyle = out ? (dim ? '#8a5c17' : '#ff9f1c') : (dim ? '#4c8f6c' : '#8ee0ad');
+      c.fillRect(x(n.start), by, bw, bh);
+
+      /* The name only when it fits. Clipping text to a block narrower than the glyphs
+       * produces a smear that reads as corruption rather than as a label — and note names
+       * are never translated, in any locale, exactly as stem ids and filenames are not. */
+      if (!out && bw > 26 && bh > 9) {
+        c.fillStyle = dim ? '#1a1a20' : '#0d0d10';
+        c.font = '600 9px ui-monospace, Menlo, monospace';
+        c.textBaseline = 'middle';
+        c.fillText(n.name, x(n.start) + 3, by + bh / 2 + 0.5);
+      }
+    }
+    return off;
+  };
+
+  canvas.__layers = { idle: make(true), active: make(false), h, w };
+  return canvas.__layers;
+}
+
+/* The zoomed pane is drawn LIVE every frame rather than pre-rendered into layers: its
+ * window moves continuously, so there is nothing stable to cache. The cost is bounded —
+ * one column per pixel of waveform, plus only the notes and frames inside the window. */
+function renderZoom(canvas) {
+  if (!ribbon || !duration) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(canvas.clientWidth || 600));
+  const h = zoomHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.height = h + 'px';
+  }
+  const c = canvas.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+
+  const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration);
+  const span = win.to - win.from || 1;
+  const x = (t) => ((t - win.from) / span) * w;
+
+  const { notes, frames } = ribbon;
+  const [loM, hiM] = window.SansRibbon.pitchRange(notes, { clip: ribbon.clip !== false });
+  const pitchSpan = hiM - loM || 1;
+  const y = (midi) => h - ((midi - loM) / pitchSpan) * h;
+  const semi = Math.abs(y(0) - y(1));
+
+  c.fillStyle = '#141419';
+  c.fillRect(0, 0, w, h);
+
+  // Vocal envelope behind everything, from the high-resolution peaks.
+  if (zoomPeaks) {
+    c.fillStyle = 'rgba(255,255,255,.10)';
+    const mid = h / 2;
+    for (let px = 0; px < w; px++) {
+      const t = win.from + (px / w) * span;
+      const b = Math.floor(t * zoomPeaks.bps);
+      if (b < 0 || b >= zoomPeaks.mins.length) continue;
+      const top = mid + Math.max(-1, zoomPeaks.mins[b]) * mid;
+      const bot = mid + Math.min(1, zoomPeaks.maxs[b]) * mid;
+      c.fillRect(px, top, 1, Math.max(1, bot - top));
+    }
+  }
+
+  // Piano-roll grid, same language as the lane.
+  const lo = Math.ceil(loM);
+  const hi = Math.floor(hiM);
+  for (let m = lo; m <= hi; m++) {
+    if (!BLACK_KEYS.has(((m % 12) + 12) % 12)) continue;
+    const top = y(m + 0.5);
+    c.fillStyle = 'rgba(255,255,255,.040)';
+    c.fillRect(0, top, w, Math.max(1, y(m - 0.5) - top));
+  }
+  for (let m = lo; m <= hi + 1; m++) {
+    const isC = ((m % 12) + 12) % 12 === 0;
+    c.fillStyle = isC ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.075)';
+    c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
+  }
+
+  /* Names, overlaid at the left rather than in a gutter — same reason as the lane: a
+   * gutter moves the window's left edge away from win.from. This is the view you read a
+   * pitch off, so it labels every semitone the moment there is room. */
+  if (semi >= 6) {
+    const everySemitone = semi >= LABEL_MIN_PX;
+    c.font = `500 ${Math.min(10, Math.max(8, semi * 0.62)).toFixed(1)}px ui-monospace, Menlo, monospace`;
+    c.textBaseline = 'middle';
+    for (let m = lo; m <= hi; m++) {
+      const pc = ((m % 12) + 12) % 12;
+      if (!everySemitone && pc !== 0) continue;
+      const label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+      const ty = y(m);
+      const tw = c.measureText(label).width;
+      c.fillStyle = 'rgba(13,13,16,.82)';
+      c.fillRect(0, ty - semi / 2, tw + 7, semi);
+      c.fillStyle = pc === 0 ? '#c9c9d6' : '#8a8a99';
+      c.fillText(label, 3, ty + 0.5);
+    }
+  }
+
+  /* Here a column is a frame or less, so the contour is a real line rather than the
+   * per-pixel band the full-width lane has to fall back on. */
+  c.strokeStyle = '#7fb2d9';
+  c.lineWidth = 1.6;
+  c.lineJoin = 'round';
+  const dt = frames.frameSeconds;
+  const i0 = Math.max(0, Math.floor(win.from / dt) - 1);
+  const i1 = Math.min(frames.cents.length - 1, Math.ceil(win.to / dt) + 1);
+  c.beginPath();
+  let drawing = false;
+  for (let i = i0; i <= i1; i++) {
+    const cents = frames.cents[i];
+    if (!cents) { drawing = false; continue; }
+    const px = x(frames.t[i]);
+    const py = y(cents / 100);
+    if (!drawing) { c.moveTo(px, py); drawing = true; } else c.lineTo(px, py);
+  }
+  c.stroke();
+
+  for (const n of notes) {
+    if (n.end < win.from || n.start > win.to) continue;
+    const out = n.midi < loM || n.midi > hiM;
+    const by = out ? (n.midi < loM ? h - 3 : 0) : y(n.midi + 0.5);
+    const bh = out ? 3 : Math.max(3, semi * 0.8);
+    const bw = Math.max(2, x(n.end) - x(n.start));
+    c.fillStyle = out ? '#ff9f1c' : 'rgba(142,224,173,.86)';
+    c.fillRect(x(n.start), by, bw, bh);
+    if (!out && bw > 26 && bh > 9) {
+      c.fillStyle = '#0d0d10';
+      c.font = '600 10px ui-monospace, Menlo, monospace';
+      c.textBaseline = 'middle';
+      c.fillText(n.name, x(n.start) + 3, by + bh / 2 + 0.5);
+    }
+  }
+
+  // Time ruler, one label per second while there is room for it.
+  c.fillStyle = '#8a8a99';
+  c.font = '400 9px ui-monospace, Menlo, monospace';
+  c.textBaseline = 'bottom';
+  const step = span <= 6 ? 1 : span <= 20 ? 2 : 5;
+  for (let t = Math.ceil(win.from / step) * step; t <= win.to; t += step) {
+    c.fillRect(x(t), h - 9, 1, 5);
+    c.fillText(fmt(t), x(t) + 3, h - 1);
+  }
+
+  const now = currentTime();
+  if (now >= win.from && now <= win.to) {
+    c.fillStyle = 'rgba(255,255,255,.9)';
+    c.fillRect(x(now), 0, 1.5, h);
+  }
+}
+
 function draw() {
   const t = currentTime();
   const frac = duration ? Math.min(1, t / duration) : 0;
   paint(el.mainWave, frac);
   tracks.forEach(tr => paint(tr.canvas, frac));
+  if (ribbon && ribbonEl) paint(ribbonEl.canvas, frac);
+  if (ribbon && zoomEl && !zoomEl.lane.hidden) {
+    // Follow while playing; when stopped the window is wherever it was dragged to.
+    if (playing) zoomCenter = t;
+    renderZoom(zoomEl.canvas);
+    zoomEl.out.textContent = `${zoomSeconds.toFixed(zoomSeconds < 10 ? 1 : 0)}s`;
+  }
   el.tCur.textContent = fmt(t);
 }
 
@@ -613,7 +1056,24 @@ function play() {
   playing = true;
   el.play.classList.add('playing');
   applyGains();
+  announceTransport(t0);
   tick();
+}
+
+/* notes.js is an ES module and cannot share scope with this file, so the transport is
+ * broadcast the way the language switch already is. It carries t0 and offset rather than
+ * "we started": the synth has to schedule against the SAME clock reading the stems were
+ * started from, or it lands near them instead of with them. */
+function announceTransport(t0) {
+  window.dispatchEvent(new CustomEvent('sansbass:transport', {
+    detail: {
+      playing,
+      t0: t0 ?? 0,
+      offset,
+      loopA: loopOn() ? loopA : null,
+      loopB: loopOn() ? loopB : null,
+    },
+  }));
 }
 
 function stop(keepPosition) {
@@ -625,6 +1085,7 @@ function stop(keepPosition) {
   el.play.classList.remove('playing');
   cancelAnimationFrame(raf);
   if (!keepPosition) offset = 0;
+  announceTransport(0);
   draw();
 }
 
@@ -640,6 +1101,16 @@ function seek(seconds) {
   offset = Math.max(0, Math.min(duration, seconds));
   // While A-B repeat is armed the transport stays inside the loop; clear it to roam.
   if (loopOn()) offset = Math.max(loopA, Math.min(loopB - 0.001, offset));
+  /* Bring the zoomed window along, but only when the playhead has left it. Recentring on
+   * every seek would yank the view sideways when you click INSIDE the zoom pane, which is
+   * the one place you were already looking. */
+  /* Guarded on the library, not just on duration. lib/ribbon.js is optional decoration;
+   * seeking is core transport. A stale-cache mismatch that drops one script must not take
+   * seeking away from users who never open the notes lane. */
+  if (duration && window.SansRibbon) {
+    const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration);
+    if (offset < win.from || offset > win.to) zoomCenter = offset;
+  }
   if (wasPlaying) play(); else draw();
 }
 
@@ -700,6 +1171,42 @@ function tick() {
 
 // ---------------------------------------------------------------- routing
 
+/* The ribbon is deliberately NOT in `tracks`, so mute-all and solo skip it for free —
+ * pressing 0 must never silence the reference you are checking against. */
+function applyRibbonGain() {
+  if (ribbonGain && audio) {
+    ribbonGain.gain.setTargetAtTime(ribbonMuted ? 0 : ribbonVolume, audio.currentTime, 0.012);
+  }
+  ribbonEl?.lane.classList.toggle('muted', ribbonMuted);
+}
+
+/* Hiding silences. A pane you cannot see should not still be sounding — you would have
+ * no way to tell what you were hearing, and no control on screen to stop it. Showing it
+ * again does NOT unmute: the mute is a separate decision the user made or did not. */
+function setRibbonVisible(on) {
+  ribbonVisible = !!on;
+  writeStored(RIBBON_SHOW_KEY, ribbonVisible ? 1 : 0);
+  if (!ribbonVisible && !ribbonMuted) {
+    ribbonMuted = true;
+    applyRibbonGain();
+    window.dispatchEvent(new CustomEvent('sansbass:ribbonmute', { detail: { muted: true } }));
+  }
+  applyRibbonVisibility();
+  draw();
+}
+
+function applyRibbonVisibility() {
+  const on = ribbonVisible && !!ribbon;
+  if (ribbonEl) ribbonEl.lane.hidden = !on;
+  if (zoomEl) zoomEl.lane.hidden = !on;
+}
+
+function toggleRibbon() {
+  ribbonMuted = !ribbonMuted;
+  applyRibbonGain();
+  window.dispatchEvent(new CustomEvent('sansbass:ribbonmute', { detail: { muted: ribbonMuted } }));
+}
+
 function applyGains() {
   if (!audio) return;
   const now = audio.currentTime;
@@ -751,6 +1258,9 @@ function retranslate() {
       if (txt) txt.textContent = laneLabel(t);
     });
   }
+  // Lane labels translate; the note NAMES drawn inside the ribbon never do.
+  if (ribbonEl) ribbonEl.txt.textContent = tr('notes.lane');
+  if (zoomEl) zoomEl.lane.querySelector('.txt').textContent = tr('notes.zoom');
   renderLoopBadge();
   // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
   // its text — clobbering "Restore previous". This runs after, and must keep doing so:
@@ -863,6 +1373,98 @@ function toggleTrack(t) {
 }
 
 // ---------------------------------------------------------------- input
+
+/* Pointer capture, so the drag survives the cursor leaving the 6px grip — without it a
+ * fast drag detaches the moment you outrun the element. */
+function attachResize(grip, get, set, storageKey) {
+  let startY = 0;
+  let startH = 0;
+  let dragging = false;
+
+  grip.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    startY = e.clientY;
+    startH = get();
+    grip.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const next = clampRibbonH(startH + (e.clientY - startY));
+    if (next === get()) return;
+    set(next);
+    if (ribbon && ribbonEl) {
+      renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
+      draw();
+    }
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    writeStored(storageKey, get());
+  };
+  grip.addEventListener('pointerup', end);
+  grip.addEventListener('pointercancel', end);
+}
+
+/* Wheel zooms about the cursor, drag pans. preventDefault on the wheel is required or
+ * the page scrolls out from under the gesture; passive:false is required for that to be
+ * allowed at all. */
+function attachZoom(canvas) {
+  let panning = false;
+  let lastX = 0;
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const before = zoomTimeAt(canvas, e.clientX);
+    zoomBy(e.deltaY > 0 ? 1.15 : 1 / 1.15);
+    // Keep the instant under the cursor pinned, so zooming feels like a lens rather
+    // than a jump.
+    zoomCenter += before - zoomTimeAt(canvas, e.clientX);
+    draw();
+  }, { passive: false });
+
+  /* A click seeks, a drag pans. Distinguished by distance travelled rather than by a
+   * modifier: panning a few pixels and expecting the playhead not to jump is the more
+   * common accident, so the threshold is generous. */
+  const DRAG_SLOP = 4;
+  let travelled = 0;
+
+  canvas.addEventListener('pointerdown', (e) => {
+    panning = true;
+    travelled = 0;
+    lastX = e.clientX;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!panning) return;
+    const r = canvas.getBoundingClientRect();
+    travelled += Math.abs(e.clientX - lastX);
+    zoomCenter -= ((e.clientX - lastX) / r.width) * zoomSeconds;
+    lastX = e.clientX;
+    draw();
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    if (!panning) return;
+    panning = false;
+    if (travelled <= DRAG_SLOP) seek(zoomTimeAt(canvas, e.clientX));
+  });
+  canvas.addEventListener('pointercancel', () => { panning = false; });
+}
+
+/** Change the zoom window width about its centre, and persist it. */
+function zoomBy(factor) {
+  zoomSeconds = clampZoomSec(zoomSeconds * factor);
+  writeStored(ZOOM_SEC_KEY, zoomSeconds);
+  draw();
+}
+
+/** Song time under a client x position in the zoomed pane. */
+function zoomTimeAt(canvas, clientX) {
+  const r = canvas.getBoundingClientRect();
+  const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration || 1);
+  return win.from + ((clientX - r.left) / r.width) * (win.to - win.from);
+}
 
 function attachSeek(canvas) {
   const posToTime = (e) => {
@@ -1011,5 +1613,22 @@ window.sansBass = {
   },
   /** True when exactly one track is loaded — i.e. an unseparated song. */
   isSingleTrack: () => tracks.length === 1,
+  /** A loaded stem's buffer by name, or null. notes.js reads 'vocals' through this. */
+  stemBuffer: (stem) => {
+    const t = tracks.find((x) => x.stem === stem);
+    return t ? { name: t.name, buffer: t.buffer } : null;
+  },
+  /** Hand detected notes to the player, or null to clear the lane. */
+  setNotes,
+  /** Where notes.js connects its oscillators, and the clock they must use. */
+  notesAudio: () => (audio && ribbonGain ? { ctx: audio, destination: ribbonGain } : null),
+  /** Current transport, for scheduling a synth that starts mid-playback. */
+  transport: () => ({ playing, t0: startedAt, offset,
+                      loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null }),
+  /** True while the notes lane is silent. */
+  ribbonMuted: () => ribbonMuted,
+  /** Show or hide both notes panes. Hiding also mutes. */
+  setRibbonVisible,
+  ribbonVisible: () => ribbonVisible,
   say,
 };

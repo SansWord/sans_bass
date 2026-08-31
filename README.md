@@ -312,6 +312,8 @@ The default server is single-threaded, and with files this size the browser can 
 | Set loop start / end | **a** / **b** at the playhead |
 | Clear the loop | **c** or **Esc**, or the Clear button |
 
+The notes lane has its own controls — see [Step 5](#step-5--find-the-notes).
+
 ### A–B repeat
 
 Press **a** where a phrase starts and **b** where it ends, and that section repeats until
@@ -368,6 +370,49 @@ song is roughly 380 MB of RAM. Fine for one song at a time, which is what this i
 
 ---
 
+## Step 5 — Find the notes
+
+Once stems are loaded, **Find notes** appears above the lanes. It reads the vocals stem and
+draws what it found as two new panes.
+
+It runs entirely on your machine. No model to download, no network call of any kind — about
+7 seconds for a four-minute song the first time, ~2 s after that.
+
+- **The notes lane** spans the whole song on the same timeline as every waveform, so it
+  lines up with the stems above it. Use it to find a phrase.
+- **The zoomed pane** above it shows about ten seconds and follows the playhead. This is the
+  one you read: it labels every semitone and draws the pitch actually sung, so vibrato,
+  slides, and any place the detection disagrees with the singer are all visible.
+
+| Action | How |
+|---|---|
+| Detect notes | **Find notes** — appears only when a vocals stem is loaded |
+| Hear the transcription | Click the **Notes** lane name. It plays as a piano tone against the song, muted until you ask for it |
+| Tune the detection | The **Shortest note** slider — re-derives instantly, without re-analysing |
+| Show / hide both panes | The toggle that replaces **Find notes**. Hiding also mutes |
+| Zoom in / out | The **−** / **+** buttons, or scroll on the zoomed pane |
+| Move the zoomed window | Drag it sideways. Click it to seek |
+| Make either pane taller | Drag the bar at its bottom edge |
+
+### It will be wrong, and that is the point of showing the contour
+
+This is a first pass, not a transcription you can publish. Held notes fragment under
+vibrato, slides leave short spurious notes behind, and roughly 5% of the time the pitch
+tracker drops an octave for a moment. The blue contour line is drawn *underneath* the
+detected notes precisely so a wrong note looks wrong rather than plausible — where the
+blocks leave the line, the detector lost the thread.
+
+**Shortest note** is the one control that matters. On a typical track it takes the note
+count from 437 at 80 ms to 99 at 200 ms, and finding the value your ear agrees with is
+faster than correcting the notes by hand. Everything under **Advanced** moves the result
+far less.
+
+Key detection exists too, but only on the bench page at `/tests/notes.html`, which also
+plays the transcription back on its own so you can A/B it against the stem.
+
+[`docs/transcription.md`](docs/transcription.md) explains how audio becomes notes, what each
+setting measurably does, and why the errors above are the shape they are.
+
 ## Files
 
 ```
@@ -378,12 +423,18 @@ lib/stems.js              stem identity (classic script — shared with app.js a
 lib/wav.js                Float32 → 16-bit PCM WAV
 lib/zip.js                CRC-32 + store-method ZIP writer
 lib/overlap.js            segment planning + overlap-add windows
+lib/pitch.js              pitch tracking, note segmentation, key estimation
+lib/sonify.js             plays detected notes back as tones
+lib/ribbon.js             notes-lane geometry (classic script — shared with the tests)
 separate.js               in-browser separation panel
 separate.worker.js        ONNX Runtime + htdemucs_6s inference loop
+notes.js                  notes panel: worker lifecycle and live re-interpretation
+notes.worker.js           pitch analysis, off the main thread
 icons/icon.svg            favicon + iOS home-screen artwork (source of truth)
 icons/*.png               rasterised from icon.svg by scripts/make-icons.sh
 tests/test.html           unit tests   (read window.__testResults)
 tests/parity.html         separation accuracy vs native stems (read window.__parity)
+tests/notes.html          note + key detection bench (read window.__notes)
 scripts/serve.sh          serve over http://localhost:8777
 scripts/make-icons.sh     icons/icon.svg    → the committed PNG icons (needs librsvg)
 scripts/rip-cd.sh         mounted audio CD  → lossless FLAC
@@ -393,6 +444,9 @@ rips/                     your ripped tracks; one subfolder per album
   <album>/<track>.flac
 stems/                    separated stems, one folder per song
   <album>/<track>/vocals.m4a  guitar.m4a  bass.m4a  drums.m4a  piano.m4a  other.m4a
+docs/transcription.md     how a stem becomes notes, layer by layer
+docs/behaviour.md         what the player should do, and how to observe each behaviour
+docs/deployment.md        GitHub Pages hosting and the per-PR previews
 docs/devlog.md            what was built each version, and what was learned
 docs/session-prompts.md   the prompts that produced the original build
 ```
@@ -402,6 +456,13 @@ not this project's to redistribute. The folders ship with a `.gitkeep` and nothi
 
 ## Docs
 
+- [`docs/transcription.md`](docs/transcription.md) — how audio becomes notes: the four
+  layers, which are re-derivable and which can be lost, what each detection setting
+  measurably does, and why beat tracking is not the fix for spiky notes.
+- [`docs/behaviour.md`](docs/behaviour.md) — what the player is supposed to do, written as
+  observable outcomes with a way to observe each one.
+- [`docs/deployment.md`](docs/deployment.md) — GitHub Pages hosting, the three CI
+  workflows, and the per-PR preview URLs.
 - [`docs/devlog.md`](docs/devlog.md) — version-by-version log of what was built, with the
   Web Audio and Demucs gotchas that cost real time. Read this before changing the transport.
 - [`docs/session-prompts.md`](docs/session-prompts.md) — the eight prompts that produced

@@ -81,9 +81,14 @@ lib/unzip.js                       zip reading, classic script — window.SansUn
 lib/i18n.js                        zh-TW/en dictionary + runtime, classic script
 lib/platform.js                    isHandheld() device predicate, classic script
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
+lib/pitch.js                       ESM — YIN pitch tracking, note segmentation, key
+lib/sonify.js                      ESM — plays detected notes back as tones
+lib/ribbon.js                      ribbon geometry, classic script — window.SansRibbon
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
+notes.js  notes.worker.js          ESM — notes panel and the analysis worker
 tests/test.html                    units      → window.__testResults
 tests/parity.html                  accuracy   → window.__parity
+tests/notes.html                   notes+key  → window.__notes
 .github/workflows/                 Pages deploy + per-PR previews (see docs/deployment.md)
 scripts/serve.sh                   http://localhost:8777 (required for separation)
 scripts/rip-cd.sh                  CD → rips/*.flac
@@ -107,6 +112,10 @@ out of the project; never commit them.
   observable outcomes with a way to observe each one, plus the browser-test harness (faking
   a separation run, reading gain ramps, the traps that make a working app look broken).
   **Read this before changing UI behaviour, and update it in the same commit when you do.**
+- [`docs/transcription.md`](docs/transcription.md) — how a stem becomes notes: the four
+  layers (audio → frames → notes → edits), which are re-derivable and which can be lost,
+  what each interpretation parameter measurably does, and why beat tracking is not the fix
+  for spiky notes. **Read this before touching `lib/pitch.js` or anything consuming it.**
 - [`docs/deployment.md`](docs/deployment.md) — how the site is hosted: GitHub Pages off the
   `gh-pages` branch, the three CI workflows, per-PR preview URLs, and the rules that keep
   `rips/`, `stems/` and the model unpublished. **Read this before touching
@@ -153,10 +162,11 @@ out of the project; never commit them.
   returning visitor can run a stale `app.js` against a fresh `index.html`. That is not a
   degraded page — the old script throws on an element the new markup dropped, and because
   `app.js` wires everything from one flat run of top-level statements, every listener *below*
-  the throw silently never registers. Bump the version in `index.html` (12), `separate.js` (3)
-  and `separate.worker.js` (1); `tests/versions.test.js` fails if they drift — and it
+  the throw silently never registers. Bump the version in `index.html` (14), `separate.js` (3),
+  `separate.worker.js` (1), `notes.js` (3) and `notes.worker.js` (1) — 22 in all;
+  `tests/versions.test.js` fails if they drift — and it
   covers `.png` and `.svg` as well as `.js`/`.css`, so the icons are included. Currently
-  `v1.9.0`.
+  `v1.11.0`.
 - **Separation is desktop-only, and that is not fixable from this repo.** On iOS the first
   `session.run()` kills the tab; the accumulators, the 285 MB model, the memory floor,
   WebGPU and asyncify were each ruled out by measurement, and `N_SAMPLES = 343980` is baked

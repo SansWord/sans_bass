@@ -20,6 +20,7 @@ const el = {
   minOut: document.getElementById('notes-min-out'),
   clip: document.getElementById('notes-clip'),
   hmm: document.getElementById('notes-hmm'),
+  fold: document.getElementById('notes-fold'),
   show: document.getElementById('notes-show'),
 };
 
@@ -30,6 +31,7 @@ const tr = (key, params) => window.SansI18n.t(key, params);
 const syncTips = () => {
   el.hmm.parentElement.title = tr('notes.hmmTip');
   el.clip.parentElement.title = tr('notes.clipTip');
+  el.fold.parentElement.title = tr('notes.foldTip');
 };
 syncTips();
 
@@ -45,7 +47,7 @@ let sonifier = null;         // the running note schedule, or null
 function currentParams() {
   return {
     interpreter: el.hmm.checked ? 'hmm-v1' : 'threshold-v1',
-    params: { minDurationMs: Number(el.min.value) },
+    params: { minDurationMs: Number(el.min.value), fold: el.fold.checked },
   };
 }
 
@@ -156,6 +158,7 @@ el.go.addEventListener('click', analyse);
 el.min.addEventListener('input', reinterpret);
 el.clip.addEventListener('change', reinterpret);   // clip rides in the payload
 el.hmm.addEventListener('change', reinterpret);
+el.fold.addEventListener('change', reinterpret);
 el.show.addEventListener('click', () => {
   window.sansBass.setRibbonVisible(!window.sansBass.ribbonVisible());
   syncShowLabel();

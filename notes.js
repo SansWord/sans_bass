@@ -43,7 +43,13 @@ let sonifier = null;         // the running note schedule, or null
 
 /* Parameters carry the interpreter that understands them: params written by one are
  * meaningless to another, so the name travels with them. The checkbox picks which — both
- * read the SAME frames, which is what makes comparing them mean anything. */
+ * read the SAME frames, which is what makes comparing them mean anything.
+ *
+ * `fold` is the exception: it is a post-pass both interpreters share, which is why it sits
+ * in `params` rather than beside `interpreter`. Note that `params` is also the bag
+ * foldOctaves reads its own tuning from (confidentWithin, maxShift, madMultiple,
+ * minHalfWidth), so anything that ever persists and restores this object must not carry a
+ * stale one of those forward — it would silently retune the fold. */
 function currentParams() {
   return {
     interpreter: el.hmm.checked ? 'hmm-v1' : 'threshold-v1',

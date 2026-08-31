@@ -19,7 +19,7 @@
 
 ## Two decisions the spec left to the plan
 
-1. **The ribbon lane is built inside `buildLanes()`**, not parked in `index.html`. `app.js:387` does `el.lanes.innerHTML = ''` on every load, so any element living inside `#lanes` is destroyed on the next song. Building it with the other lanes makes it survive by construction and puts it directly after the vocals lane, which is where the spec wants it.
+1. **The ribbon lane is built inside `buildUI()`**, not parked in `index.html`. `app.js:387` does `el.lanes.innerHTML = ''` on every load, so any element living inside `#lanes` is destroyed on the next song. Building it with the other lanes makes it survive by construction and puts it directly after the vocals lane, which is where the spec wants it.
 2. **`lib/ribbon.js` is a classic script**, not ESM. `app.js` does the canvas work and cannot import a module. This matches the existing precedent — `lib/stems.js`, `lib/i18n.js` and `lib/platform.js` are classic for exactly this reason.
 
 ## File structure
@@ -29,7 +29,7 @@
 | `lib/ribbon.js` (create) | Pure geometry: vertical range, contour segmentation. Classic script, `window.SansRibbon`. ~60 lines. |
 | `notes.worker.js` (create) | ESM. Imports `lib/pitch.js`, runs `decimate` + `f0Track`, posts frames back. ~30 lines. |
 | `notes.js` (create) | ESM. Button, worker lifecycle, live re-derivation, hands results to the player. ~140 lines. |
-| `app.js` (modify) | Ribbon lane in `buildLanes`, `renderRibbon`, `draw`/`renderAll` wiring, two new `window.sansBass` members. |
+| `app.js` (modify) | Ribbon lane in `buildUI`, `renderRibbon`, `draw`/`renderAll` wiring, two new `window.sansBass` members. |
 | `index.html` (modify) | `#notes` controls between `#sep` and `#lanes`; two script tags; `?v=` bump. |
 | `styles.css` (modify) | `.lane.ribbon` reusing the lane grid so the canvas aligns. |
 | `lib/i18n.js` (modify) | Eight keys, both locales. |
@@ -609,7 +609,7 @@ let ribbonEl = null;       // { lane, canvas, txt } — rebuilt with the lanes o
 
 - [ ] **Step 2: Build the lane alongside the others**
 
-In `buildLanes()`, immediately before the closing `attachSeek(el.mainWave);` line, add:
+In `buildUI()`, immediately before the closing `attachSeek(el.mainWave);` line, add:
 
 ```js
   /* Built here rather than parked in index.html: el.lanes.innerHTML = '' above destroys
@@ -833,7 +833,7 @@ At the end of `renderAll()`, after the `tracks.forEach(...)` re-render:
 
 - [ ] **Step 3: Clear it when a new song loads**
 
-In `buildLanes()`, at the very top — before `el.lanes.innerHTML = ''` — drop the stale result. The frames belong to the previous song's audio and would be drawn against the new song's duration:
+In `buildUI()`, at the very top — before `el.lanes.innerHTML = ''` — drop the stale result. The frames belong to the previous song's audio and would be drawn against the new song's duration:
 
 ```js
   ribbon = null;
@@ -1124,7 +1124,7 @@ Add a TL;DR row above the v1.10.0 row, then the entry itself above the v1.10.0 s
 
 Learnings worth recording, each of which cost real time this phase:
 
-- `[gotcha]` `el.lanes.innerHTML = ''` destroys anything parked inside `#lanes`, so the ribbon lane is built in `buildLanes()` rather than declared in `index.html`. A static element would have worked for exactly one song.
+- `[gotcha]` `el.lanes.innerHTML = ''` destroys anything parked inside `#lanes`, so the ribbon lane is built in `buildUI()` rather than declared in `index.html`. A static element would have worked for exactly one song.
 - `[gotcha]` `getChannelData()` returns a live view into the `AudioBuffer`. Passing it to the worker as a *transferable* detaches the backing store and the stem goes silent mid-playback with no error anywhere. `.slice()` first.
 - `[gotcha]` `tests/versions.test.js` reads a hardcoded `FILES` list. Adding a versioned file without adding it there leaves its `?v=` unchecked — the exact drift the test exists to catch.
 - `[insight]` Reusing `paint()` for the ribbon costs nothing but keeping the `{ idle, active, h, w }` layer shape, and buys the playhead, the A-B shading and the clip behaviour for free. Matching an existing contract beat writing a second draw path.

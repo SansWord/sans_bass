@@ -198,7 +198,7 @@ covers the DOM. This is the same fault-injection approach the project already us
 
 `notes.js` loads as a plain `<script type="module">` and reaches the player only through
 `window.sansBass`, the same seam `separate.js` uses. The lane itself is built by `app.js`
-inside `buildLanes()`, not declared in `index.html` — `el.lanes.innerHTML = ''` destroys
+inside `buildUI()`, not declared in `index.html` — `el.lanes.innerHTML = ''` destroys
 anything parked inside `#lanes`, so a static element would survive exactly one song.
 
 The layer model these rows exercise is in [`docs/transcription.md`](transcription.md):
@@ -210,13 +210,13 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N2 | Detection never starts by itself. It costs ~7 s of CPU on a cold first run, which is a surprise rather than a convenience. | Load a stems zip, wait 10 s: `document.querySelector('.lane.ribbon').hidden` is still `true`. |
 | N3 | While analysing: **Find notes** disabled, one status message, no progress bar. `f0Track` reports no progress, and a bar that jumps 0 → 100 is worse than none. | `#notes-go.disabled`, `#status.textContent`. |
 | N4 | On success the status line goes **empty** — the lane appearing is the confirmation. | `#status.textContent === ''`. |
-| N5 | The ribbon lane sits directly under the vocals lane. | `document.querySelector('.lane.ribbon').previousElementSibling` is the vocals lane. |
+| N5 | The notes panes sit directly under the vocals lane, zoomed pane first. DOM order is `[vocals, .ribbon-zoom, .ribbon]`. | `document.querySelector('.lane.ribbon').previousElementSibling` is `.lane.ribbon-zoom`, and *its* previous sibling is the vocals lane. |
 | N6 | The ribbon is on the same time grid as every waveform: its canvas is the same CSS width, and it reflows with them on resize. | Compare `getBoundingClientRect().width` against a `.lane:not(.ribbon) canvas.wave`, before and after a resize. Must match both times. |
 | N7 | Clicking the ribbon seeks, like any other lane. | Click at 50% of its width; `#t-cur` must read half the track length. |
 | N8 | Moving **Shortest note** changes the note count **without re-running analysis**. | Time it: the count must change in tens of milliseconds, not seconds. That the slider moved is not evidence of anything — read `#notes-count`. Measured on `6 南國的風`: 120 ms → 228 notes, 200 ms → 99, 80 ms → 437, each in 11–15 ms. |
 | N9 | Unticking **Clip octave outliers** widens the lane's vertical range. | `SansRibbon.pitchRange(notes, {clip:false})` must span more than with `clip:true`. |
 | N10 | A note outside the clipped range is drawn at the lane edge in the A–B orange, never dropped. A hidden note would be a silent lie. | Load a track with octave errors; orange marks appear on the edge. |
-| N11 | The contour line breaks at every unvoiced run and never bridges one. | `SansRibbon.contourSegments` returns more than one segment for a track with rests. |
+| N11 | The contour breaks at every unvoiced run and never bridges one, in both panes. | The lane uses `SansRibbon.contourColumns`, which returns `null` for a column holding no voiced frame — assert a null between two non-null columns. The zoomed pane breaks its polyline inline; observe it by rendering a window containing a rest and checking the line does not cross it. |
 | N12 | Loading a new song clears the ribbon, even when the new song also has vocals. The old frames describe the old audio. | Load a second zip; `.lane.ribbon` computed `display` is `none` and its canvas `__layers` is `null`. |
 | N13 | The lane is not in `tracks`. It has its own mute and volume but **no number key**, and mute-all, solo and the stem count all ignore it. | Press `0`: every `.lane:not(.ribbon):not(.ribbon-zoom)` gains `.muted` while `window.sansBass.ribbonMuted()` is unchanged. The ribbon lane has no `.kbd` child. |
 | N14 | The lane label follows the language toggle. The note **names** drawn inside it never translate, exactly as stem ids and filenames do not. | Switch locale: the label changes, the block labels stay `C#4`. |
@@ -226,7 +226,7 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N18 | A zoomed pane sits directly above the notes lane, showing a window of the song rather than all of it. It follows the playhead while playing and pans by dragging when stopped. | `.ribbon-zoom` exists; drag `.zoomwave` and the ruler labels change while the lanes below do not move. |
 | N19 | The wheel zooms the pane about the cursor, between 2 s and 60 s, and the width survives a reload. | Scroll on `.zoomwave`; `.zoom-secs` changes and `localStorage['sans_bass.zoomSeconds']` is written. |
 | N20 | At whole-song width the lane draws the contour as a per-pixel band, not a polyline. A polyline there joins pitches ~26 frames apart and buries the notes under vertical strokes. | Compare: `SansRibbon.contourColumns` is what the lane uses; the zoomed pane draws the line directly. |
-| N21 | Note names are labelled on every semitone when there is room (≥7 px per semitone), and fall back to marking C only when there is not. | Shrink the lane to its 96 px minimum: only C labels remain. |
+| N21 | Note names are labelled on every semitone at ≥7 px per semitone, fall back to C only between 6 and 7 px, and disappear entirely below 6 px. | Shrink the lane to its 96 px minimum: over a typical ~27-semitone range that is ~3.5 px per semitone, so **no** labels remain. C-only needs the narrow 6–7 px band. |
 | N22 | Once notes are found, **Find notes** disappears and a show/hide toggle takes its place — the same swap the separation panel does with Separate → Save. Loading a new song brings it back. | Computed `display` of `#notes-go` and `#notes-show`. |
 | N23 | Hiding the notes panes also **mutes** them. A pane you cannot see must not still be sounding, because nothing on screen would stop it. | Unmute, then Hide: `window.sansBass.ribbonMuted()` becomes `true`. |
 | N24 | Showing them again does **not** unmute. The mute is a separate decision. | Hide then Show: still muted. |

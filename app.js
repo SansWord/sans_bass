@@ -131,10 +131,8 @@ function ensureAudio() {
   return audio;
 }
 
-/* Height survives a reload the way the language toggle does. Storage can throw outright
- * in a private window, so every read and write is guarded — a lane that refuses to render
- * because localStorage is disabled would be a poor trade for remembering a number. */
-/* Storage can throw outright in a private window, so every read and write is guarded. A
+/* Pane heights and the zoom width survive a reload the way the language toggle does.
+ * Storage can throw outright in a private window, so every read and write is guarded: a
  * pane that refuses to render because localStorage is disabled would be a poor trade for
  * remembering a number. */
 function readStoredNumber(key, fallback, clamp) {
@@ -509,6 +507,7 @@ function buildUI(title) {
    * anything inside #lanes, so a static element would vanish on the second song. Built
    * with the lanes it survives by construction, and lands directly under vocals. */
   ribbonEl = null;
+  zoomEl = null;
   const vocals = tracks.find((t) => t.stem === 'vocals');
   if (vocals) {
     const lane = document.createElement('div');
@@ -1105,7 +1104,10 @@ function seek(seconds) {
   /* Bring the zoomed window along, but only when the playhead has left it. Recentring on
    * every seek would yank the view sideways when you click INSIDE the zoom pane, which is
    * the one place you were already looking. */
-  if (duration) {
+  /* Guarded on the library, not just on duration. lib/ribbon.js is optional decoration;
+   * seeking is core transport. A stale-cache mismatch that drops one script must not take
+   * seeking away from users who never open the notes lane. */
+  if (duration && window.SansRibbon) {
     const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration);
     if (offset < win.from || offset > win.to) zoomCenter = offset;
   }
@@ -1621,13 +1623,12 @@ window.sansBass = {
   /** Where notes.js connects its oscillators, and the clock they must use. */
   notesAudio: () => (audio && ribbonGain ? { ctx: audio, destination: ribbonGain } : null),
   /** Current transport, for scheduling a synth that starts mid-playback. */
-  transport: () => ({ playing, t0: startedAt, offset: playing ? offset : offset,
+  transport: () => ({ playing, t0: startedAt, offset,
                       loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null }),
   /** True while the notes lane is silent. */
   ribbonMuted: () => ribbonMuted,
   /** Show or hide both notes panes. Hiding also mutes. */
   setRibbonVisible,
   ribbonVisible: () => ribbonVisible,
-  setRibbonVolume: (v) => { ribbonVolume = v; applyRibbonGain(); },
   say,
 };

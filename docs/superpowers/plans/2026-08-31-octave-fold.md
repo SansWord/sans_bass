@@ -386,13 +386,21 @@ export function foldOctaves(notes, opts = {}) {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Reload. Expected: eight new `PASS` beginning `pitch: foldOctaves`, suite green at **169**.
+Reload. Expected: eight new `PASS` beginning `pitch: foldOctaves`, suite green at **169**. (Later corrections took Task 2 to 174 — see the note below it.)
 
-If "folds an outlier onto the octave its neighbours imply" fails, print
-`out[2].fix` — a `doubt` there means `bestD` exceeded `confidentWithin`. Do **not** widen
-`confidentWithin` to make it pass: that threshold is what separates the octave-foldable
-harmonics from the odd ones, and loosening it makes the third test start folding a
-3rd-harmonic error to the wrong pitch.
+> **The listing above is historical.** Task 2 shipped, then a code review found
+> `confidentWithin: 5` was wrong — it sits *on* the 4.98-semitone residual of an
+> octave-plus-a-fifth error, so it folded them and tagged them confident (measured: 7 wrong
+> folds on `threshold-v1`, 24 on `hmm-v1`). The shipped value is **1.5**, `fix` carries a
+> `state` field, and a fold shifts `cents` rather than re-quantising. See commits `aa4360e`
+> then `b632636`, and the Correction section of the spec.
+
+If "folds an outlier onto the octave its neighbours imply" fails, print `out[2].fix` — a
+`doubt` there means `bestD` exceeded `confidentWithin`. Do **not** widen `confidentWithin` to
+make it pass. It does not cleanly separate foldable from unfoldable harmonics — nothing does,
+the populations overlap — it is set low deliberately so that the fold never claims confidence
+it has not earned. Raising it trades that guarantee for coverage, and there is a bracketing
+test that will fail if you do.
 
 - [ ] **Step 5: Commit**
 
@@ -528,7 +536,7 @@ Change the lap-0 loop at line ~79:
 ```js
   const lap0 = [];
   for (const n of notes) {
-    if (n.fix && n.fix.doubt) continue;      // flagged as untrusted: visible, but silent
+    if (n.fix && n.fix.state === 'doubt') continue;   // untrusted: visible, but silent
     if (looping ? (n.start < offset || n.start >= loopB) : n.end <= offset) continue;
     lap0.push({ note: n, at: when + (n.start - offset) });
   }
@@ -540,7 +548,7 @@ And the loop-lap collection just below it:
   const loopBase = [];
   if (looping) {
     for (const n of notes) {
-      if (n.fix && n.fix.doubt) continue;    // same rule on every lap
+      if (n.fix && n.fix.state === 'doubt') continue;   // same rule on every lap
       if (n.start < loopA || n.start >= loopB) continue;
 ```
 
@@ -631,8 +639,8 @@ const dec = decimate(ch, stem.buffer.sampleRate);
 const tr = f0Track(dec.samples, dec.sampleRate);
 const notes = interpret(tr, { interpreter: 'threshold-v1', params: { minDurationMs: 100, fold: true } });
 window.sansBass.setNotes({ notes, frames: tr, params: {}, clip: true });
-({ folded: notes.filter(n => n.fix && n.fix.shift).length,
-   doubtful: notes.filter(n => n.fix && n.fix.doubt).length });
+({ folded: notes.filter(n => n.fix && n.fix.state === 'folded').length,
+   doubtful: notes.filter(n => n.fix && n.fix.state === 'doubt').length });
 ```
 
 Then read the canvas back — a blue and a gray pixel must both be present:
@@ -817,8 +825,10 @@ first, and it holds regardless of tuning.
 **Do not expect the counts an earlier draft of this plan predicted** (19 folded / 4 doubted).
 Those came from `confidentWithin: 5`, which was wrong: it folded octave-plus-a-fifth errors
 and tagged them confident. At the corrected 1.5 the split moves sharply toward doubtful —
-roughly 7 folded on `threshold-v1` and 5 on `hmm-v1`, with the rest marked. Record what you
-actually measure; the numbers here are an expectation, not an assertion.
+independently measured at `confidentWithin: 1.5` on ng_kipin: **`threshold-v1` 9 folded /
+16 doubtful** (25 outliers of 185 notes, band 36–66) and **`hmm-v1` 10 folded / 33 doubtful**
+(43 outliers of 307, band 39–63). Record what you actually measure; these are calibration, not
+assertions, and they will move with the decode path.
 
 Also sweep the threshold while you are here, since this is the measurement step:
 

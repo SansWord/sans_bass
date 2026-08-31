@@ -73,13 +73,26 @@ neighbours — the populations **overlap**:
 | `threshold-v1` | residual 0 – 3.5 | residual 2 – 7 |
 | `hmm-v1` | residual 0 – 3 | residual 1.5 – 7 |
 
+**Read those lower bounds with caution.** A second, independent measurement — a different
+harmonic classifier and an ffmpeg rather than `decodeAudioData` decode path — put the
+unfoldable minimum at **2.5 on both interpreters**, not 2 and 1.5. The exact figure is
+sensitive to how a note is attributed to a harmonic and to how the audio was decoded, so
+neither run is authoritative to a half semitone. What both agree on is the shape: the
+populations overlap, and the overlap begins above the chosen threshold. Both runs also agree
+that `confidentWithin: 2` still admits no odd-harmonic error, so 1.5 has real margin rather
+than sitting on a boundary — which was the failure of the original 5.
+
 The arithmetic explains why. A power-of-two error leaves a residual of exactly **0** after the
 right octave shift; a 3rd- or 6th-harmonic error leaves **4.98** — just under the original
 threshold of 5, which therefore sat *on* the failure mode rather than between the populations.
 At that setting, 10 of 14 odd-harmonic errors on `threshold-v1` were folded and tagged
 confident: drawn blue, sounded as trusted, a fifth wrong. Exactly what Goal 3 forbids.
 
-Melodic movement blurs both distributions, so **no threshold separates them cleanly**. The
+The threshold bounds the **residual**, not the error. When the neighbours themselves sit a
+fifth from the truth, a 6th-harmonic error lands on them with residual 0 and no threshold can
+see it — inherent to a neighbour-only method, and the reason this can reduce the problem but
+never eliminate it. Melodic movement blurs both distributions further, so **no threshold
+separates them cleanly**. The
 design therefore errs toward never lying: `confidentWithin` is **1.5**, which on this material
 admits no odd-harmonic error at all, at the cost of roughly half the true corrections — those
 become doubtful instead, marked in gray for the editing phase to resolve. Raising it trades
@@ -170,7 +183,8 @@ For each out-of-band note:
    pick the one minimising `|midi + 12k − target|`. On a tie, prefer the smaller `|k|`, and
    on a further tie the negative `k` — every shift measured on real material is downward, so
    an exact tie should not silently resolve upward.
-4. If that distance is under `confidentWithin` (**1.5** semitones) and `k ≠ 0` → **fold**.
+4. If that distance is **at most** `confidentWithin` (**1.5** semitones) and `k ≠ 0` →
+   **fold** (the comparison is `bestD > confidentWithin` → doubt, so exactly 1.5 folds).
    Otherwise, or if neither neighbour exists → **doubtful**. See the correction above for why
    this is 1.5 and not the 5 an earlier draft specified.
 

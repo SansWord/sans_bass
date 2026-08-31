@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.15.0](#v1150--resuming-the-note-at-a-2026-08-31-1549) | A note still sounding when playback enters — at loop point A, on every lap, or at a seek target — now plays its remainder instead of being skipped, entering the envelope at the amplitude it had already reached rather than re-attacking. It is cut at B rather than ringing across the restart. One symptom, three separate causes. |
 | [v1.14.0](#v1140--簡譜-notes-as-scale-degrees-2026-08-31-1421) | 簡譜: a display mode drawing each note as a scale degree instead of an absolute name, in a key detected automatically and overridable by three controls. Off by default; the note data is untouched. The octave moves off the blocks and onto the pitch axis as dots. First time `detectKey()` reaches the player. Also flips `hmm-v1` on by default and drops its "experimental" label. |
 | [v1.13.0](#v1130--octave-folding-2026-08-31-1214) | Octave-outlier notes are folded back into the singer's range using their neighbours, and the ones that cannot be justified are marked rather than guessed. Off by default. Nothing is deleted: every note keeps a `fix` record, folded ones draw blue, untrusted ones gray and silent. |
 | [v1.12.0](#v1120--hmm-note-decoding-switchable-2026-08-30-2241) | A second note interpreter, `hmm-v1`: `yinFrame` keeps every CMND local minimum as a weighted candidate, and two Viterbi passes decode a pitch path and segment it into notes. Off by default — it cuts octave-down errors by a third to a half, but trades some of that for octave-up errors on two of three tracks. Confirmed better by ear at a 100 ms shortest-note setting. |
@@ -34,6 +35,77 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.15.0 — Resuming the note at A (2026-08-31 15:49)
+
+**Review:** not yet
+
+**Design docs:**
+- Resuming the note at A: [Spec](superpowers/specs/2026-08-31-loop-note-resume-design.md) [Plan](superpowers/plans/2026-08-31-loop-note-resume.md)
+
+**What was built:**
+
+- `envelopeAmplitude(tau, envLen, peak)` in `lib/sonify.js`: the percussive envelope written
+  once as a closed-form function instead of only as a pair of scheduled ramps, so the curve
+  can be entered partway. At `tau = 0` it returns the floor, so `skip = 0` reproduces the
+  original envelope exactly and no ordinary note changes.
+- Every scheduled event gained two numbers: `skip`, the seconds of the note already elapsed
+  at the entry point, and `until`, the lap's B in audio-clock time. Both collection loops
+  changed from *"starts after the entry point"* to *"is still sounding at the entry point"*.
+- `spawn()` solves the envelope for the amplitude at `skip` and clamps the end to `until`.
+  Ordinary notes get `skip = 0` and an `until` they never reach, so they take the identical
+  path with no branch.
+- `MIN_AUDIBLE = 0.01`: a remainder under 10 ms is a transient rather than a pitch, and it
+  would cost an oscillator on every lap.
+- Fourteen new tests; the suite went 185 → 199. No call-site change was needed in `notes.js`
+  — `resync()` already passes `when`/`offset`/`loopA`/`loopB`, and both new numbers are
+  derived from those four inside `scheduleNotes`.
+
+**Key technical learnings:**
+
+- `[insight]` The envelope **outlasts the note** for short notes: `envLen = dur * decay +
+  release`, so with the piano spec a 50 ms note rings 82 ms. Any "clamp the note's end"
+  change therefore has to clamp to the loop boundary, never to `note.end`, or it reshapes
+  every note in the song while looking like a bug fix. Note the sign flips at
+  `dur = 0.267 s` — past that, `decay = 0.85 < 1` makes the envelope *shorter* than the note.
+- `[insight]` One symptom, three causes. The looping filter dropped the note, `loopBase`
+  dropped it again on later laps, and without a loop it survived collection only to be
+  dropped by `pump()` for being in the past. Fixing any one of them alone would have left
+  the bug looking half-fixed — which is why the plan drove them as three separate tasks with
+  a test each rather than as one change.
+- `[gotcha]` `at` for a resumed note is pinned to the entry point with `Math.max(0, …)`
+  specifically so `pump()`'s past-drop still works. Scheduling it at the note's true start
+  would re-open the defect that once fired every elapsed note on one sample at 7× full scale.
+- `[gotcha]` `until` has to be shifted per lap alongside `at`. Computing it once cuts every
+  lap at lap 1's B — silence after the first pass, which reads as the loop breaking rather
+  than as a truncation bug.
+- `[note]` `MIN_AUDIBLE` is safe only because `interpret()` enforces `minDurationMs >= 20`.
+  The two numbers are coupled and a test now says so.
+
+**Process learnings:**
+
+- `[gotcha]` **An RMS threshold placed in an exponential decay is a coin-flip, and it fails
+  in the direction that looks like success.** Three of the plan's tests were mis-calibrated
+  the same way, and all three were caught only by measuring the rendered samples instead of
+  trusting the predicted pass/fail. The cut-at-B driver used a 50 ms note whose overhang past
+  B was 32 ms of a curve already at 5.8e-5 — it passed against code that never truncated at
+  all. Its sibling guard asserted `RMS > 0.001` across the last 10 ms of a fall to 1e-4
+  (measured 7.6e-5) and so failed against *unmodified* code. The `MIN_AUDIBLE` driver
+  entered a 0.2 s note 5 ms before its end, where the envelope is already at 1.9e-4, and
+  passed with no floor in the code. The fix in each case was to move the measurement to where
+  the envelope is still loud: a long note straddling B (RMS 0.031), and a *short* note for
+  the 5 ms remainder (peak 6.0e-3).
+- `[insight]` When a test must assert "this tail is unchanged", **compare two renders rather
+  than pick a threshold**. The rewritten guard renders the note looped and unlooped and
+  asserts the tails are equal to 1e-9 — that is the actual claim, it is exact, and it does
+  not depend on guessing where in the decay the window lands.
+- `[note]` The plan's own instruction — "trust what you measure and report a discrepancy
+  rather than adjusting a test to match" — is what caught all three. Worth keeping in future
+  plans: it licenses strengthening a test that is too weak to drive its own change.
+- `[gotcha]` The by-ear step could not be done under automation. The live `AudioContext`
+  stays `suspended`, `resume()` is refused, and the clock reads 0 — a synthetic click will
+  not unlock it, only a real keypress. Everything here is verified offline against rendered
+  samples; the live-graph confirmation is still outstanding.
 
 ## v1.14.0 — 簡譜, notes as scale degrees (2026-08-31 14:21)
 

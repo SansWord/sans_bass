@@ -18,8 +18,9 @@ pitch move and a time move want different anchors, so this decides the override 
 
 ## Automatic octave folding
 
-**Designed** — [spec](superpowers/specs/2026-08-31-octave-fold-design.md), approved
-2026-08-31. Branch `feat/octave-fold`; not yet implemented. A checkbox that folds
+**Planned** — [spec](superpowers/specs/2026-08-31-octave-fold-design.md) and
+[plan](superpowers/plans/2026-08-31-octave-fold.md), both approved 2026-08-31.
+Branch `feat/octave-fold`; not yet implemented. A checkbox that folds
 octave-outlier notes by whole octaves into the singer's range, instead of only clipping them
 from the lane's scale the way **Clip octave outliers** does today.
 

@@ -276,3 +276,58 @@ test('sonify: the note straddling A resumes on every lap, not just the first', a
     assert(rms(out, from, to) > 0.001, `the note sounds on the lap starting at ${lapStart}s`);
   }
 });
+
+test('sonify: a note is cut at B rather than ringing across the loop restart', async () => {
+  /* The stems hard-cut at loopEnd, so a tone overhanging B desynchronises from the audio
+   * it exists to be compared against.
+   *
+   * The loop deliberately holds NOTHING in its first 150 ms. Without that silence the
+   * overhang would be indistinguishable from the next lap's own content, and the test
+   * would pass against code that never truncates at all. */
+  const ctx = new OfflineAudioContext(1, SR * 2, SR);
+  /* A LONG note starting just before B. The overhang has to be both long and loud to be
+   * measurable: a note whose envelope merely dribbles past B is already near the 1e-4
+   * floor there, so the window after B reads as silent whether or not anything truncates
+   * it — a test that passes against code that never cuts at all.
+   *
+   * Here dur = 1.0 so envLen = 0.89, and at B the envelope is still at 0.2 of full scale.
+   * Untruncated it rings loudly from 0.5 to 1.29. */
+  const notes = [{ start: 0.4, end: 1.4, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes,
+                { when: 0, offset: 0, loopA: 0, loopB: 0.5, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+
+  assert(rms(out, Math.round(0.42 * SR), Math.round(0.5 * SR)) > 0.001,
+         'the note still sounds up to B');
+  // Lap 1 starts at 0.5 and re-sounds this note at 0.9, so 0.55-0.85 is the next lap's
+  // own silence — the only window where an overhang is unambiguously an overhang.
+  assert(rms(out, Math.round(0.55 * SR), Math.round(0.85 * SR)) < 1e-3,
+         'and is silent after B, where the next lap has no notes of its own');
+});
+
+test('sonify: cutting at B does not shorten a note that ends mid-lap', async () => {
+  /* envLen exceeds the note's own length for a short note by design — a 50 ms note rings
+   * 82 ms — and that tail is existing behaviour. Clamping the end to note.end instead of
+   * to B would change EVERY note in the song, which is the likeliest way to get this task
+   * wrong and the hardest to notice by ear.
+   *
+   * Stated as "the looped render equals the unlooped one" rather than as an absolute RMS
+   * somewhere in the tail. Past note.end the envelope is deep into an exponential fall
+   * towards 1e-4, so any fixed threshold there is a coin-flip on where the window lands;
+   * equality with the untruncated render is the actual claim and it is exact. */
+  const render = async (opts) => {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    const notes = [{ start: 0.1, end: 0.15, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+    scheduleNotes(ctx, ctx.destination, notes,
+                  { when: 0, offset: 0, aheadSeconds: Infinity, ...opts });
+    return (await ctx.startRendering()).getChannelData(0);
+  };
+  const plain = await render({});
+  const looped = await render({ loopA: 0, loopB: 0.9 });   // B far past the note
+  // The note ends at 0.15; its envelope runs to 0.1825. That tail must survive intact.
+  const from = Math.round(0.15 * SR);
+  const to = Math.round(0.19 * SR);
+  assert(rms(plain, from, to) > 0, 'the unlooped note has an envelope tail past its end');
+  assertClose(rms(looped, from, to), rms(plain, from, to), 1e-9,
+              'and the looped render keeps it — the clamp is to B, never to note.end');
+});

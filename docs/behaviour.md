@@ -250,6 +250,14 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N41 | The tolerance slider is **inert while folding is off** — disabled and dimmed, not silently ignored — and the readout is hidden. | Untick `#notes-fold`: `#notes-fold-tol.disabled` is `true` and `#notes-fold-stats.hidden` is `true`. |
 | N42 | The slider runs to **8**, so the whole range can be explored — but the readout turns **orange** from 2.5 up, where corrections start being trusted that cannot be justified. | `#notes-fold-tol.max === '8'`; `#notes-fold-tol-out` gains `.risky` and `var(--loop)` at ≥ 2.5. Measured on `ng_kipin` at 100 ms, folded / muted / **provably wrong** (folded onto a 3rd or 6th harmonic, classified independently): 0.5 → 2/21/0, 1.5 → 9/14/0, 2.5 → 11/12/**0**, 3 → 14/9/**3**, 5 → 21/2/**8**, 8 → 23/0/**10**. The first unjustifiable fold appears at 3; at 8 nothing is marked and roughly half the corrections are wrong. |
 | N43 | The readout's two numbers carry the **lane's own colours** — folded blue, muted gray — so the count and the picture agree without a legend. | `getComputedStyle` on `#notes-fold-stats` children gives `rgb(108,197,224)` and `rgb(168,168,184)`, matching `NOTE_FILL.folded.normal` and `NOTE_FILL.doubt.normal`. |
+| N44 | **簡譜** replaces note names with scale degrees and is **off** by default. | Load a song, run detection: `#notes-jianpu.checked` is `false` and the lane draws `A#3`-style names. |
+| N45 | The key selectors are set from `detectKey()` on the notes, and go **inert** while 簡譜 is off. | After detection, `#notes-key-tonic` and `#notes-key-mode` carry the detected key and are `disabled`; ticking the box enables them. |
+| N46 | The mode selector changes what the **numbers mean**, not just which note is 1. | In `1=C major` an E♭ note draws `♭3`; switch to `minor` and the same note draws `3`. |
+| N47 | **⇄** swaps the current key for its relative, and swapping twice returns. | From `1=A minor`, one click gives `1=C major`; a second returns to `1=A minor`. |
+| N48 | Touching a key control **stops** the detected key from being re-adopted. | Set the tonic by hand, then drag Shortest note to force a re-interpretation: the chosen tonic survives. |
+| N49 | The octave is shown **only on the axis**, as 簡譜 dots — never on the note blocks. | With 簡譜 on, no block label contains a digit-plus-octave like `13`; the axis has exactly one dotless band. |
+| N50 | When the lane is too tight for every semitone, the axis labels the **tonic**, not C. | Set `1=G` and shrink the lane: the sparse labels fall on G. Labelling C in every key would be meaningless. |
+| N51 | With octave folding on, degrees follow the **corrected** pitch, so the 簡譜 reading changes when the fold controls do. This is correct, not a bug. | Tick Fix octave outliers with 簡譜 on: some block labels change. Folding preserves pitch class, so a fold never changes a digit — only which octave dot it carries. |
 
 ## Saving stems
 

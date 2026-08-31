@@ -119,12 +119,18 @@ errors rather than removing them.
 
 ## Status
 
-| layer | state |
-|---|---|
-| frames | built — `lib/pitch.js`, `decimate()` + `f0Track()` |
-| notes | built — `segmentNotes()`, threshold-v1 |
-| key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer |
-| sonification | built — `lib/sonify.js`, plays notes back against the stem |
-| notes lane in the app | built — `notes.js`, `notes.worker.js`, `lib/ribbon.js` |
-| edits | not designed |
-| beat / tempo | not built |
+| layer | state | where it surfaces |
+|---|---|---|
+| frames | built — `lib/pitch.js`, `decimate()` + `f0Track()` | computed in `notes.worker.js` |
+| notes | built — `segmentNotes()`, `threshold-v1` | re-derived live in `notes.js` |
+| key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer | **bench page only** (`tests/notes.html`); no player UI |
+| sonification | built — `lib/sonify.js`, with lap generation for A–B repeat | the notes lane plays it, muted by default |
+| notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals |
+| zoomed reading pane | built | above the lane; ~10 s window, 2–60 s |
+| edits | not designed | — |
+| beat / tempo | not built | — |
+
+Two views exist because one cannot do both jobs. At whole-song width a pixel spans ~0.3 s,
+so the lane can only answer *where* — it draws the contour as a per-pixel band because a
+polyline there degenerates into noise. The zoomed pane answers *what*: a column is a frame
+or less, so it draws the real line and labels every semitone.

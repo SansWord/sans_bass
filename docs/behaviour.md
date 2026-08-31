@@ -234,6 +234,10 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N26 | The zoomed pane resizes by its own grip, independently of the lane, and the height persists. | Drag `.ribbon-zoom .ribbon-grip`; `localStorage['sans_bass.zoomHeight']` is written. **Check the grip's position, not just that dragging works:** it is absolutely positioned, so a lane missing `position: relative` puts it over a *different* lane while the drag still functions. Assert its rect sits inside its own lane's rect. |
 | N27 | The zoom width is driven by the `−`/`+` buttons as well as the wheel, and persists. | Click both; `.zoom-secs` changes and `localStorage['sans_bass.zoomSeconds']` is written. |
 | N28 | A click in the zoomed pane seeks; a drag pans without seeking. | Click: the clock moves. Drag >4 px: the clock does not. |
+| N29 | **Whole-phrase detection** under Advanced switches interpreters without re-analysing. | Tick it and time the change: the note count in `#notes-count` must move within tens of milliseconds, not seconds. Measured 229 → 268 in 22.5 ms on `6 南國的風`. |
+| N30 | It is **off** by default, so nothing about the shipped behaviour changes until it is chosen. | Load a song, run detection: `#notes-hmm.checked` is `false`. |
+| N31 | The **Shortest note** slider stays meaningful in both modes — a duration floor for `threshold-v1`, an onset cost for `hmm-v1`. | Drag it with the box both ticked and unticked; the count moves in the same direction both times. Measured at 20/80/200/400 ms: 1162/437/99/48 unticked, 928/357/196/142 ticked. |
+| N32 | An unknown interpreter name degrades to `threshold-v1` rather than failing. | `interpret(track, { interpreter: 'nonesuch-v9', params: {} })` returns notes. So does a track carrying no `candidates` — an analysis from before they existed still opens. |
 
 ## Saving stems
 

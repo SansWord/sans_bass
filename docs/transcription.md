@@ -177,7 +177,7 @@ errors rather than removing them.
 | pitch decoding | built — `viterbiPitch()` over per-frame candidates | part of `hmm-v1` |
 | key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer | **bench page only** (`tests/notes.html`); no player UI |
 | sonification | built — `lib/sonify.js`, with lap generation for A–B repeat | the notes lane plays it, muted by default |
-| notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals |
+| notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals; **Clip octave outliers** is a display choice about the vertical scale only |
 | zoomed reading pane | built | above the lane; ~10 s window, 2–60 s |
 | edits | not designed | — |
 | beat / tempo | not built | — |

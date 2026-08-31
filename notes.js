@@ -27,8 +27,11 @@ const tr = (key, params) => window.SansI18n.t(key, params);
 
 /* On the label, not the input: the checkbox itself is a 13 px target and the sentence
  * beside it is what the pointer actually rests on. */
-const syncHmmTip = () => { el.hmm.parentElement.title = tr('notes.hmmTip'); };
-syncHmmTip();
+const syncTips = () => {
+  el.hmm.parentElement.title = tr('notes.hmmTip');
+  el.clip.parentElement.title = tr('notes.clipTip');
+};
+syncTips();
 
 let worker = null;
 let frames = null;           // the immutable analysis result
@@ -162,7 +165,7 @@ window.addEventListener('sansbass:langchange', () => {
     el.count.textContent = tr('notes.count', { n: notes.length });
     syncShowLabel();
   }
-  syncHmmTip();
+  syncTips();
 });
 
 /* The player broadcasts its transport because app.js is a classic script and this file is

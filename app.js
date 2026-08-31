@@ -690,13 +690,14 @@ const LABEL_MIN_PX = 7;
 const NOTE_FILL = {
   plain:  { normal: '#8ee0ad', dim: '#4c8f6c', zoom: 'rgba(142,224,173,.86)' },
   folded: { normal: '#6cc5e0', dim: '#3a7186', zoom: 'rgba(108,197,224,.86)' },
-  doubt:  { normal: '#5a5a68', dim: '#3a3a44', zoom: 'rgba(90,90,104,.86)' },
+  doubt:  { normal: '#a8a8b8', dim: '#70707f', zoom: 'rgba(168,168,184,.86)' },
 };
-/* Any future producer of a `fix` MUST set `state`. This indexes NOTE_FILL with it directly,
- * so a `fix` without one yields NOTE_FILL[undefined] and throws inside the render loop —
- * which kills the frame. Safe today only because lib/pitch.js is the sole producer and always
- * sets it; see docs/transcription.md on layer-4 edits, which will construct these by hand. */
-const noteFillKey = (n) => (n.fix ? n.fix.state : 'plain');   // 'folded' | 'doubt'
+/* Falls back rather than throwing, because a throw here does not fail loudly: tick() re-arms
+ * the rAF chain only AFTER draw() returns, so one bad note freezes the playhead for the rest
+ * of playback while the audio keeps going — the "working app looks broken" shape this repo
+ * keeps relearning. Any future producer of a `fix` should still set `state`; lib/pitch.js is
+ * the only one today and always does. See docs/transcription.md on layer-4 edits. */
+const noteFillKey = (n) => (n.fix && NOTE_FILL[n.fix.state] ? n.fix.state : 'plain');   // 'folded' | 'doubt'
 
 /* Pre-rendered idle/active layers, the same shape renderWave produces, so paint() draws
  * the ribbon with the identical blit-and-clip it uses for every waveform — playhead,

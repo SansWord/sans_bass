@@ -588,7 +588,7 @@ In `app.js`, immediately above `renderRibbon` (search for the function that cont
 const NOTE_FILL = {
   plain:  { normal: '#8ee0ad', dim: '#4c8f6c', zoom: 'rgba(142,224,173,.86)' },
   folded: { normal: '#6cc5e0', dim: '#3a7186', zoom: 'rgba(108,197,224,.86)' },
-  doubt:  { normal: '#5a5a68', dim: '#3a3a44', zoom: 'rgba(90,90,104,.86)' },
+  doubt:  { normal: '#a8a8b8', dim: '#70707f', zoom: 'rgba(168,168,184,.86)' },
 };
 const noteFillKey = (n) => (n.fix ? n.fix.state : 'plain');   // 'folded' | 'doubt'
 ```
@@ -647,15 +647,23 @@ window.sansBass.setNotes({ notes, frames: tr, params: {}, clip: true });
 Then read the canvas back — a blue and a gray pixel must both be present:
 
 ```js
-const cv = document.querySelector('.lane.ribbon canvas');
-const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
-const seen = new Set();
-for (let i = 0; i < d.length; i += 4) seen.add(`${d[i]},${d[i+1]},${d[i+2]}`);
-({ blue: seen.has('108,197,224'), gray: seen.has('90,90,104') });
-// (the full-width lane paints the opaque variants; the zoom pane paints the .86 ones)
+/* Read the OFFSCREEN LAYERS, not the composited canvas. renderRibbon never draws to the
+ * visible canvas — it builds two layers and assigns canvas.__layers; paint() composites them,
+ * blitting idle across the lane and clipping active over the played portion only. Sampling
+ * the visible canvas at frac 0 therefore sees the dim layer alone, and an assertion written
+ * against the active colours would FAIL on a correct implementation. */
+const L = document.querySelector('.lane.ribbon canvas').__layers;
+const px = (cv) => {
+  const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  const s = new Set();
+  for (let i = 0; i < d.length; i += 4) s.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
+  return s;
+};
+({ activeBlue: px(L.active).has('108,197,224'), activeGray: px(L.active).has('168,168,184'),
+   idleBlue:   px(L.idle).has('58,113,134'),    idleGray:   px(L.idle).has('112,112,127') });
 ```
 
-Both must be `true`. **Also take a screenshot** — in v1.2.2 four property assertions passed
+All four must be `true`. **Also take a screenshot** — in v1.2.2 four property assertions passed
 against a visibly broken panel, and only the picture caught it.
 
 - [ ] **Step 5: Commit**

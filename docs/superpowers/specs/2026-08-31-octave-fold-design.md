@@ -137,7 +137,29 @@ Every detected note stays in the list. A new optional `fix` field records what w
 |---|---|---|---|---|
 | untouched | as detected | absent | green `#8ee0ad` (dim `#4c8f6c`) | yes |
 | **folded** | corrected | `{ from: 78, state: 'folded', shift: -3 }` | **blue** `#6cc5e0` (dim `#3a7186`) | yes, at the folded pitch |
-| **doubtful** | left as detected | `{ from: 78, state: 'doubt', doubt: true }` | **gray** `#5a5a68` (dim `#3a3a44`) | **no** |
+| **doubtful** | left as detected | `{ from: 78, state: 'doubt', doubt: true }` |
+
+**Is gray actually reachable?** A code review raised the concern that a doubtful note, being
+by definition far from the median, would always fall outside the lane's clipped display range
+and so draw in the out-of-band orange instead — which would mean the "you can see where to
+intervene" promise was not delivered in the default view. Measured on `ng_kipin` at
+`minDurationMs: 100`, it does not hold: **12 of 16** doubtful notes draw gray under
+`threshold-v1` and **27 of 32** under `hmm-v1`; every folded note draws blue. The two windows
+are different — the fold band is a robust median ± max(12, 3×MAD), while the lane range is
+`pitchRange`'s duration-weighted 3rd–97th percentile ±1.5, which here is the wider of the two
+(37.5–76.5 against the fold band's ~36–66).
+
+The minority that *do* draw orange are correct: a note you cannot see at all is a more urgent
+fact than a note we could not correct, so out-of-band keeps precedence over provenance.
+
+**Contrast.** The gray must clear the 3:1 floor for a non-text graphical object in **both**
+variants, not just the active one — `paint()` blits the idle (dim) layer across the whole lane
+and clips the active layer only over the played portion, so dim is what a note looks like for
+most of a listen, and the note name is drawn on top of the fill. The first values chosen
+(`#5a5a68` / `#3a3a44`) measured 2.7:1 and 1.6:1 against the lane background, i.e. below the
+floor in both, with the name at 1.5:1 when dim — illegible on exactly the note the user is
+being asked to judge. Shipped values are `#a8a8b8` / `#70707f`, measuring **7.8:1 and 3.8:1**,
+still clearly recessive beside plain green's 11.7:1. **gray** `#5a5a68` (dim `#3a3a44`) | **no** |
 
 Blue sits far from both green and the orange already used for out-of-range notes and the A–B
 loop, so a folded note reads as neither "trusted" nor "off-scale". Gray recedes without

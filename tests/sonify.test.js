@@ -213,3 +213,39 @@ test('sonify: envelopeAmplitude is clamped at both ends', () => {
   assert(Number.isFinite(envelopeAmplitude(99, 0.4, peak)), 'and never NaN');
   assert(Number.isFinite(envelopeAmplitude(0.1, 0, peak)), 'a zero-length envelope is survivable');
 });
+
+/* Entering a note partway. The lane draws a note across the entry point whether that point
+ * is a seek target or loop point A, so silence there reads as a detection failure rather
+ * than a scheduling one. One rule covers both. */
+
+test('sonify: seeking into the middle of a note plays the rest of it', async () => {
+  /* The lane draws this note across the seek point, so silence reads as a detection
+   * failure rather than a scheduling one. */
+  const ctx = new OfflineAudioContext(1, SR, SR);
+  const notes = [{ start: 0.0, end: 0.5, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  // Enter 0.25 s into a 0.5 s note: 0.25 s of it remains.
+  scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset: 0.25, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  assert(rms(out, Math.round(0.01 * SR), Math.round(0.2 * SR)) > 0.001,
+         'the remainder of the straddled note sounds');
+});
+
+test('sonify: a resumed note enters the envelope partway, it does not re-attack', async () => {
+  /* THE assertion that distinguishes the two designs. "Re-attack with a shortened
+   * envelope" passes every other test in this file; only the amplitude at the entry
+   * point tells them apart. */
+  const render = async (offset) => {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    const notes = [{ start: 0.0, end: 0.5, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+    scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset, aheadSeconds: Infinity });
+    const out = (await ctx.startRendering()).getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < Math.round(0.01 * SR); i++) peak = Math.max(peak, Math.abs(out[i]));
+    return peak;
+  };
+  const fromStart = await render(0);
+  const fromMiddle = await render(0.25);
+  assert(fromMiddle > 0.0005, `the resumed note is audible (${fromMiddle.toFixed(5)})`);
+  assert(fromMiddle < fromStart * 0.9,
+         `and quieter than a fresh attack (${fromMiddle.toFixed(5)} vs ${fromStart.toFixed(5)})`);
+});

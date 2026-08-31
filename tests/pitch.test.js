@@ -607,3 +607,84 @@ test('pitch: pitchBand opts override the defaults', () => {
   assertEq(floored[1] - floored[0], 24, 'the default is floored to an octave either side');
   assertEq(bare[1] - bare[0], 12, 'with the floor removed, 3 x MAD sets the width');
 });
+
+import { foldOctaves } from '../lib/pitch.js';
+
+test('pitch: foldOctaves folds an outlier onto the octave its neighbours imply', () => {
+  // F#5 between F2 and G2 — the exact shape measured on ng_kipin, an 8th-harmonic error.
+  const notes = notesAt([41, 43, 78, 41, 43, 41, 43, 41]);
+  const out = foldOctaves(notes);
+  assertEq(out.length, notes.length, 'nothing is added or removed');
+  assertEq(out[2].midi, 42, 'F#5 folds three octaves down to F#2');
+  assertEq(out[2].name, 'F#2', 'the name is rewritten to match');
+  assertEq(out[2].cents, 4200, 'and so are the cents');
+  assertEq(out[2].fix.from, 78, 'provenance records what the detector said');
+  assertEq(out[2].fix.shift, -3, 'and how far it moved');
+  assert(!out[2].fix.doubt, 'a confident fold is not doubtful');
+});
+
+test('pitch: foldOctaves leaves in-band notes completely untouched', () => {
+  const notes = notesAt([48, 50, 52, 53, 55, 52, 50, 48]);
+  const out = foldOctaves(notes);
+  for (let i = 0; i < notes.length; i++) {
+    assertEq(out[i].midi, notes[i].midi, `note ${i} unmoved`);
+    assert(!('fix' in out[i]), `note ${i} carries no fix field`);
+  }
+});
+
+test('pitch: foldOctaves marks an odd-harmonic error doubtful rather than guessing', () => {
+  /* B4 (71) between G3 (55) and D3 (50) is a 3rd-harmonic error implying E3 (52) — an
+   * octave PLUS a fifth. No whole-octave shift reaches it: 71-12=59 is 6.5 from the
+   * neighbour mean of 52.5, and 71-24=47 is 5.5 away. Both exceed the fourth, so this must
+   * be marked, not folded. Measured on ng_kipin, this is 4 of 23 outliers. */
+  const notes = notesAt([55, 50, 71, 55, 50, 55, 50, 55]);
+  const out = foldOctaves(notes);
+  assertEq(out[2].midi, 71, 'the pitch is left exactly as detected');
+  assertEq(out[2].fix.doubt, true, 'but it is marked as untrusted');
+  assertEq(out[2].fix.from, 71, 'from is present even when it equals midi');
+});
+
+test('pitch: foldOctaves judges a trailing outlier on its one available neighbour', () => {
+  /* The last note has no right-hand neighbour at all. One-sided context is still context:
+   * C7 (96) after a body around C3 folds four octaves to C3 (48), two semitones from the
+   * 50 beside it. Requiring both neighbours would strand every phrase-final outlier. */
+  const out = foldOctaves(notesAt([48, 50, 52, 50, 48, 50, 52, 50, 96]));
+  assertEq(out[8].midi, 48, 'folded down four octaves on the left neighbour alone');
+  assertEq(out[8].fix.shift, -4, 'and the shift is recorded');
+  assertEq(out[8].name, 'C3', 'the name follows the pitch');
+});
+
+test('pitch: foldOctaves survives an empty list', () => {
+  const out = foldOctaves([]);
+  assert(Array.isArray(out) && out.length === 0, 'an empty list in, an empty list out');
+});
+
+test('pitch: foldOctaves stays fast when almost every note is an outlier', () => {
+  /* The neighbour search scans outward until it finds an IN-BAND note, so a long run of
+   * consecutive outliers makes it O(n^2). At the shortest-note setting a song can reach
+   * ~1200 notes, and this runs on the main thread during a slider drag — the same place an
+   * unbounded running median cost 5.9 s in v1.11.0. This is the guard on that. */
+  const midis = [];
+  for (let i = 0; i < 1200; i++) midis.push(i % 40 === 0 ? 50 : 96);   // 39 outliers per island
+  const t0 = performance.now();
+  const out = foldOctaves(notesAt(midis, 0.05));
+  const ms = performance.now() - t0;
+  assertEq(out.length, 1200, 'every note still comes back');
+  assert(ms < 100, `1200 notes fold in well under a tenth of a second (${ms.toFixed(0)} ms)`);
+});
+
+test('pitch: foldOctaves never changes pitch class, so the key estimate is safe', () => {
+  const notes = notesAt([41, 43, 78, 41, 43, 41, 43, 41]);
+  const before = notesToChroma(notes);
+  const after = notesToChroma(foldOctaves(notes));
+  for (let i = 0; i < 12; i++) {
+    assertClose(after[i], before[i], 1e-9, `pitch class ${i} unchanged by folding`);
+  }
+});
+
+test('pitch: foldOctaves does not mutate the notes it was given', () => {
+  const notes = notesAt([41, 43, 78, 41, 43, 41, 43, 41]);
+  foldOctaves(notes);
+  assertEq(notes[2].midi, 78, 'the caller\'s array is untouched');
+  assert(!('fix' in notes[2]), 'and gains no fields');
+});

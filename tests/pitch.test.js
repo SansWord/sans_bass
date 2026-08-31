@@ -435,3 +435,51 @@ test('pitch: viterbiPitch marks frames with no candidates unvoiced', () => {
                              candidates, frameSeconds });
   assert([...out].every((v) => v === 0), 'no candidates anywhere means no pitch anywhere');
 });
+
+import { segmentNotesHmm } from '../lib/pitch.js';
+
+test('pitch: segmentNotesHmm splits two steady pitches into two notes', () => {
+  const notes = segmentNotesHmm(fakeTrack([[6000, 40], [6400, 40]]));
+  assertEq(notes.length, 2, 'two notes');
+  assertEq(notes[0].midi, 60, 'C4');
+  assertEq(notes[1].midi, 64, 'E4');
+});
+
+test('pitch: segmentNotesHmm splits on an unvoiced gap', () => {
+  const notes = segmentNotesHmm(fakeTrack([[6000, 40], [0, 6], [6000, 40]]));
+  assertEq(notes.length, 2, 'silence separates two notes at the same pitch');
+});
+
+test('pitch: segmentNotesHmm emits the same note shape as segmentNotes', () => {
+  const [n] = segmentNotesHmm(fakeTrack([[6900, 43]]));
+  for (const key of ['start', 'end', 'midi', 'cents', 'name', 'confidence']) {
+    assert(key in n, `note carries ${key}`);
+  }
+  assertEq(n.name, 'A4', '6900 cents is concert A');
+  assert(n.end > n.start, 'positive duration');
+});
+
+test('pitch: segmentNotesHmm stays fast on a long single-state track', () => {
+  /* The note stage is O(states) per frame, not O(states^2). A four-minute track that sits
+   * on one pitch is the worst case for the transition search, and it runs during a slider
+   * drag on the main thread — the same place an unbounded running median cost 5.9 s in the
+   * previous phase. */
+  const frames = 20000;
+  const spec = [[6000, frames]];
+  const t0 = performance.now();
+  const notes = segmentNotesHmm(fakeTrack(spec));
+  const ms = performance.now() - t0;
+  assert(notes.length >= 1, 'it still finds the note');
+  assert(ms < 400, `20k frames decode in well under half a second (${ms.toFixed(0)} ms)`);
+});
+
+test('pitch: a higher onsetCost yields fewer notes, monotonically', () => {
+  // Alternating pitches: how many survive is exactly what onsetCost governs.
+  const spec = [];
+  for (let i = 0; i < 30; i++) spec.push([i % 2 ? 6000 : 6200, 4]);
+  const counts = [1, 6, 20, 60].map((c) => segmentNotesHmm(fakeTrack(spec), { onsetCost: c }).length);
+  for (let i = 1; i < counts.length; i++) {
+    assert(counts[i] <= counts[i - 1], `onsetCost ${i} does not increase the count (${counts})`);
+  }
+  assert(counts[0] > counts[counts.length - 1], `the control has real range (${counts})`);
+});

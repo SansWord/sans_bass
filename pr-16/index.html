@@ -154,9 +154,22 @@
             <input id="notes-hmm" type="checkbox">
             <span data-i18n="notes.hmm">Whole-phrase detection (experimental)</span>
           </label>
-          <label class="notes-ctl">
-            <input id="notes-fold" type="checkbox">
-            <span data-i18n="notes.fold">Fix octave outliers</span>
+          <!-- The count sits OUTSIDE the label on purpose: inside it, clicking the number
+               would toggle the checkbox, which is not what a readout should do. -->
+          <div class="notes-ctl">
+            <label class="notes-ctl">
+              <input id="notes-fold" type="checkbox">
+              <span data-i18n="notes.fold">Fix octave outliers</span>
+            </label>
+            <span id="notes-fold-stats" class="notes-stats" hidden></span>
+          </div>
+          <!-- Only meaningful while the box above is ticked, so notes.js disables it when it
+               is not. Capped at 3 deliberately: the old default of 5 was measured folding
+               octave-plus-a-fifth errors and marking them confident. -->
+          <label class="notes-ctl notes-sub">
+            <span data-i18n="notes.foldTol">Fold tolerance</span>
+            <input id="notes-fold-tol" type="range" min="0.5" max="3" step="0.25" value="1.5" disabled>
+            <output id="notes-fold-tol-out" class="notes-val">1.5 semitones</output>
           </label>
         </details>
       </div>

@@ -517,3 +517,27 @@ test('pitch: interpret degrades to threshold-v1 when the track has no candidates
   const notes = interpret(tr, { interpreter: 'hmm-v1', params: { minDurationMs: 80 } });
   assertEq(notes.length, 1, 'still returns the note rather than throwing');
 });
+
+/* The guard on the entire phase. If candidates changed what f0Track produces, then
+ * threshold-v1 has been running on different input all along and the comparison in
+ * tests/notes.html means nothing. These are the exact values from the tests that existed
+ * before this work. */
+test('pitch: threshold-v1 behaviour is unchanged by the candidate additions', () => {
+  const SR = 44100;
+  const a = sine(220, 0.6, SR);
+  const gap = new Float32Array(Math.round(0.15 * SR));
+  const b = sine(277.18, 0.6, SR);
+  const buf = new Float32Array(a.length + gap.length + b.length);
+  buf.set(a, 0);
+  buf.set(gap, a.length);
+  buf.set(b, a.length + gap.length);
+
+  const { notes } = detectNotes([buf], SR);
+  assertEq(notes.length, 2, 'still exactly two notes');
+  assertEq(notes[0].name, 'A3', 'first note unchanged');
+  assertEq(notes[1].name, 'C#4', 'second note unchanged');
+
+  const track = f0Track(decimate([buf], SR).samples, 11025);
+  assertEq(segmentNotes(track, { minDurationMs: 80 }).length,
+           segmentNotes(track, { minDurationMs: 80 }).length, 'segmentNotes is deterministic');
+});

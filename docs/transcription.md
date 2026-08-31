@@ -169,7 +169,7 @@ grown one verb at a time. Nothing here is built.
 
 | # | action | what it does |
 |---|---|---|
-| 1 | **高/低 8 度** | Move a note up or down a whole octave. Preserves pitch class, so the key estimate stays valid. The manual counterpart to automatic octave folding — see the note below. |
+| 1 | **高/低 8 度** | Move a note up or down a whole octave. Preserves pitch class, so the key estimate stays valid. The manual counterpart to automatic octave folding — see the note below. **Must clear or replace `fix`:** a note left tagged `fix.state === 'doubt'` stays permanently silent (`lib/sonify.js` skips it), so hand-correcting one without touching `fix` produces a note that looks corrected and cannot be heard. |
 | 2 | **刪除** | Remove one note. |
 | 3 | **分割** | Split one note into two at a point in time. The inverse of a merge, which is not on this list. |
 | 4 | **新增** | Create a note where detection found none. |

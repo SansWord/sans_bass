@@ -751,5 +751,5 @@ test('pitch: interpret folds for hmm-v1 too', () => {
   }
   const folded = interpret(tr, { interpreter: 'hmm-v1', params: { minDurationMs: 80, fold: true } });
   assert(folded.length > 0, 'hmm-v1 still returns notes');
-  assert(folded.some((n) => n.fix), 'and folding applies to its output too');
+  assert(folded.some((n) => n.fix && n.fix.state === 'folded'), 'and folding applies to its output too');
 });

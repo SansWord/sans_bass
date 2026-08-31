@@ -16,12 +16,14 @@
   <script src="../lib/i18n.js"></script>
   <script src="../lib/analytics.js"></script>
   <script src="../lib/platform.js"></script>
+  <script src="../lib/ribbon.js"></script>
   <script type="module">
     import { runAll } from './assert.js';
     await import('./wav.test.js');
     await import('./zip.test.js');
     await import('./overlap.test.js');
     await import('./pitch.test.js');
+    await import('./ribbon.test.js');
     await import('./sonify.test.js');
     await import('./stems.test.js');
     await import('./unzip.test.js');

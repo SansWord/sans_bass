@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.14.0](#v1140--簡譜-notes-as-scale-degrees-2026-08-31-1336) | 簡譜: a display mode drawing each note as a scale degree instead of an absolute name, in a key detected automatically and overridable by three controls. Off by default; the note data is untouched. The octave moves off the blocks and onto the pitch axis as dots. First time `detectKey()` reaches the player. |
 | [v1.13.0](#v1130--octave-folding-2026-08-31-1214) | Octave-outlier notes are folded back into the singer's range using their neighbours, and the ones that cannot be justified are marked rather than guessed. Off by default. Nothing is deleted: every note keeps a `fix` record, folded ones draw blue, untrusted ones gray and silent. |
 | [v1.12.0](#v1120--hmm-note-decoding-switchable-2026-08-30-2241) | A second note interpreter, `hmm-v1`: `yinFrame` keeps every CMND local minimum as a weighted candidate, and two Viterbi passes decode a pitch path and segment it into notes. Off by default — it cuts octave-down errors by a third to a half, but trades some of that for octave-up errors on two of three tracks. Confirmed better by ear at a 100 ms shortest-note setting. |
 | [v1.11.0](#v1110--notes-ribbon-in-the-player-2026-08-30-2059) | A notes lane under the vocals stem: detected notes drawn over the pitch contour they came from, on the shared time grid, seekable. Analysis once in a worker; interpretation re-derived live at ~12 ms. |
@@ -33,6 +34,60 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.14.0 — 簡譜, notes as scale degrees (2026-08-31 13:36)
+
+**Review:** not yet
+
+**Design docs:**
+- 簡譜: [Spec](superpowers/specs/2026-08-31-jianpu-design.md) [Plan](superpowers/plans/2026-08-31-jianpu.md)
+
+**What was built:**
+- `lib/jianpu.js` — a pure classic script. `degreeOf(midi, tonicPc, mode)` returns
+  `{digit, accidental, octaveIndex}`; `referenceOctave(notes, tonicPc)` picks the octave
+  drawn bare, from the duration-weighted median.
+- `notes.js` runs the already-built `detectKey(notesToChroma(notes))` after each
+  interpretation and carries the 簡譜 selection in the `setNotes` payload beside `clip` —
+  a display choice that never reaches `interpret()`.
+- Three controls in the main notes row: a **簡譜** checkbox, a **1 =** tonic selector, a
+  **major/minor** selector, and a **⇄** relative-key switch. The selectors are inert while
+  the box is unticked.
+- `app.js` draws degrees at both note-block sites and turns the lane's pitch axis into
+  digits with 簡譜 octave dots — a dot above per octave up, below per octave down, none in
+  the reference octave.
+- `tests/jianpu.test.js`, 8 tests. Suite 177 → 185.
+
+**Key technical learnings:**
+- `[insight]` The mode selector changes what the numbers **mean**, not which note is 1. In
+  minor, ♭3/♭6/♭7 are degrees 3/6/7 — they are in the scale — so the chromatic notes are the
+  raised ones. E♭ is `♭3` in `1=C major` and plain `3` in `1=C minor`. The two tables are not
+  transpositions of one another, and writing one and transposing it for minor is the
+  mistake this feature invites.
+- `[insight]` A key and its relative share all seven pitch classes and differ only in which
+  degrees carry weight, so `detectKey` cannot reliably separate them — which is exactly why
+  it returns `relative`. The ⇄ button turns that irreducible ambiguity into a one-click
+  choice rather than pretending the guess is authoritative.
+- `[note]` 簡譜 octaves are counted from the **tonic**, not from C: a run 1–7 begins again at
+  the next 1. Counting from C would put the boundary in the middle of the scale in every key
+  but C.
+- `[gotcha]` The axis labels only the home note when the lane is too tight for every
+  semitone. That test was `pc === 0`, which is C — correct for note names, meaningless in
+  簡譜, where the home note is the tonic.
+- `[gotcha]` A new classic script has **two** registration sites, and missing either fails
+  silently in a different way. `lib/jianpu.js` was added to `tests/test.html` but not to
+  `index.html`, so `window.SansJianpu` was undefined in the player and `noteLabel()`'s
+  `!window.SansJianpu` guard fell straight back to note names. The feature rendered
+  *identically* to before — no throw, no console error, the unit suite fully green.
+
+**Process learnings:**
+- `[gotcha]` The lane is ~766 px for a whole song, so a note is a couple of pixels wide and
+  **no note-block label is ever drawn there**. A verification that toggles 簡譜 and compares
+  `toDataURL().length` on the lane therefore reports "unchanged" whether the code works or
+  not — it was measuring a site with nothing to measure. The zoom pane, where a note is tens
+  of pixels wide, is the only place block labels are observable. Instrumenting
+  `fillText` to capture the actual strings found the truth in one call where four pixel
+  comparisons had said nothing; the repo's standing rule — observe the outcome, not the
+  parameters — extends to checking that the outcome you sampled *exists*.
 
 ## v1.13.0 — octave folding (2026-08-31 12:14)
 

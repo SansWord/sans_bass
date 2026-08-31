@@ -85,6 +85,7 @@ lib/pitch.js                       ESM — YIN, candidates, Viterbi decoding, se
                                    octave folding, key
 lib/sonify.js                      ESM — plays detected notes back as tones
 lib/ribbon.js                      ribbon geometry, classic script — window.SansRibbon
+lib/jianpu.js                      簡譜 degrees, classic script — window.SansJianpu
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 notes.js  notes.worker.js          ESM — notes panel and the analysis worker
 tests/test.html                    units      → window.__testResults
@@ -166,11 +167,11 @@ out of the project; never commit them.
   returning visitor can run a stale `app.js` against a fresh `index.html`. That is not a
   degraded page — the old script throws on an element the new markup dropped, and because
   `app.js` wires everything from one flat run of top-level statements, every listener *below*
-  the throw silently never registers. Bump the version in `index.html` (14), `separate.js` (3),
-  `separate.worker.js` (1), `notes.js` (3) and `notes.worker.js` (1) — 22 in all;
+  the throw silently never registers. Bump the version in `index.html` (15), `separate.js` (3),
+  `separate.worker.js` (1), `notes.js` (3) and `notes.worker.js` (1) — 23 in all;
   `tests/versions.test.js` fails if they drift — and it
   covers `.png` and `.svg` as well as `.js`/`.css`, so the icons are included. Currently
-  `v1.13.0`.
+  `v1.14.0`.
 - **Separation is desktop-only, and that is not fixable from this repo.** On iOS the first
   `session.run()` kills the tab; the accumulators, the 285 MB model, the memory floor,
   WebGPU and asyncify were each ruled out by measurement, and `N_SAMPLES = 343980` is baked

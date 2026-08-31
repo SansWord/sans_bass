@@ -237,9 +237,10 @@ errors rather than removing them.
 | frames | built — `lib/pitch.js`, `decimate()` + `f0Track()` | computed in `notes.worker.js` |
 | notes | built — `segmentNotes()` (`threshold-v1`) and `segmentNotesHmm()` (`hmm-v1`) | chosen by `interpret()`; the checkbox picks |
 | pitch decoding | built — `viterbiPitch()` over per-frame candidates | part of `hmm-v1` |
-| key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer | **bench page only** (`tests/notes.html`); no player UI |
+| key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer | picks the default 簡譜 key in the player; full ranking still bench-only |
 | sonification | built — `lib/sonify.js`, with lap generation for A–B repeat | the notes lane plays it, muted by default |
 | notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals; **Fit the lane to the melody** is a display choice about the vertical scale only |
+| 簡譜 | built — `lib/jianpu.js`, drawn by `app.js` | a display mode over the same notes; changes nothing in the data |
 | octave folding | built — `pitchBand()` + `foldOctaves()` over the note list | the **Fix octave outliers** checkbox; corrects what it can justify, marks the rest |
 | zoomed reading pane | built | above the lane; ~10 s window, 2–60 s |
 | edits | not built; the six intended actions are listed under Layer 4 | — |

@@ -469,5 +469,17 @@ input[type=range] { width: 110px; }
 .notes-ctl { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--dim); }
 .notes-ctl input[type=range] { width: 150px; }
 .notes-val { font-variant-numeric: tabular-nums; min-width: 4.5em; }
+/* A control that qualifies the checkbox above it: indented so the dependency reads, and
+   visibly inert while that checkbox is off rather than silently doing nothing. */
+.notes-sub { margin-left: 22px; }
+/* Blue and grey match the lane's folded/doubtful fills, so the readout and the picture
+   agree without a legend. */
+.notes-stats { font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+.notes-stats .n-fold { color: #6cc5e0; }
+.notes-stats .n-mute { color: #a8a8b8; }
+/* The A-B orange, reused for its established meaning in this app: look at this. Above ~2.5
+   the fold starts accepting octave-plus-a-fifth errors and drawing them as trusted. */
+.notes-val.risky { color: var(--loop); }
+.notes-sub:has(input:disabled) { opacity: .45; }
 .notes-adv summary { font: 12px var(--mono); color: var(--dim); cursor: pointer; }
 .notes-adv[open] summary { margin-bottom: 6px; }

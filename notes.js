@@ -8,8 +8,8 @@
  * A module, so it cannot share scope with app.js. It talks to the player only through
  * window.sansBass, exactly as separate.js does. */
 
-import { interpret } from './lib/pitch.js?v=1.12.0';
-import { scheduleNotes } from './lib/sonify.js?v=1.12.0';
+import { interpret } from './lib/pitch.js?v=1.13.0';
+import { scheduleNotes } from './lib/sonify.js?v=1.13.0';
 
 const el = {
   panel: document.getElementById('notes'),
@@ -20,6 +20,10 @@ const el = {
   minOut: document.getElementById('notes-min-out'),
   clip: document.getElementById('notes-clip'),
   hmm: document.getElementById('notes-hmm'),
+  fold: document.getElementById('notes-fold'),
+  foldTol: document.getElementById('notes-fold-tol'),
+  foldTolOut: document.getElementById('notes-fold-tol-out'),
+  foldStats: document.getElementById('notes-fold-stats'),
   show: document.getElementById('notes-show'),
 };
 
@@ -30,6 +34,8 @@ const tr = (key, params) => window.SansI18n.t(key, params);
 const syncTips = () => {
   el.hmm.parentElement.title = tr('notes.hmmTip');
   el.clip.parentElement.title = tr('notes.clipTip');
+  el.fold.parentElement.title = tr('notes.foldTip');
+  el.foldTol.parentElement.title = tr('notes.foldTolTip');
 };
 syncTips();
 
@@ -41,12 +47,59 @@ let sonifier = null;         // the running note schedule, or null
 
 /* Parameters carry the interpreter that understands them: params written by one are
  * meaningless to another, so the name travels with them. The checkbox picks which — both
- * read the SAME frames, which is what makes comparing them mean anything. */
+ * read the SAME frames, which is what makes comparing them mean anything.
+ *
+ * `fold` is the exception: it is a post-pass both interpreters share, which is why it sits
+ * in `params` rather than beside `interpreter`. Note that `params` is also the bag
+ * foldOctaves reads its own tuning from (confidentWithin, maxShift, madMultiple,
+ * minHalfWidth), so anything that ever persists and restores this object must not carry a
+ * stale one of those forward — it would silently retune the fold. */
 function currentParams() {
   return {
     interpreter: el.hmm.checked ? 'hmm-v1' : 'threshold-v1',
-    params: { minDurationMs: Number(el.min.value) },
+    params: {
+      minDurationMs: Number(el.min.value),
+      fold: el.fold.checked,
+      confidentWithin: Number(el.foldTol.value),
+    },
   };
+}
+
+/* The tolerance slider only means anything while folding is on, so it goes visibly inert
+ * rather than silently doing nothing. The counts are the point of the slider: without them
+ * you are dragging blind, since the note total deliberately never moves. */
+function syncFoldControls() {
+  const on = el.fold.checked;
+  el.foldTol.disabled = !on;
+  el.foldTolOut.textContent = tr('notes.foldTolVal', { n: el.foldTol.value });
+  /* An octave-plus-a-fifth error lands about 4.98 semitones from its neighbours, and ordinary
+   * melodic movement lands 2-3 out — so the two populations overlap and there is no safe
+   * dividing line. From 2.5 up the fold increasingly accepts harmonic errors and draws them
+   * blue, i.e. as trusted. Marked rather than forbidden: the range is there to be explored. */
+  el.foldTolOut.classList.toggle('risky', Number(el.foldTol.value) >= 2.5);
+  el.foldStats.hidden = !on;
+  if (!on) return;
+  let folded = 0;
+  let muted = 0;
+  for (const n of notes) {
+    if (!n.fix) continue;
+    if (n.fix.state === 'folded') folded++;
+    else if (n.fix.state === 'doubt') muted++;
+  }
+  /* Two independently translated fragments rather than one string with two placeholders:
+   * the number leads in English ("9 corrected") and trails in Chinese (「已修正 9」), and
+   * each half needs its own colour. textContent throughout, never innerHTML. */
+  const frag = (key, n, cls) => {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = tr(key, { n });
+    return span;
+  };
+  el.foldStats.replaceChildren(
+    frag('notes.foldStatsFolded', folded, 'n-fold'),
+    document.createTextNode(' · '),
+    frag('notes.foldStatsMuted', muted, 'n-mute'),
+  );
 }
 
 /** Re-derive notes from the existing frames. No worker, no re-analysis. */
@@ -56,6 +109,7 @@ function reinterpret() {
   notes = interpret(frames, p);
   el.count.textContent = tr('notes.count', { n: notes.length });
   el.minOut.textContent = `${el.min.value} ms`;
+  syncFoldControls();
   window.sansBass.setNotes({ notes, frames, params: p, clip: el.clip.checked });
   resync();
 }
@@ -111,7 +165,7 @@ function analyse() {
    * detaches its backing store and the stem goes silent with no error anywhere. */
   for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i).slice());
 
-  worker = new Worker('./notes.worker.js?v=1.12.0', { type: 'module' });
+  worker = new Worker('./notes.worker.js?v=1.13.0', { type: 'module' });
   worker.onmessage = (e) => {
     const m = e.data;
     worker.terminate();
@@ -156,6 +210,8 @@ el.go.addEventListener('click', analyse);
 el.min.addEventListener('input', reinterpret);
 el.clip.addEventListener('change', reinterpret);   // clip rides in the payload
 el.hmm.addEventListener('change', reinterpret);
+el.fold.addEventListener('change', reinterpret);
+el.foldTol.addEventListener('input', reinterpret);
 el.show.addEventListener('click', () => {
   window.sansBass.setRibbonVisible(!window.sansBass.ribbonVisible());
   syncShowLabel();

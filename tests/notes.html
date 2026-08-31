@@ -193,23 +193,37 @@ const metrics = (list) => {
 log('\n== INTERPRETERS ==   (same frames, same shortest-note setting)');
 const compare = {};
 for (const name of ['threshold-v1', 'hmm-v1']) {
-  const spec = { interpreter: name, params: { minDurationMs: opts.minDurationMs ?? 120 } };
-  const c0 = performance.now();
-  const list = interpret(frames, spec);
-  const ms = +(performance.now() - c0).toFixed(1);
-  compare[name] = { ...metrics(list), decodeMs: ms };
+  for (const fold of [false, true]) {
+    const spec = { interpreter: name, params: { minDurationMs: opts.minDurationMs ?? 120, fold } };
+    const c0 = performance.now();
+    const list = interpret(frames, spec);
+    const ms = +(performance.now() - c0).toFixed(1);
+    const folded = list.filter((n) => n.fix && n.fix.state === 'folded').length;
+    const doubted = list.filter((n) => n.fix && n.fix.state === 'doubt').length;
+    compare[name + (fold ? ' +fold' : '')] = { ...metrics(list), decodeMs: ms, folded, doubted };
+  }
 }
-const cols = ['notes', 'octaveOutliers', 'lowTimePct', 'touchingSame', 'rangeSemitones', 'decodeMs'];
+const cols = ['notes', 'octaveOutliers', 'lowTimePct', 'touchingSame', 'rangeSemitones', 'folded', 'doubted', 'decodeMs'];
 const labels = { notes: 'notes', octaveOutliers: 'octave outliers', lowTimePct: 'time an octave low %',
                  touchingSame: 'touching same-pitch', rangeSemitones: 'pitch range (semitones)',
-                 decodeMs: 'decode ms' };
-log(`${''.padEnd(24)} ${'threshold-v1'.padStart(13)} ${'hmm-v1'.padStart(13)}`);
+                 folded: 'folded', doubted: 'doubtful', decodeMs: 'decode ms' };
+const names = Object.keys(compare);
+log(`${''.padEnd(24)} ${names.map((n) => n.padStart(20)).join('')}`);
 for (const k of cols) {
-  log(`${labels[k].padEnd(24)} ${String(compare['threshold-v1'][k]).padStart(13)} ${String(compare['hmm-v1'][k]).padStart(13)}`);
+  log(`${labels[k].padEnd(24)} ${names.map((n) => String(compare[n][k]).padStart(20)).join('')}`);
 }
 log('\nThe two that decide this phase are "time an octave low %" and "pitch range".');
 log('If they do not move, the candidate stage is not working — no amount of cost tuning');
 log('will fix that, and the place to look is yinFrame\'s candidate extraction.');
+
+log('\n== FOLD confidentWithin SWEEP ==   (threshold-v1, minDurationMs=100)');
+for (const confidentWithin of [1, 1.5, 2, 3, 5]) {
+  const list = interpret(frames, { interpreter: 'threshold-v1',
+    params: { minDurationMs: 100, fold: true, confidentWithin } });
+  const folded = list.filter((n) => n.fix && n.fix.state === 'folded').length;
+  const doubted = list.filter((n) => n.fix && n.fix.state === 'doubt').length;
+  log(`confidentWithin ${String(confidentWithin).padStart(4)}   folded ${String(folded).padStart(3)}   doubt ${String(doubted).padStart(3)}`);
+}
 
 // ---------------------------------------------------------------- transport
 

@@ -153,3 +153,25 @@ test('sonify: an empty loop region does not spin forever', () => {
   assertEq(typeof h.stop, 'function', 'it returns rather than hanging');
   h.stop();
 });
+
+test('sonify: a doubtful note is never scheduled', async () => {
+  /* Sounding a note already flagged as untrusted would re-introduce exactly the
+   * wrong-octave shriek that folding exists to remove. It stays visible in the lane; it
+   * simply does not play.
+   *
+   * Measured from the rendered samples rather than by counting oscillators: the claim is
+   * that C6 is ABSENT from the audio, and only the audio can say that. */
+  const ctx = new OfflineAudioContext(1, SR * 2, SR);
+  const notes = [
+    { start: 0.0, end: 0.2, midi: 60, cents: 6000, name: 'C4', confidence: 0.9 },
+    { start: 0.3, end: 0.5, midi: 84, cents: 8400, name: 'C6', confidence: 0.9,
+      fix: { from: 84, state: 'doubt', doubt: true } },
+    { start: 0.6, end: 0.8, midi: 62, cents: 6200, name: 'D4', confidence: 0.9 },
+  ];
+  scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset: 0, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  assert(rms(out, Math.round(0.02 * SR), Math.round(0.18 * SR)) > 0.001, 'the first trusted note sounds');
+  assert(rms(out, Math.round(0.62 * SR), Math.round(0.78 * SR)) > 0.001, 'the second trusted note sounds');
+  assert(rms(out, Math.round(0.32 * SR), Math.round(0.48 * SR)) < 1e-4,
+         'the doubtful note leaves silence where it would have been');
+});

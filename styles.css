@@ -423,7 +423,12 @@ input[type=range] { width: 110px; }
 /* The ribbon reuses the lane grid exactly — 128px / 1fr / 96px — so its canvas starts and
    ends on the same pixels as every waveform above it. A lane that computes its own
    time-to-x mapping drifts from the others the moment the window is resized. */
-.lane.ribbon { position: relative; padding-bottom: 14px; }
+/* BOTH panes, not just .ribbon. The zoom pane's class is .ribbon-zoom, a different class,
+   so it was missing position:relative — and its absolutely positioned grip resolved against
+   the page instead, landing 93px below its own lane and on top of the notes lane. The
+   handle was invisible where it belonged and active where it did not. */
+.lane.ribbon,
+.lane.ribbon-zoom { position: relative; padding-bottom: 14px; }
 /* Height is set on the canvas by renderRibbon, not here — it is drag state, not style. */
 .lane.ribbon .lane-name .dot { background: #6fbf8e; }
 

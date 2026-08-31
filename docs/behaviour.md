@@ -231,7 +231,7 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N23 | Hiding the notes panes also **mutes** them. A pane you cannot see must not still be sounding, because nothing on screen would stop it. | Unmute, then Hide: `window.sansBass.ribbonMuted()` becomes `true`. |
 | N24 | Showing them again does **not** unmute. The mute is a separate decision. | Hide then Show: still muted. |
 | N25 | Seeking anywhere brings the zoomed window with it, but only when the playhead has left the window — clicking *inside* the zoom pane does not yank the view sideways. | Seek from the main overview; the playhead is drawn at the centre of `.zoomwave`. Then click inside the pane; the window does not recentre. |
-| N26 | The zoomed pane resizes by its own grip, independently of the lane, and the height persists. | Drag `.ribbon-zoom .ribbon-grip`; `localStorage['sans_bass.zoomHeight']` is written. |
+| N26 | The zoomed pane resizes by its own grip, independently of the lane, and the height persists. | Drag `.ribbon-zoom .ribbon-grip`; `localStorage['sans_bass.zoomHeight']` is written. **Check the grip's position, not just that dragging works:** it is absolutely positioned, so a lane missing `position: relative` puts it over a *different* lane while the drag still functions. Assert its rect sits inside its own lane's rect. |
 | N27 | The zoom width is driven by the `−`/`+` buttons as well as the wheel, and persists. | Click both; `.zoom-secs` changes and `localStorage['sans_bass.zoomSeconds']` is written. |
 | N28 | A click in the zoomed pane seeks; a drag pans without seeking. | Click: the clock moves. Drag >4 px: the clock does not. |
 

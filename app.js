@@ -692,6 +692,10 @@ const NOTE_FILL = {
   folded: { normal: '#6cc5e0', dim: '#3a7186', zoom: 'rgba(108,197,224,.86)' },
   doubt:  { normal: '#5a5a68', dim: '#3a3a44', zoom: 'rgba(90,90,104,.86)' },
 };
+/* Any future producer of a `fix` MUST set `state`. This indexes NOTE_FILL with it directly,
+ * so a `fix` without one yields NOTE_FILL[undefined] and throws inside the render loop —
+ * which kills the frame. Safe today only because lib/pitch.js is the sole producer and always
+ * sets it; see docs/transcription.md on layer-4 edits, which will construct these by hand. */
 const noteFillKey = (n) => (n.fix ? n.fix.state : 'plain');   // 'folded' | 'doubt'
 
 /* Pre-rendered idle/active layers, the same shape renderWave produces, so paint() draws

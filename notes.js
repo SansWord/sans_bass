@@ -186,6 +186,12 @@ function reset() {
   analysedBuffer = null;
   el.tune.hidden = true;
   el.count.textContent = '';
+  /* Hand the key back to automatic detection. An override is a statement about THIS song —
+   * carrying it into the next one labels every note from an unrelated key, and the selectors
+   * sit there reading a value nothing chose. The 簡譜 checkbox itself is a reading
+   * preference, not a claim about the music, so it deliberately survives the load. */
+  jianpu.auto = true;
+  syncJianpuControls();
 }
 
 function analyse() {

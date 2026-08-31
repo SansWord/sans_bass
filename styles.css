@@ -325,6 +325,12 @@ input[type=range] { width: 110px; }
   cursor: pointer;
 }
 .mini:hover { color: var(--fg); border-color: var(--dim); }
+/* A disabled .mini must LOOK disabled. The <select>s beside it get Chrome's UA dimming for
+   free, but a button does not, and .btn[disabled] does not match .mini — so ⇄ sat at full
+   opacity with a pointer cursor and a live hover while doing nothing. Same rule as the
+   [hidden] one: verifying `el.disabled` passes while the user still sees a live control. */
+.mini[disabled] { opacity: .45; cursor: default; }
+.mini[disabled]:hover { color: var(--dim); border-color: var(--line); }
 
 /* ---------- lanes ---------- */
 

@@ -41,8 +41,18 @@ as "**bench page only**; no player UI" ever since. This is that UI.
   E♭ as `3`; `1=G major` renders C as `4`.
 - The detected key is the initial selection, and one click swaps it for its relative.
 - The pitch axis distinguishes octaves; the note blocks do not repeat them.
-- Switching display mode re-renders the lane without re-analysing or re-interpreting: no
-  worker, no `interpret()` call, under a frame.
+- Switching display mode never re-**analyses**: no worker, no YIN, no new frames.
+
+  > **Amended after implementation (v1.14.0).** This criterion originally also forbade
+  > calling `interpret()` and required the switch to complete "under a frame". Both were
+  > wrong to demand. Every other display-only control in the panel — `clip` above all —
+  > already routes through `reinterpret()`, and inventing a second path for 簡譜 alone would
+  > have made the notes panel keep two ways of issuing a payload that must not disagree.
+  > Measured cost of the re-interpretation is ~40 ms, which cannot disturb the transport
+  > (that lives on the audio clock, not on rAF). The criterion that actually protects the
+  > user is the analysis one, which holds. The real cost is that `resync()` restarts the
+  > note tones and `setNotes()` re-centres the zoom window on a pure display toggle — worth
+  > fixing if a display-only path is ever built for other reasons, and not before.
 
 ## Design
 
@@ -131,7 +141,16 @@ sites that render note identity:
 |---|---|---|
 | lane note blocks (`app.js:805`) | `n.name` — `A#3` | `♭7` |
 | zoom pane blocks (`:925`) | `n.name` | `♭7` |
-| pitch axis (`:~758`) | `NOTE_LETTERS[pc] + octave` | digit + octave dots |
+| lane pitch axis (`:~758`) | `NOTE_LETTERS[pc] + octave` | digit + octave dots |
+| zoom pane pitch axis (`:~920`) | `NOTE_LETTERS[pc] + octave` | digit + octave dots |
+
+> **Amended after implementation (v1.14.0).** This table originally listed one axis, and the
+> first implementation converted only the lane's — leaving the zoom pane drawing degree
+> blocks against a note-name axis. That is the pane a pitch is actually read off (this spec
+> says so itself, under Controls), so it is the one place the feature's whole thesis — *the
+> octave belongs on the axis* — most needed to hold. Both axes now carry degrees and dots.
+> The bright gridline moved with them: it marked C in every key, which is meaningless in
+> 1=G and put the highlighted rule and the highlighted label on different rows.
 
 ### Interaction with octave folding
 

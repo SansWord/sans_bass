@@ -419,3 +419,20 @@ input[type=range] { width: 110px; }
 .sep-row { display: flex; align-items: center; gap: 12px; }
 .sep-bar { height: 6px; background: #23232b; border-radius: 3px; overflow: hidden; }
 .sep-bar > div { height: 100%; width: 0; background: #ff9f1c; transition: width .2s linear; }
+
+/* The ribbon reuses the lane grid exactly — 128px / 1fr / 96px — so its canvas starts and
+   ends on the same pixels as every waveform above it. A lane that computes its own
+   time-to-x mapping drifts from the others the moment the window is resized. */
+.lane.ribbon { cursor: default; }
+.lane.ribbon .lane-name { cursor: default; }
+.lane.ribbon .lane-name:hover { background: none; }
+.lane.ribbon .wave { height: 96px; }
+
+.notes { margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.notes-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.notes-count { font: 12px var(--mono); color: var(--dim); font-variant-numeric: tabular-nums; }
+.notes-ctl { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--dim); }
+.notes-ctl input[type=range] { width: 150px; }
+.notes-val { font-variant-numeric: tabular-nums; min-width: 4.5em; }
+.notes-adv summary { font: 12px var(--mono); color: var(--dim); cursor: pointer; }
+.notes-adv[open] summary { margin-bottom: 6px; }

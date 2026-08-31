@@ -19,6 +19,7 @@ const el = {
   min: document.getElementById('notes-min'),
   minOut: document.getElementById('notes-min-out'),
   clip: document.getElementById('notes-clip'),
+  show: document.getElementById('notes-show'),
 };
 
 const tr = (key, params) => window.SansI18n.t(key, params);
@@ -62,8 +63,16 @@ function resync() {
   });
 }
 
+/* The button says what pressing it will DO, not what the state is — "Hide notes" while
+ * they are showing. Naming the action is the convention the rest of the player follows. */
+function syncShowLabel() {
+  el.show.textContent = tr(window.sansBass.ribbonVisible() ? 'notes.hide' : 'notes.show');
+}
+
 function reset() {
   if (sonifier) { sonifier.stop(); sonifier = null; }
+  el.show.hidden = true;
+  el.go.hidden = false;
   frames = null;
   notes = [];
   analysedBuffer = null;
@@ -98,6 +107,9 @@ function analyse() {
     window.sansBass.say('');
     frames = m.frames;
     el.tune.hidden = false;
+    el.go.hidden = true;      // its job is done; the toggle takes its place
+    el.show.hidden = false;
+    syncShowLabel();
     reinterpret();
   };
   worker.onerror = (e) => {
@@ -126,8 +138,15 @@ refresh();
 el.go.addEventListener('click', analyse);
 el.min.addEventListener('input', reinterpret);
 el.clip.addEventListener('change', reinterpret);   // clip rides in the payload
+el.show.addEventListener('click', () => {
+  window.sansBass.setRibbonVisible(!window.sansBass.ribbonVisible());
+  syncShowLabel();
+});
 window.addEventListener('sansbass:langchange', () => {
-  if (frames) el.count.textContent = tr('notes.count', { n: notes.length });
+  if (frames) {
+    el.count.textContent = tr('notes.count', { n: notes.length });
+    syncShowLabel();
+  }
 });
 
 /* The player broadcasts its transport because app.js is a classic script and this file is

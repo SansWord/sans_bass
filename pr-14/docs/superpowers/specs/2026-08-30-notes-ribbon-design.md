@@ -226,3 +226,18 @@ strokes; it is now a per-pixel min/max band, the same way waveforms solve the sa
 And the pitch range is routinely ~27 semitones because octave errors stretch it, so the
 per-semitone label threshold had to drop to 7 px or the common case fell back to labelling
 C only.
+
+**Follow-up requests, same session.** The zoomed pane gained `−`/`+` buttons (a trackpad
+wheel overshoots, and a touch device has no wheel), click-to-seek distinguished from
+drag-to-pan by distance travelled, and its own resize grip. A seek anywhere brings the zoom
+window along, but only when the playhead has left it — recentring on every seek yanks the
+view sideways when you click inside the pane you were already reading. A show/hide toggle
+replaces **Find notes** once notes exist, mirroring the separation panel's Separate → Save
+swap, and **hiding also mutes**: a pane you cannot see must not still be sounding, since
+nothing on screen would stop it. Showing again does not unmute, because that was a separate
+decision.
+
+**A second temporal-dead-zone failure.** Refactoring two storage readers from `function`
+declarations to `const` arrows moved them below the state that calls them, and the page
+again loaded doing nothing at all. They are function declarations now, with a comment
+saying why the shape matters rather than only what it does.

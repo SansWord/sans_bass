@@ -113,6 +113,8 @@
       'notes.zoomTip': '點擊以跳轉，拖曳以平移，滾輪縮放',
       'notes.zoomIn': '放大',
       'notes.zoomOut': '縮小',
+      'notes.hide': '隱藏音符',
+      'notes.show': '顯示音符',
     },
 
     'en': {
@@ -214,6 +216,8 @@
       'notes.zoomTip': 'Click to seek, drag to pan, scroll to zoom',
       'notes.zoomIn': 'Zoom in',
       'notes.zoomOut': 'Zoom out',
+      'notes.hide': 'Hide notes',
+      'notes.show': 'Show notes',
     },
   };
 

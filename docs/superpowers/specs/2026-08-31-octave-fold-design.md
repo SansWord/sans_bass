@@ -53,18 +53,40 @@ Measured across every outlier in `ng_kipin`, the errors land on **powers of two*
 | harmonic | notes | interval | octave-foldable? |
 |---|---|---|---|
 | 2nd, 4th, 8th | **19** | 1, 2, 3 octaves | yes — pitch class preserved |
-| 3rd, 6th | **4** | octave + a fifth | **no** |
+| 3rd, 6th | **4** | octave + a fifth | **no** — and they are not cleanly separable; see the correction below |
 
 All 19 power-of-two cases preserve pitch class, which is exactly why folding leaves the key
 estimate untouched. The four odd-harmonic cases are unreachable by any whole-octave shift:
 B4 between G3 and D3 implies E3 (3rd harmonic, 0.5 semitones off), and A#4 between two D#2s
 implies D#2 (6th, exactly 0).
 
-The confidence test below — best octave shift within a fourth of the neighbours — separates
-those two populations **exactly**, without being told anything about harmonics. That is the
-justification for the threshold, and it means the doubtful bucket is a diagnosable failure
-mode rather than leftovers. Correcting the odd-harmonic cases would change pitch class and so
-break the key-detection guarantee; it is deliberately out of scope.
+**Correction (2026-08-31, after code review).** An earlier draft of this spec claimed the
+confidence test "separates those two populations exactly". That was circular: notes were
+classified as power-of-two *because* they folded within the threshold, so the separation was
+true by construction and could not have come out otherwise.
+
+Classified independently — by which harmonic actually explains each note given its
+neighbours — the populations **overlap**:
+
+| | foldable (2nd/4th/8th) | unfoldable (3rd/6th) |
+|---|---|---|
+| `threshold-v1` | residual 0 – 3.5 | residual 2 – 7 |
+| `hmm-v1` | residual 0 – 3 | residual 1.5 – 7 |
+
+The arithmetic explains why. A power-of-two error leaves a residual of exactly **0** after the
+right octave shift; a 3rd- or 6th-harmonic error leaves **4.98** — just under the original
+threshold of 5, which therefore sat *on* the failure mode rather than between the populations.
+At that setting, 10 of 14 odd-harmonic errors on `threshold-v1` were folded and tagged
+confident: drawn blue, sounded as trusted, a fifth wrong. Exactly what Goal 3 forbids.
+
+Melodic movement blurs both distributions, so **no threshold separates them cleanly**. The
+design therefore errs toward never lying: `confidentWithin` is **1.5**, which on this material
+admits no odd-harmonic error at all, at the cost of roughly half the true corrections — those
+become doubtful instead, marked in gray for the editing phase to resolve. Raising it trades
+that guarantee for coverage.
+
+Correcting the odd-harmonic cases properly would change pitch class and so break the
+key-detection guarantee; it remains out of scope.
 
 ## Goals
 
@@ -101,15 +123,17 @@ Every detected note stays in the list. A new optional `fix` field records what w
 | state | `midi` | `fix` | lane colour | sounds? |
 |---|---|---|---|---|
 | untouched | as detected | absent | green `#8ee0ad` (dim `#4c8f6c`) | yes |
-| **folded** | corrected | `{ from: 78, shift: -3 }` | **blue** `#6cc5e0` (dim `#3a7186`) | yes, at the folded pitch |
-| **doubtful** | left as detected | `{ from: 78, doubt: true }` | **gray** `#5a5a68` (dim `#3a3a44`) | **no** |
+| **folded** | corrected | `{ from: 78, state: 'folded', shift: -3 }` | **blue** `#6cc5e0` (dim `#3a7186`) | yes, at the folded pitch |
+| **doubtful** | left as detected | `{ from: 78, state: 'doubt', doubt: true }` | **gray** `#5a5a68` (dim `#3a3a44`) | **no** |
 
 Blue sits far from both green and the orange already used for out-of-range notes and the A–B
 loop, so a folded note reads as neither "trusted" nor "off-scale". Gray recedes without
 vanishing — the hint the editing phase needs: *here was a note, we did not trust it, you
 decide.*
 
-`fix.from` is the provenance record. It always allows recovering what the detector said,
+`fix.from` is the provenance record, and a fold shifts the measured `cents` rather than
+re-quantising them, so the singer's detune survives. Together they allow recovering what the
+detector said,
 which is what "overrides layered over derived notes" in
 [`transcription.md`](../../transcription.md) requires of layer 4. It is present in **both**
 non-empty states, even for a doubtful note where it necessarily equals `midi` — a consumer
@@ -146,8 +170,9 @@ For each out-of-band note:
    pick the one minimising `|midi + 12k − target|`. On a tie, prefer the smaller `|k|`, and
    on a further tie the negative `k` — every shift measured on real material is downward, so
    an exact tie should not silently resolve upward.
-4. If that distance ≤ 5 semitones (a fourth) and `k ≠ 0` → **fold**. Otherwise, or if neither
-   neighbour exists → **doubtful**.
+4. If that distance is under `confidentWithin` (**1.5** semitones) and `k ≠ 0` → **fold**.
+   Otherwise, or if neither neighbour exists → **doubtful**. See the correction above for why
+   this is 1.5 and not the 5 an earlier draft specified.
 
 The band is fixed before this loop, so the result does not depend on the order notes are
 visited. Because step 3 only considers shifts landing inside the band, no folded note can

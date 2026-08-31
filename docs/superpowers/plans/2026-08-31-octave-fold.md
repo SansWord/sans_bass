@@ -39,6 +39,14 @@ two — so they preserve pitch class. That is also why folding leaves the key es
 untouched. The 3rd/6th-harmonic cases (an octave + a fifth) are *not* octave-foldable and must
 end up doubtful, never folded.
 
+**The threshold is load-bearing, and 5 was wrong.** A power-of-two error leaves a residual of
+exactly 0 after the right octave shift; a 3rd/6th-harmonic error leaves **4.98** — under a
+threshold of 5, so those were being folded a fifth wrong and tagged confident. The two
+populations overlap once melodic movement is accounted for (foldable 0–3.5, unfoldable
+1.5–7), so no threshold separates them cleanly. `confidentWithin` is **1.5**: it folds nothing
+it cannot justify, at the cost of about half the true corrections. Do not raise it without
+measuring. Tasks 2 and 7 both depend on this.
+
 ## File structure
 
 | File | Responsibility |
@@ -412,7 +420,7 @@ test('pitch: interpret folds only when asked', () => {
   const folded = interpret(tr, { interpreter: 'threshold-v1', params: { minDurationMs: 80, fold: true } });
   assertEq(folded.length, plain.length, 'folding never changes the note count');
   assert(plain.every((n) => !('fix' in n)), 'without fold, no note carries a fix field');
-  assert(folded.some((n) => n.fix && n.fix.shift), 'with fold, at least one note is corrected');
+  assert(folded.some((n) => n.fix && n.fix.state === 'folded'), 'with fold, at least one note is corrected');
 });
 
 test('pitch: interpret folds for hmm-v1 too', () => {
@@ -573,7 +581,7 @@ const NOTE_FILL = {
   folded: { normal: '#6cc5e0', dim: '#3a7186' },
   doubt:  { normal: '#5a5a68', dim: '#3a3a44' },
 };
-const noteFillKey = (n) => (n.fix ? (n.fix.doubt ? 'doubt' : 'folded') : 'plain');
+const noteFillKey = (n) => (n.fix ? n.fix.state : 'plain');   // 'folded' | 'doubt'
 ```
 
 - [ ] **Step 2: Use it in the full-width lane**
@@ -765,8 +773,8 @@ for (const name of ['threshold-v1', 'hmm-v1']) {
     const c0 = performance.now();
     const list = interpret(frames, spec);
     const ms = +(performance.now() - c0).toFixed(1);
-    const folded = list.filter((n) => n.fix && n.fix.shift).length;
-    const doubted = list.filter((n) => n.fix && n.fix.doubt).length;
+    const folded = list.filter((n) => n.fix && n.fix.state === 'folded').length;
+    const doubted = list.filter((n) => n.fix && n.fix.state === 'doubt').length;
     compare[name + (fold ? ' +fold' : '')] = { ...metrics(list), decodeMs: ms, folded, doubted };
   }
 }
@@ -803,9 +811,26 @@ rm stems/reborn/ng_kipin/vocals.wav
 
 Open `http://localhost:8777/tests/notes.html?track=ng_kipin&minDurationMs=100`.
 
-Expected, from the spec's measurements at `minDurationMs: 100`: `threshold-v1` folds **19**
-and doubts **4**; `hmm-v1` folds **36** and doubts **4**. Note counts must be identical with
-and without folding.
+Note counts must be identical with and without folding — that is the invariant to check
+first, and it holds regardless of tuning.
+
+**Do not expect the counts an earlier draft of this plan predicted** (19 folded / 4 doubted).
+Those came from `confidentWithin: 5`, which was wrong: it folded octave-plus-a-fifth errors
+and tagged them confident. At the corrected 1.5 the split moves sharply toward doubtful —
+roughly 7 folded on `threshold-v1` and 5 on `hmm-v1`, with the rest marked. Record what you
+actually measure; the numbers here are an expectation, not an assertion.
+
+Also sweep the threshold while you are here, since this is the measurement step:
+
+```js
+for (const confidentWithin of [1, 1.5, 2, 3, 5]) {
+  const list = interpret(frames, { interpreter: 'threshold-v1',
+    params: { minDurationMs: 100, fold: true, confidentWithin } });
+  console.log(confidentWithin,
+    'folded', list.filter(n => n.fix && n.fix.state === 'folded').length,
+    'doubt',  list.filter(n => n.fix && n.fix.state === 'doubt').length);
+}
+```
 
 If `folded` is 0, the band is wrong — print `pitchBand(list)` and check it is near C2–F#4
 rather than the whole range.

@@ -53,7 +53,7 @@ measuring. Tasks 2 and 7 both depend on this.
 |---|---|
 | `lib/pitch.js` (modify) | `FOLD_DEFAULTS`, `pitchBand()`, `foldOctaves()`; call from `interpret()`. ~90 added lines. |
 | `tests/pitch.test.js` (modify) | Band robustness, fold/doubt classification, pitch-class and count invariants. |
-| `lib/sonify.js` (modify) | Skip `fix.doubt` notes when scheduling. |
+| `lib/sonify.js` (modify) | Skip `fix.state === 'doubt'` notes when scheduling, in BOTH collection loops. |
 | `tests/sonify.test.js` (modify) | A doubtful note is not scheduled. |
 | `app.js` (modify) | Two new fill colours, in **both** note-drawing loops. |
 | `index.html`, `lib/i18n.js`, `notes.js` (modify) | One checkbox, two strings per locale, wiring. |
@@ -868,7 +868,7 @@ After N32, in the same format:
 | N33 | **Fix octave outliers** never changes the note count. It corrects pitches and marks what it will not correct; it adds and removes nothing. | Tick it: `#notes-count` is unchanged, and `interpret(...).length` is equal with and without `fold: true`. |
 | N34 | It is **off** by default. | Load a song, run detection: `#notes-fold.checked` is `false`, and no note carries a `fix` field. |
 | N35 | A folded note draws **blue**, a doubtful one **gray**, in both the lane and the zoomed pane. An out-of-band note still draws orange at the edge whatever its provenance. | Load `ng_kipin`, tick the box, screenshot both panes. Do not assert on properties alone — check the picture. |
-| N36 | A **doubtful note makes no sound** but stays visible. | Unmute the Notes lane with folding on; count `OscillatorNode.start` calls — notes carrying `fix.doubt` are not among them. |
+| N36 | A **doubtful note makes no sound** but stays visible. | Unmute the Notes lane with folding on; count `OscillatorNode.start` calls — notes carrying `fix.state === 'doubt'` are not among them. Check with an A–B loop set too: `scheduleNotes` has two collection loops. |
 | N37 | Folding **never changes pitch class**, so the detected key is unaffected. | `notesToChroma(notes)` is identical with and without `fold: true`. |
 ```
 

@@ -731,3 +731,25 @@ test('pitch: foldOctaves declines a fold whose residual only just exceeds the th
   assertEq(foldOctaves(notes, { confidentWithin: 3 })[2].fix.state, 'folded',
     'and a looser threshold would fold it — so this test is what pins the setting');
 });
+
+test('pitch: interpret folds only when asked', () => {
+  const tr = fakeTrack([[4100, 20], [4300, 20], [7800, 20], [4100, 20], [4300, 20]]);
+  const plain = interpret(tr, { interpreter: 'threshold-v1', params: { minDurationMs: 80 } });
+  const folded = interpret(tr, { interpreter: 'threshold-v1', params: { minDurationMs: 80, fold: true } });
+  assertEq(folded.length, plain.length, 'folding never changes the note count');
+  assert(plain.every((n) => !('fix' in n)), 'without fold, no note carries a fix field');
+  assert(folded.some((n) => n.fix && n.fix.state === 'folded'), 'with fold, at least one note is corrected');
+});
+
+test('pitch: interpret folds for hmm-v1 too', () => {
+  const tr = fakeTrack([[4100, 20], [4300, 20], [7800, 20], [4100, 20], [4300, 20]]);
+  tr.candidates = new Array(tr.cents.length);
+  for (let i = 0; i < tr.cents.length; i++) {
+    tr.candidates[i] = tr.cents[i]
+      ? [{ cents: tr.cents[i], f0: hzFromCents(tr.cents[i]), tau: 0, p: 1 }]
+      : [];
+  }
+  const folded = interpret(tr, { interpreter: 'hmm-v1', params: { minDurationMs: 80, fold: true } });
+  assert(folded.length > 0, 'hmm-v1 still returns notes');
+  assert(folded.some((n) => n.fix), 'and folding applies to its output too');
+});

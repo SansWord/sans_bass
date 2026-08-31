@@ -213,7 +213,15 @@ But on two of three, part of that is **traded for octave-up errors** rather than
 the candidate list keeps the dip at half the true period as well as the one at twice it, and
 the whole-sequence optimum sometimes latches onto the harmonic instead. Net off-melody time
 still improves everywhere (21.8→9.6, 16.7→13.5, 21.4→17.3), so it is a real gain — but it is
-a trade, not a clean win, which is why the checkbox is **off by default**.
+a trade, not a clean win, which is why the checkbox shipped **off by default** in v1.12.0.
+
+**Reversed in v1.14.0: `hmm-v1` is now the default.** What changed is not this measurement
+but what sits downstream of it. The regression above is entirely octave-**up** errors, and
+octave folding (v1.13.0) is the pass that corrects exactly that class — it moves an outlier
+by whole octaves back toward its neighbours, and it never touches pitch class, so it can
+undo a harmonic latch without inventing a melody. The half of the trade that argued for
+leaving the better interpreter off is the half that now has a fix. The checkbox stays, so a
+song where the trade goes the wrong way is one untick away from the old output.
 
 Two traps in reading that table. The `pitch range` metric on the bench page can *widen*
 under `hmm-v1` — that is this same octave-up tail, not a wider melody. And `touching
@@ -235,11 +243,12 @@ errors rather than removing them.
 | layer | state | where it surfaces |
 |---|---|---|
 | frames | built — `lib/pitch.js`, `decimate()` + `f0Track()` | computed in `notes.worker.js` |
-| notes | built — `segmentNotes()` (`threshold-v1`) and `segmentNotesHmm()` (`hmm-v1`) | chosen by `interpret()`; the checkbox picks |
+| notes | built — `segmentNotes()` (`threshold-v1`) and `segmentNotesHmm()` (`hmm-v1`) | chosen by `interpret()`; the checkbox picks, and since v1.14.0 defaults to `hmm-v1` |
 | pitch decoding | built — `viterbiPitch()` over per-frame candidates | part of `hmm-v1` |
-| key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer | **bench page only** (`tests/notes.html`); no player UI |
+| key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer | picks the default 簡譜 key in the player; full ranking still bench-only |
 | sonification | built — `lib/sonify.js`, with lap generation for A–B repeat | the notes lane plays it, muted by default |
 | notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals; **Fit the lane to the melody** is a display choice about the vertical scale only |
+| 簡譜 | built — `lib/jianpu.js`, drawn by `app.js` | a display mode over the same notes; changes nothing in the data |
 | octave folding | built — `pitchBand()` + `foldOctaves()` over the note list | the **Fix octave outliers** checkbox; corrects what it can justify, marks the rest |
 | zoomed reading pane | built | above the lane; ~10 s window, 2–60 s |
 | edits | not built; the six intended actions are listed under Layer 4 | — |

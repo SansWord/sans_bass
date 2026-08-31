@@ -8,8 +8,8 @@
  * A module, so it cannot share scope with app.js. It talks to the player only through
  * window.sansBass, exactly as separate.js does. */
 
-import { interpret } from './lib/pitch.js?v=1.13.0';
-import { scheduleNotes } from './lib/sonify.js?v=1.13.0';
+import { interpret, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.14.0';
+import { scheduleNotes } from './lib/sonify.js?v=1.14.0';
 
 const el = {
   panel: document.getElementById('notes'),
@@ -25,7 +25,21 @@ const el = {
   foldTolOut: document.getElementById('notes-fold-tol-out'),
   foldStats: document.getElementById('notes-fold-stats'),
   show: document.getElementById('notes-show'),
+  jianpu: document.getElementById('notes-jianpu'),
+  keyTonic: document.getElementById('notes-key-tonic'),
+  keyMode: document.getElementById('notes-key-mode'),
+  keyRel: document.getElementById('notes-key-rel'),
 };
+
+/* Note names are never translated in this app — a saved zip is `vocals.wav` in every
+ * language, and C# is C# in every language too. */
+const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+for (let i = 0; i < 12; i++) {
+  const o = document.createElement('option');
+  o.value = String(i);
+  o.textContent = PITCH_CLASSES[i];
+  el.keyTonic.appendChild(o);
+}
 
 const tr = (key, params) => window.SansI18n.t(key, params);
 
@@ -36,6 +50,8 @@ const syncTips = () => {
   el.clip.parentElement.title = tr('notes.clipTip');
   el.fold.parentElement.title = tr('notes.foldTip');
   el.foldTol.parentElement.title = tr('notes.foldTolTip');
+  el.jianpu.parentElement.title = tr('notes.jianpuTip');
+  el.keyRel.title = tr('notes.relativeTip');
 };
 syncTips();
 
@@ -44,6 +60,10 @@ let frames = null;           // the immutable analysis result
 let notes = [];
 let analysedBuffer = null;   // identity of the AudioBuffer `frames` was computed from
 let sonifier = null;         // the running note schedule, or null
+
+/* The 簡譜 reading. `auto` stays true until the user touches a control, so a fresh detection
+ * on a newly loaded song adopts its key — but never overrides a choice already made. */
+let jianpu = { on: false, tonic: 0, mode: 'major', auto: true };
 
 /* Parameters carry the interpreter that understands them: params written by one are
  * meaningless to another, so the name travels with them. The checkbox picks which — both
@@ -102,6 +122,14 @@ function syncFoldControls() {
   );
 }
 
+/* The key selectors mean nothing while 簡譜 is off, so they go visibly inert rather than
+ * silently doing nothing — the same pattern as the fold tolerance slider. */
+function syncJianpuControls() {
+  el.keyTonic.value = String(jianpu.tonic);
+  el.keyMode.value = jianpu.mode;
+  for (const c of [el.keyTonic, el.keyMode, el.keyRel]) c.disabled = !jianpu.on;
+}
+
 /** Re-derive notes from the existing frames. No worker, no re-analysis. */
 function reinterpret() {
   if (!frames) return;
@@ -110,7 +138,16 @@ function reinterpret() {
   el.count.textContent = tr('notes.count', { n: notes.length });
   el.minOut.textContent = `${el.min.value} ms`;
   syncFoldControls();
-  window.sansBass.setNotes({ notes, frames, params: p, clip: el.clip.checked });
+  if (jianpu.auto && notes.length) {
+    const k = detectKey(notesToChroma(notes));
+    jianpu.tonic = k.tonic;
+    jianpu.mode = k.mode;
+    syncJianpuControls();
+  }
+  window.sansBass.setNotes({
+    notes, frames, params: p, clip: el.clip.checked,
+    jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
+  });
   resync();
 }
 
@@ -149,6 +186,12 @@ function reset() {
   analysedBuffer = null;
   el.tune.hidden = true;
   el.count.textContent = '';
+  /* Hand the key back to automatic detection. An override is a statement about THIS song —
+   * carrying it into the next one labels every note from an unrelated key, and the selectors
+   * sit there reading a value nothing chose. The 簡譜 checkbox itself is a reading
+   * preference, not a claim about the music, so it deliberately survives the load. */
+  jianpu.auto = true;
+  syncJianpuControls();
 }
 
 function analyse() {
@@ -165,7 +208,7 @@ function analyse() {
    * detaches its backing store and the stem goes silent with no error anywhere. */
   for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i).slice());
 
-  worker = new Worker('./notes.worker.js?v=1.13.0', { type: 'module' });
+  worker = new Worker('./notes.worker.js?v=1.14.0', { type: 'module' });
   worker.onmessage = (e) => {
     const m = e.data;
     worker.terminate();
@@ -205,6 +248,7 @@ function refresh() {
 }
 setInterval(refresh, 400);
 refresh();
+syncJianpuControls();      // the selectors are inert until 簡譜 is ticked, from the first paint
 
 el.go.addEventListener('click', analyse);
 el.min.addEventListener('input', reinterpret);
@@ -212,6 +256,29 @@ el.clip.addEventListener('change', reinterpret);   // clip rides in the payload
 el.hmm.addEventListener('change', reinterpret);
 el.fold.addEventListener('change', reinterpret);
 el.foldTol.addEventListener('input', reinterpret);
+el.jianpu.addEventListener('change', () => {
+  jianpu.on = el.jianpu.checked;
+  syncJianpuControls();
+  reinterpret();
+});
+/* Touching either selector ends the automatic tracking: a detected key is a suggestion, and
+ * once it has been overruled a later re-interpretation must not quietly undo that. */
+for (const c of [el.keyTonic, el.keyMode]) {
+  c.addEventListener('change', () => {
+    jianpu.auto = false;
+    jianpu.tonic = Number(el.keyTonic.value);
+    jianpu.mode = el.keyMode.value;
+    reinterpret();
+  });
+}
+el.keyRel.addEventListener('click', () => {
+  const r = relativeKey(jianpu.tonic, jianpu.mode);
+  jianpu.auto = false;
+  jianpu.tonic = r.tonic;
+  jianpu.mode = r.mode;
+  syncJianpuControls();
+  reinterpret();
+});
 el.show.addEventListener('click', () => {
   window.sansBass.setRibbonVisible(!window.sansBass.ribbonVisible());
   syncShowLabel();

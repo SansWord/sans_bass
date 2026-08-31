@@ -249,3 +249,14 @@ test('sonify: a resumed note enters the envelope partway, it does not re-attack'
   assert(fromMiddle < fromStart * 0.9,
          `and quieter than a fresh attack (${fromMiddle.toFixed(5)} vs ${fromStart.toFixed(5)})`);
 });
+
+test('sonify: a note straddling the loop start sounds on the first pass', async () => {
+  const ctx = new OfflineAudioContext(1, SR, SR);
+  // The note runs 0.0-0.4; the loop starts at 0.2, so 0.2 s of it is inside the region.
+  const notes = [{ start: 0.0, end: 0.4, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes,
+                { when: 0, offset: 0.2, loopA: 0.2, loopB: 0.6, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  assert(rms(out, Math.round(0.01 * SR), Math.round(0.15 * SR)) > 0.001,
+         'the part of the note inside the loop sounds');
+});

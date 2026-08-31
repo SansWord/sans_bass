@@ -479,7 +479,8 @@ Also extend the doc comment above `interpret()` with one line before the closing
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Reload. Expected: two new `PASS`, suite green at **171**.
+Reload. Expected: two new `PASS`, suite green at **176**.
+(The plan originally predicted 171; Task 2's two review-driven fix rounds added five tests.)
 
 - [ ] **Step 5: Commit**
 
@@ -554,7 +555,7 @@ And the loop-lap collection just below it:
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Reload. Expected: one new `PASS`, suite green at **172**.
+Reload. Expected: one new `PASS`, suite green at **177**.
 
 - [ ] **Step 5: Commit**
 
@@ -917,7 +918,7 @@ Then update `Currently v1.12.0.` in `CLAUDE.md` to `v1.13.0`. The per-file count
 - [ ] **Step 4: Verify the whole suite**
 
 Reload `http://localhost:8777/tests/test.html`.
-Expected: `window.__testResults.failed` is 0 at **172**, with both `versions:` tests passing.
+Expected: `window.__testResults.failed` is 0 at **177**, with both `versions:` tests passing.
 
 Then delete the extracted stem so it cannot linger:
 

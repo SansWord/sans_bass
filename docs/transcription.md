@@ -121,6 +121,27 @@ Not built yet. When it is: overrides anchored to time ranges, layered over deriv
 that re-deriving with different parameters — or swapping the interpreter entirely — leaves
 them standing.
 
+### The actions to support
+
+The intended scope, recorded so the layer is designed for all of it at once rather than
+grown one verb at a time. Nothing here is built.
+
+| # | action | what it does |
+|---|---|---|
+| 1 | **高/低 8 度** | Move a note up or down a whole octave. Preserves pitch class, so the key estimate stays valid. The manual counterpart to automatic octave folding — see the note below. |
+| 2 | **刪除** | Remove one note. |
+| 3 | **分割** | Split one note into two at a point in time. The inverse of a merge, which is not on this list. |
+| 4 | **新增** | Create a note where detection found none. |
+| 5 | **平移** | Nudge a note. **Undecided:** whether this moves it in time, in pitch, or both — settle it before designing the override format, because a pitch move and a time move want different anchors. |
+| 6 | **range select and delete** | Select a time range and delete every note inside it. The only action here that is not per-note, so selection is a first-class concept, not an afterthought. |
+
+Two consequences for the override format, both worth settling early. Actions 3, 4 and 6
+change *which notes exist*, not just their pitch — so an override keyed only to an existing
+note's identity cannot express them; anchoring to time ranges can. And action 1 is the same
+operation the planned automatic octave-fold performs, so the two should share one code path
+and one representation: a guess the user can then correct by hand is worth more than two
+mechanisms that disagree.
+
 ## The interpretation the field uses — built, as `hmm-v1`
 
 `threshold-v1` makes 437 independent local decisions. [Tony](https://sonicvisualiser.org/tony/)
@@ -179,7 +200,7 @@ errors rather than removing them.
 | sonification | built — `lib/sonify.js`, with lap generation for A–B repeat | the notes lane plays it, muted by default |
 | notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals; **Clip octave outliers** is a display choice about the vertical scale only |
 | zoomed reading pane | built | above the lane; ~10 s window, 2–60 s |
-| edits | not designed | — |
+| edits | not built; the six intended actions are listed under Layer 4 | — |
 | beat / tempo | not built | — |
 
 Two views exist because one cannot do both jobs. At whole-song width a pixel spans ~0.3 s,

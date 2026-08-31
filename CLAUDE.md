@@ -120,6 +120,9 @@ out of the project; never commit them.
   `gh-pages` branch, the three CI workflows, per-PR preview URLs, and the rules that keep
   `rips/`, `stems/` and the model unpublished. **Read this before touching
   `.github/workflows/`.**
+- [`docs/roadmap.md`](docs/roadmap.md) — work that is wanted but not built: note editing,
+  automatic octave folding, YouTube-link ingest. An index pointing at where each is
+  specified, plus the question that has to be settled before each can be designed.
 - [`docs/session-prompts.md`](docs/session-prompts.md) — the prompts that produced the
   original build, timestamped from filesystem evidence.
 

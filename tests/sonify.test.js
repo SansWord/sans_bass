@@ -83,3 +83,53 @@ test('sonify: stop() silences a running schedule', () => {
   handle.stop();
   handle.stop();   // idempotent — the page calls it on every transport change
 });
+
+/* A-B repeat loops on the audio thread for buffers (src.loop + loopStart/loopEnd), which
+ * an oscillator sequence cannot do. These cover the arithmetic that replaces it: lap k of
+ * a note is a pure offset from the audio clock, never a polled wrap. */
+
+test('sonify: a looped note sounds once per lap', async () => {
+  const ctx = new OfflineAudioContext(1, SR * 3, SR);
+  // One note at 0.1 s inside a 0.5 s loop -> laps at 0.1, 0.6, 1.1, 1.6, 2.1, 2.6.
+  const notes = [{ start: 0.1, end: 0.25, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes,
+                { when: 0, offset: 0, loopA: 0, loopB: 0.5, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+
+  // Count bursts: a run of loud samples separated by near-silence.
+  let bursts = 0;
+  let inBurst = false;
+  const win = Math.round(0.01 * SR);
+  for (let i = 0; i + win < out.length; i += win) {
+    let peak = 0;
+    for (let j = i; j < i + win; j++) peak = Math.max(peak, Math.abs(out[j]));
+    if (peak > 0.02 && !inBurst) { bursts++; inBurst = true; }
+    else if (peak <= 0.02) inBurst = false;
+  }
+  assert(bursts >= 5, `the note repeats every lap (${bursts} bursts in 3 s of a 0.5 s loop)`);
+});
+
+test('sonify: a note outside the loop never sounds', async () => {
+  const ctx = new OfflineAudioContext(1, SR * 2, SR);
+  const notes = [
+    { start: 0.1, end: 0.3, midi: 69, cents: 6900, name: 'A4', confidence: 1 },   // inside
+    { start: 1.2, end: 1.4, midi: 60, cents: 6000, name: 'C4', confidence: 1 },   // outside
+  ];
+  scheduleNotes(ctx, ctx.destination, notes,
+                { when: 0, offset: 0, loopA: 0, loopB: 0.5, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  // 1.2-1.4 s is outside [0, 0.5); only wrapped laps of the FIRST note may appear there,
+  // and those land at 1.1 and 1.6, so 1.25-1.35 must be quiet.
+  assert(rms(out, Math.round(1.25 * SR), Math.round(1.35 * SR)) < 1e-3,
+         'the out-of-loop note is never scheduled');
+});
+
+test('sonify: an empty loop region does not spin forever', () => {
+  const ctx = new OfflineAudioContext(1, SR, SR);
+  // The loop holds no notes at all. A naive lap generator would iterate for ever here.
+  const h = scheduleNotes(ctx, ctx.destination,
+    [{ start: 5, end: 6, midi: 69, cents: 6900, name: 'A4', confidence: 1 }],
+    { when: 0, offset: 0, loopA: 0, loopB: 0.5, aheadSeconds: Infinity });
+  assertEq(typeof h.stop, 'function', 'it returns rather than hanging');
+  h.stop();
+});

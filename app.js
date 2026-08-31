@@ -709,6 +709,21 @@ function noteLabel(n, jianpu) {
   return d.accidental + d.digit;
 }
 
+/* 簡譜 octave marks: a dot above the number for each octave up, below for each octave down,
+ * nothing in the reference octave. Drawn beside the digit rather than centred over it —
+ * these labels sit against the lane's left edge and a dot above would collide with the
+ * gridline of the semitone above. */
+function drawOctaveDots(c, cx, ty, n, semi) {
+  const r = Math.max(0.7, Math.min(1.5, semi * 0.08));
+  const step = r * 3;
+  for (let i = 0; i < Math.abs(n) && i < 3; i++) {
+    const dy = (n > 0 ? -1 : 1) * (semi * 0.22 + i * step);
+    c.beginPath();
+    c.arc(cx, ty + dy, r, 0, Math.PI * 2);
+    c.fill();
+  }
+}
+
 /* Pre-rendered idle/active layers, the same shape renderWave produces, so paint() draws
  * the ribbon with the identical blit-and-clip it uses for every waveform — playhead,
  * A-B shading and all. The layer object must keep the { idle, active, h, w } keys:
@@ -762,18 +777,34 @@ function renderRibbon(canvas, payload, cssWidth) {
       const everySemitone = semi >= LABEL_MIN_PX;
       c.font = `500 ${Math.min(10, Math.max(8, semi * 0.62)).toFixed(1)}px ui-monospace, Menlo, monospace`;
       c.textBaseline = 'middle';
+      const jp = payload.jianpu && payload.jianpu.on ? payload.jianpu : null;
+      const refOct = jp && window.SansJianpu
+        ? window.SansJianpu.referenceOctave(notes, jp.tonic) : 0;
       for (let m = lo; m <= hi; m++) {
         const pc = ((m % 12) + 12) % 12;
-        if (!everySemitone && pc !== 0) continue;
-        const label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+        /* When the lane is too tight for every semitone, only the home note is labelled.
+         * In 簡譜 that is degree 1 — the tonic — not C. Keeping `pc !== 0` here would label
+         * C in every key, which is meaningless in, say, 1=G. */
+        const home = jp ? ((m - jp.tonic) % 12 + 12) % 12 === 0 : pc === 0;
+        if (!everySemitone && !home) continue;
+        let label;
+        let dots = 0;
+        if (jp && window.SansJianpu) {
+          const d = window.SansJianpu.degreeOf(m, jp.tonic, jp.mode);
+          label = d.accidental + d.digit;
+          dots = d.octaveIndex - refOct;
+        } else {
+          label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+        }
         const ty = y(m);
         const tw = c.measureText(label).width;
         c.fillStyle = dim ? 'rgba(13,13,16,.72)' : 'rgba(13,13,16,.82)';
         c.fillRect(0, ty - semi / 2, tw + 7, semi);
-        c.fillStyle = pc === 0
+        c.fillStyle = home
           ? (dim ? '#7b7b8b' : '#c9c9d6')
           : (dim ? '#5d5d6b' : '#8a8a99');
         c.fillText(label, 3, ty + 0.5);
+        if (dots) drawOctaveDots(c, 3 + tw + 2.5, ty, dots, semi);
       }
     }
 

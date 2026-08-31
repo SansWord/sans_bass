@@ -334,3 +334,26 @@ test('pitch: yinFrame candidates do not change the single tau it already returne
     assertClose(centsFromHz(r.f0), centsFromHz(hz), 20, `${hz} Hz unchanged`);
   }
 });
+
+test('pitch: f0Track stores per-frame candidates without changing what it already returned', () => {
+  const SR = 11025;
+  const samples = sine(220, 1, SR);
+  const track = f0Track(samples, SR);
+
+  assert(Array.isArray(track.candidates), 'candidates array is present');
+  assertEq(track.candidates.length, track.cents.length, 'one entry per frame');
+
+  const voicedIdx = [...track.cents].findIndex((c) => c !== 0);
+  assert(voicedIdx >= 0, 'the tone is voiced somewhere');
+  assert(track.candidates[voicedIdx].length >= 1, 'a voiced frame carries candidates');
+
+  // The existing arrays must be untouched — this is the additive-ness guard.
+  for (const c of [...track.cents].filter(Boolean)) {
+    assertClose(c, centsFromHz(220), 20, 'cents unchanged by the addition');
+  }
+});
+
+test('pitch: f0Track leaves an unvoiced frame with no candidates', () => {
+  const track = f0Track(new Float32Array(11025), 11025);
+  assert(track.candidates.every((c) => c.length === 0), 'silence carries no candidates');
+});

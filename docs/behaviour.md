@@ -194,6 +194,33 @@ covers the DOM. This is the same fault-injection approach the project already us
 | S15 | On a handheld the drop zone makes no in-browser-separation promise. | `#drop-explain` renders `drop.explainHandheld`, not `drop.explain`. |
 | S16 | Both handheld strings follow the language toggle like every other string. | Switch locale with a song loaded; the panel line and the drop zone must both re-render. |
 
+## Notes lane
+
+`notes.js` loads as a plain `<script type="module">` and reaches the player only through
+`window.sansBass`, the same seam `separate.js` uses. The lane itself is built by `app.js`
+inside `buildLanes()`, not declared in `index.html` — `el.lanes.innerHTML = ''` destroys
+anything parked inside `#lanes`, so a static element would survive exactly one song.
+
+The layer model these rows exercise is in [`docs/transcription.md`](transcription.md):
+analysis is immutable, interpretation is re-derived, and the two must stay separable.
+
+| # | Expected | How to observe |
+|---|---|---|
+| N1 | The panel appears only when a **vocals** stem is loaded. A single unseparated song shows nothing. | Computed `display` of `#notes`. Never `.hidden` — `.notes` sets `display: flex`, so only the global `[hidden] { display: none !important }` keeps the attribute working. |
+| N2 | Detection never starts by itself. It costs ~7 s of CPU on a cold first run, which is a surprise rather than a convenience. | Load a stems zip, wait 10 s: `document.querySelector('.lane.ribbon').hidden` is still `true`. |
+| N3 | While analysing: **Find notes** disabled, one status message, no progress bar. `f0Track` reports no progress, and a bar that jumps 0 → 100 is worse than none. | `#notes-go.disabled`, `#status.textContent`. |
+| N4 | On success the status line goes **empty** — the lane appearing is the confirmation. | `#status.textContent === ''`. |
+| N5 | The ribbon lane sits directly under the vocals lane. | `document.querySelector('.lane.ribbon').previousElementSibling` is the vocals lane. |
+| N6 | The ribbon is on the same time grid as every waveform: its canvas is the same CSS width, and it reflows with them on resize. | Compare `getBoundingClientRect().width` against a `.lane:not(.ribbon) canvas.wave`, before and after a resize. Must match both times. |
+| N7 | Clicking the ribbon seeks, like any other lane. | Click at 50% of its width; `#t-cur` must read half the track length. |
+| N8 | Moving **Shortest note** changes the note count **without re-running analysis**. | Time it: the count must change in tens of milliseconds, not seconds. That the slider moved is not evidence of anything — read `#notes-count`. Measured on `6 南國的風`: 120 ms → 228 notes, 200 ms → 99, 80 ms → 437, each in 11–15 ms. |
+| N9 | Unticking **Clip octave outliers** widens the lane's vertical range. | `SansRibbon.pitchRange(notes, {clip:false})` must span more than with `clip:true`. |
+| N10 | A note outside the clipped range is drawn at the lane edge in the A–B orange, never dropped. A hidden note would be a silent lie. | Load a track with octave errors; orange marks appear on the edge. |
+| N11 | The contour line breaks at every unvoiced run and never bridges one. | `SansRibbon.contourSegments` returns more than one segment for a track with rests. |
+| N12 | Loading a new song clears the ribbon, even when the new song also has vocals. The old frames describe the old audio. | Load a second zip; `.lane.ribbon` computed `display` is `none` and its canvas `__layers` is `null`. |
+| N13 | The lane is **not** a track: no mute, no volume, no number key, and absent from `tracks`. Mute-all, solo and the stem count ignore it. | With six stems loaded, `.lane` counts 7 but `.lane:not(.ribbon)` counts 6. The ribbon lane has no `.lane-vol` child and no `.kbd`, and pressing `0` (mute all) never adds `.muted` to it. |
+| N14 | The lane label follows the language toggle. The note **names** drawn inside it never translate, exactly as stem ids and filenames do not. | Switch locale: the label changes, the block labels stay `C#4`. |
+
 ## Saving stems
 
 | # | Expected | How to observe |

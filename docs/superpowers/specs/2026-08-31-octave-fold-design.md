@@ -14,7 +14,7 @@ MIDI 68–79 — a fifth to two octaves above anything sung. With a robust band 
 `hmm-v1`. One note in eight is wrong, and wrong loudly: the notes lane sounds them, so a
 practice pass is punctuated by shrieks.
 
-`Clip octave outliers` does not help. It is display-only — it sets the lane's vertical scale
+`Fit the lane to the melody` (formerly `Clip octave outliers`) does not help. It is display-only — it sets the lane's vertical scale
 and never reaches `interpret()` — so the note list, and what you hear, are unchanged.
 
 ### Why this is not fixable upstream
@@ -110,7 +110,9 @@ key-detection guarantee; it remains out of scope.
 
 ## Non-goals
 
-- Replacing `Clip octave outliers`. It stays, unchanged, and stays display-only.
+- Replacing the lane-scale control. It stays display-only; it was renamed from `Clip octave
+  outliers` to `Fit the lane to the melody` because the old name read as though it removed
+  notes, and sat one word from `Fix octave outliers`.
 - Manual editing (layer 4). This produces the provenance that editing will consume; it does
   not add any editing UI. See [`docs/roadmap.md`](../../roadmap.md).
 - Correcting anything other than whole-octave errors. A note a third out is out of scope.

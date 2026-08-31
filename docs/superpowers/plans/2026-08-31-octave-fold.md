@@ -898,7 +898,7 @@ git commit -m "Docs: behaviour rows for octave folding"
 
 - [ ] **Step 1: Update the transcription status table**
 
-The `notes lane` row currently ends `**Clip octave outliers** is a display choice about the
+The `notes lane` row currently ends `**Fit the lane to the melody** is a display choice about the
 vertical scale only`. Add a row beneath it:
 
 ```

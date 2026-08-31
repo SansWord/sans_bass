@@ -22,7 +22,7 @@ pitch move and a time move want different anchors, so this decides the override 
 [plan](superpowers/plans/2026-08-31-octave-fold.md), both approved 2026-08-31.
 Branch `feat/octave-fold`; not yet implemented. A checkbox that folds
 octave-outlier notes by whole octaves into the singer's range, instead of only clipping them
-from the lane's scale the way **Clip octave outliers** does today.
+from the lane's scale the way **Fit the lane to the melody** does today.
 
 Measured on `stems/ng_kipin.zip` (vocals, `minDurationMs: 100`): the vocal body sits about
 MIDI 39–60 with outliers clustered at 68–79. A duration-weighted **median ± 3×MAD** band

@@ -45,8 +45,15 @@ Running log of what was built and what was learned building it.
 - `notes.worker.js` — ESM, runs `decimate` + `f0Track` off the main thread.
 - `notes.js` — ESM, mirrors `separate.js`: owns the worker, and re-derives notes on the
   main thread whenever a parameter moves.
-- `app.js` — a ribbon lane built inside `buildLanes()`, `renderRibbon`, and two new
-  `window.sansBass` members (`stemBuffer`, `setNotes`).
+- `app.js` — a ribbon lane built inside `buildLanes()`, `renderRibbon`, and new
+  `window.sansBass` members (`stemBuffer`, `setNotes`, `notesAudio`, `transport`).
+- The lane **plays**: a `GainNode` into `master`, muted by default, toggled from its own
+  name, with a volume slider. It stays out of `tracks`, so mute-all and solo ignore it.
+  `lib/sonify.js` gained lap generation so the synth follows A–B repeat.
+- The lane is **resizable** (drag its bottom grip, persisted in `localStorage`) and drawn
+  as a piano roll: a band per semitone, black keys shaded, C brighter, names at the left.
+- A **zoomed pane** above the lane shows a window of the song — 10 s by default, 2–60 s by
+  wheel — following the playhead while playing and panning by drag when stopped.
 - Asset version v1.9.0 → **v1.11.0**. v1.10.0 never appears in a `?v=` because that
   release changed no file `index.html` loads.
 
@@ -78,6 +85,28 @@ ratio.
 - `[insight]` Splitting analysis from interpretation in `lib/pitch.js` during the PoC — a
   boundary drawn for testability, not for this — is the only reason a live slider is
   possible. Re-deriving measured 92× cheaper than re-analysing.
+- `[gotcha]` **A screenshot found what every assertion missed.** The contour drawn as a
+  polyline at whole-song width joins pitches ~26 frames apart, filling the lane with
+  near-vertical strokes and burying the notes. Widths matched, layers existed, pixels were
+  non-zero — every property check passed against a view that was unreadable. Per-pixel
+  min/max bands fixed it, the same way waveform lanes have always solved it.
+- `[gotcha]` **`const` in the temporal dead zone killed the entire app.** `let ribbonHeight
+  = readRibbonHeight()` sat above the `const RIBBON_H_DEFAULT` it depends on. Function
+  declarations hoist; `const` does not. Because `app.js` is one flat run of top-level
+  statements, the throw at line 21 meant every listener below it never registered — the
+  page loaded and did nothing at all. Exactly the failure mode the `?v=` cache-buster
+  exists to prevent, arriving by a different route.
+- `[insight]` A zoomed pane costs nothing that zooming the lane would have cost. The
+  full-width lanes keep one shared `frac = t/duration` mapping — which seeking, the
+  playhead and A–B repeat all read from — and the pane gets its own. Zooming the lane
+  itself would have broken that for every lane at once.
+- `[gotcha]` The zoomed view needs its own peak resolution. Lane peaks are 1400 buckets
+  across the *whole song*; slice 10 s out of a 233 s track and you get 60 buckets, blockier
+  than the thing the zoom exists to make readable.
+- `[gotcha]` `aheadSeconds: Infinity` plus a loop region is an infinite generator: the
+  horizon is never reached, so laps are produced for ever. It froze the test page. Bounded
+  by the context's own render length, which an `OfflineAudioContext` knows and a live one
+  does not.
 - `[gotcha]` **Octave errors on this material are not rare blips.** 4.8% of note time sits
   in MIDI 36–47, an octave below the melody, in notes with a *median duration of 186 ms*.
   A 3rd-percentile clip cannot exclude them, so the lane spans 27 semitones and the melody

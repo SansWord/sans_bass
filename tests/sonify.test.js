@@ -1,5 +1,6 @@
 import { test, assert, assertEq, assertClose } from './assert.js';
-import { TIMBRES, midiToHz, timbreWave, scheduleNotes } from '../lib/sonify.js';
+import { TIMBRES, midiToHz, timbreWave, scheduleNotes,
+         envelopeAmplitude, ATTACK, FLOOR } from '../lib/sonify.js';
 
 const SR = 44100;
 
@@ -174,4 +175,41 @@ test('sonify: a doubtful note is never scheduled', async () => {
   assert(rms(out, Math.round(0.62 * SR), Math.round(0.78 * SR)) > 0.001, 'the second trusted note sounds');
   assert(rms(out, Math.round(0.32 * SR), Math.round(0.48 * SR)) < 1e-4,
          'the doubtful note leaves silence where it would have been');
+});
+
+/* The envelope, pinned as arithmetic. Entering a note partway needs its amplitude at an
+ * arbitrary point, so the curve the ramps describe is written once as a function and these
+ * check the function against the three points the ramps themselves fix. */
+
+test('sonify: envelopeAmplitude reproduces the two ramps it models', () => {
+  /* The envelope is 1e-4 -> peak over [0, ATTACK], then peak -> 1e-4 over [ATTACK, envLen].
+   * These are the three points the Web Audio ramps themselves pin, so if this function
+   * disagrees at them it will disagree everywhere in between too. */
+  const peak = 0.5;
+  const envLen = 0.5;
+  assertClose(envelopeAmplitude(0, envLen, peak), FLOOR, 1e-12, 'starts at the floor');
+  assertClose(envelopeAmplitude(ATTACK, envLen, peak), peak, 1e-9, 'attack reaches the peak');
+  assertClose(envelopeAmplitude(envLen, envLen, peak), FLOOR, 1e-9, 'decays to the floor');
+});
+
+test('sonify: envelopeAmplitude falls monotonically through the decay', () => {
+  const peak = 0.5;
+  const envLen = 0.4;
+  let prev = Infinity;
+  for (let tau = ATTACK; tau <= envLen; tau += 0.005) {
+    const a = envelopeAmplitude(tau, envLen, peak);
+    assert(a <= prev + 1e-12, `amplitude never rises during decay (at tau=${tau.toFixed(3)})`);
+    prev = a;
+  }
+});
+
+test('sonify: envelopeAmplitude is clamped at both ends', () => {
+  /* A `skip` past the envelope's own length is reachable: a long note entered very late,
+   * or a short note whose envLen is shorter than the remainder. Neither may produce a
+   * negative amplitude or NaN — exponentialRampToValueAtTime rejects both. */
+  const peak = 0.5;
+  assert(envelopeAmplitude(-1, 0.4, peak) === FLOOR, 'a negative tau is the floor');
+  assert(envelopeAmplitude(99, 0.4, peak) >= FLOOR, 'a tau past the end never goes below the floor');
+  assert(Number.isFinite(envelopeAmplitude(99, 0.4, peak)), 'and never NaN');
+  assert(Number.isFinite(envelopeAmplitude(0.1, 0, peak)), 'a zero-length envelope is survivable');
 });

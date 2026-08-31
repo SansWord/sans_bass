@@ -541,3 +541,52 @@ test('pitch: threshold-v1 behaviour is unchanged by the candidate additions', ()
   assertEq(segmentNotes(track, { minDurationMs: 80 }).length,
            segmentNotes(track, { minDurationMs: 80 }).length, 'segmentNotes is deterministic');
 });
+
+import { pitchBand } from '../lib/pitch.js';
+
+/* Notes of equal duration at the given MIDI numbers. Duration matters to pitchBand — it is
+ * duration-weighted — so equal durations isolate the pitch distribution. */
+function notesAt(midis, seconds = 0.5) {
+  return midis.map((m, i) => ({
+    start: i * seconds, end: (i + 1) * seconds, midi: m,
+    cents: m * 100, name: noteName(m), confidence: 0.9,
+  }));
+}
+
+test('pitch: pitchBand covers a steady singer with the minimum one-octave margin', () => {
+  const [lo, hi] = pitchBand(notesAt([48, 50, 52, 53, 55, 52, 50, 48]));
+  assert(lo <= 48 && hi >= 55, `the sung range is inside the band (${lo}..${hi})`);
+  assert(hi - lo >= 24, 'the floor keeps the band at least an octave either side');
+});
+
+test('pitch: pitchBand is not inflated by the outliers it exists to exclude', () => {
+  /* THE property that rules out a percentile band. Measured on ng_kipin, a 5th/95th
+   * percentile stretched to E2-D#5 and absorbed the very notes it should have flagged.
+   *
+   * A median does shift slightly under contamination — adding four high notes moves it from
+   * 51 to 52 here — so this asserts the property that actually matters: the band does not
+   * WIDEN to swallow the tail, and the outliers stay outside it. A percentile band fails
+   * both of those; a median/MAD band fails neither. */
+  const body = [48, 50, 52, 53, 55, 52, 50, 48, 51, 49, 53, 50];
+  const clean = pitchBand(notesAt(body));
+  const dirty = pitchBand(notesAt([...body, 84, 86, 84, 88]));   // 25% contamination
+  assertEq(dirty[1] - dirty[0], clean[1] - clean[0], 'the band does not widen');
+  assert(Math.abs(dirty[0] - clean[0]) <= 2, `the low edge barely moves (${clean[0]} -> ${dirty[0]})`);
+  assert(84 > dirty[1], `and every outlier is still outside it (hi = ${dirty[1]})`);
+});
+
+test('pitch: pitchBand weights by duration, not by note count', () => {
+  // One long low note plus many short high ones: the long note must dominate the centre.
+  const notes = [{ start: 0, end: 20, midi: 40, cents: 4000, name: 'E2', confidence: 0.9 }];
+  for (let i = 0; i < 30; i++) {
+    notes.push({ start: 20 + i * 0.1, end: 20.1 + i * 0.1, midi: 64, cents: 6400, name: 'E4', confidence: 0.9 });
+  }
+  const [lo, hi] = pitchBand(notes);
+  const centre = (lo + hi) / 2;
+  assert(Math.abs(centre - 40) < Math.abs(centre - 64), `the held note pulls the centre (${centre})`);
+});
+
+test('pitch: pitchBand survives an empty list', () => {
+  const [lo, hi] = pitchBand([]);
+  assert(Number.isFinite(lo) && Number.isFinite(hi) && hi > lo, 'a usable band, not NaN');
+});

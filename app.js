@@ -699,6 +699,16 @@ const NOTE_FILL = {
  * the only one today and always does. See docs/transcription.md on layer-4 edits. */
 const noteFillKey = (n) => (n.fix && NOTE_FILL[n.fix.state] ? n.fix.state : 'plain');   // 'folded' | 'doubt'
 
+/* A note's label: an absolute name, or a scale degree when 簡譜 is on.
+ *
+ * The octave is deliberately absent from the degree form — it lives on the pitch axis as
+ * dots instead of being repeated on every block, which is the whole point of the notation. */
+function noteLabel(n, jianpu) {
+  if (!jianpu || !jianpu.on || !window.SansJianpu) return n.name;
+  const d = window.SansJianpu.degreeOf(n.midi, jianpu.tonic, jianpu.mode);
+  return d.accidental + d.digit;
+}
+
 /* Pre-rendered idle/active layers, the same shape renderWave produces, so paint() draws
  * the ribbon with the identical blit-and-clip it uses for every waveform — playhead,
  * A-B shading and all. The layer object must keep the { idle, active, h, w } keys:
@@ -798,11 +808,12 @@ function renderRibbon(canvas, payload, cssWidth) {
       /* The name only when it fits. Clipping text to a block narrower than the glyphs
        * produces a smear that reads as corruption rather than as a label — and note names
        * are never translated, in any locale, exactly as stem ids and filenames are not. */
-      if (!out && bw > 26 && bh > 9) {
+      const minLabelPx = (payload.jianpu && payload.jianpu.on) ? 14 : 26;
+      if (!out && bw > minLabelPx && bh > 9) {
         c.fillStyle = dim ? '#1a1a20' : '#0d0d10';
         c.font = '600 9px ui-monospace, Menlo, monospace';
         c.textBaseline = 'middle';
-        c.fillText(n.name, x(n.start) + 3, by + bh / 2 + 0.5);
+        c.fillText(noteLabel(n, payload.jianpu), x(n.start) + 3, by + bh / 2 + 0.5);
       }
     }
     return off;
@@ -918,11 +929,12 @@ function renderZoom(canvas) {
     const bw = Math.max(2, x(n.end) - x(n.start));
     c.fillStyle = out ? '#ff9f1c' : NOTE_FILL[noteFillKey(n)].zoom;
     c.fillRect(x(n.start), by, bw, bh);
-    if (!out && bw > 26 && bh > 9) {
+    const minLabelPx = (ribbon.jianpu && ribbon.jianpu.on) ? 14 : 26;
+    if (!out && bw > minLabelPx && bh > 9) {
       c.fillStyle = '#0d0d10';
       c.font = '600 10px ui-monospace, Menlo, monospace';
       c.textBaseline = 'middle';
-      c.fillText(n.name, x(n.start) + 3, by + bh / 2 + 0.5);
+      c.fillText(noteLabel(n, ribbon.jianpu), x(n.start) + 3, by + bh / 2 + 0.5);
     }
   }
 

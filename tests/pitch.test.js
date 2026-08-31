@@ -507,3 +507,13 @@ test('pitch: interpret falls back to threshold-v1 for an unknown interpreter', (
   const notes = interpret(tr, { interpreter: 'nonesuch-v9', params: {} });
   assertEq(notes.length, 1, 'a file written by a future version still opens');
 });
+
+test('pitch: interpret degrades to threshold-v1 when the track has no candidates', () => {
+  /* An analysis from before candidates existed — or one that lost them crossing a
+   * postMessage boundary. hmm-v1 cannot run, and throwing would take out the caller's
+   * whole re-interpretation. Degrade, exactly as an unknown interpreter name does. */
+  const tr = fakeTrack([[6000, 40]]);
+  delete tr.candidates;
+  const notes = interpret(tr, { interpreter: 'hmm-v1', params: { minDurationMs: 80 } });
+  assertEq(notes.length, 1, 'still returns the note rather than throwing');
+});

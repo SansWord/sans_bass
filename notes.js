@@ -2,13 +2,13 @@
  *
  * The split matters and is the whole point of the design — see docs/transcription.md.
  * ANALYSIS (decimate + YIN) runs once in the worker and its result is immutable.
- * INTERPRETATION (segmentNotes) runs here on the main thread, because at ~12 ms it is
+ * INTERPRETATION (interpret()) runs here on the main thread, because at ~12 ms it is
  * cheaper to run than to message, and that is what lets a slider re-derive live.
  *
  * A module, so it cannot share scope with app.js. It talks to the player only through
  * window.sansBass, exactly as separate.js does. */
 
-import { segmentNotes } from './lib/pitch.js?v=1.11.0';
+import { interpret } from './lib/pitch.js?v=1.11.0';
 import { scheduleNotes } from './lib/sonify.js?v=1.11.0';
 
 const el = {
@@ -19,10 +19,16 @@ const el = {
   min: document.getElementById('notes-min'),
   minOut: document.getElementById('notes-min-out'),
   clip: document.getElementById('notes-clip'),
+  hmm: document.getElementById('notes-hmm'),
   show: document.getElementById('notes-show'),
 };
 
 const tr = (key, params) => window.SansI18n.t(key, params);
+
+/* On the label, not the input: the checkbox itself is a 13 px target and the sentence
+ * beside it is what the pointer actually rests on. */
+const syncHmmTip = () => { el.hmm.parentElement.title = tr('notes.hmmTip'); };
+syncHmmTip();
 
 let worker = null;
 let frames = null;           // the immutable analysis result
@@ -30,18 +36,21 @@ let notes = [];
 let analysedBuffer = null;   // identity of the AudioBuffer `frames` was computed from
 let sonifier = null;         // the running note schedule, or null
 
-/* Parameters carry the interpreter that understands them. Nothing reads this yet; it
- * exists so a file written today survives the segmenter being replaced by an HMM decoder,
- * whose parameters are transition costs rather than thresholds. */
+/* Parameters carry the interpreter that understands them: params written by one are
+ * meaningless to another, so the name travels with them. The checkbox picks which — both
+ * read the SAME frames, which is what makes comparing them mean anything. */
 function currentParams() {
-  return { interpreter: 'threshold-v1', params: { minDurationMs: Number(el.min.value) } };
+  return {
+    interpreter: el.hmm.checked ? 'hmm-v1' : 'threshold-v1',
+    params: { minDurationMs: Number(el.min.value) },
+  };
 }
 
 /** Re-derive notes from the existing frames. No worker, no re-analysis. */
 function reinterpret() {
   if (!frames) return;
   const p = currentParams();
-  notes = segmentNotes(frames, p.params);
+  notes = interpret(frames, p);
   el.count.textContent = tr('notes.count', { n: notes.length });
   el.minOut.textContent = `${el.min.value} ms`;
   window.sansBass.setNotes({ notes, frames, params: p, clip: el.clip.checked });
@@ -143,6 +152,7 @@ refresh();
 el.go.addEventListener('click', analyse);
 el.min.addEventListener('input', reinterpret);
 el.clip.addEventListener('change', reinterpret);   // clip rides in the payload
+el.hmm.addEventListener('change', reinterpret);
 el.show.addEventListener('click', () => {
   window.sansBass.setRibbonVisible(!window.sansBass.ribbonVisible());
   syncShowLabel();
@@ -152,6 +162,7 @@ window.addEventListener('sansbass:langchange', () => {
     el.count.textContent = tr('notes.count', { n: notes.length });
     syncShowLabel();
   }
+  syncHmmTip();
 });
 
 /* The player broadcasts its transport because app.js is a classic script and this file is

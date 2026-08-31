@@ -115,6 +115,47 @@ wrong note is one click to delete, while a *missing* note requires the user to n
 absence. Drawing the measured pitch contour behind the notes is what makes an absence
 visible at all.
 
+## Two octave errors, and they are opposites
+
+YIN's `d(tau)` measures how similar the signal is to itself `tau` samples later. A signal with
+true period `T` is self-similar at **every integer multiple** of `T` — and, when its
+fundamental is weak, it also looks self-similar at `T/n`. Both produce a dip, so the curve
+offers wrong answers in *both* directions. The project has now hit each of them, and they need
+different fixes.
+
+| | 次諧波 subharmonic | 泛音 harmonic / overtone |
+|---|---|---|
+| the dip picked | `2T` — twice the true period | `T/2`, `T/4`, `T/8` |
+| the pitch reads | an octave **low** | 1–3 octaves **high** |
+| where it bit us | `6 南國的風` — 20% of note time an octave low | `ng_kipin` — 23 of 184 notes far too high |
+| the fix | `hmm-v1`: keep both dips as candidates and let a whole-sequence optimum choose (v1.12.0) | octave folding: correct at the **note** layer using neighbouring notes |
+
+The subharmonic case is fixable at the frame layer because the true period's dip is still in
+the curve, merely above the 0.1 absolute threshold. **The harmonic case is not.** Measured on
+the F#5 at t=62.1 in `ng_kipin`, whose neighbours (F2, G2) make F#2 almost certain: F#2's dip
+only appears at `candidateThreshold` 1.2 with `maxCandidates` 20, ranked fifteenth at
+p = 0.04 — while the frame still prefers the wrong F#5 at p = 0.10, by two and a half to one.
+Separation and the 4:1 decimation leave a ~92 Hz male fundamental so weak that the waveform
+genuinely *is* more periodic at its 8th harmonic. No frame-local method can conclude
+otherwise, because within that frame it is not true.
+
+### Why folding by whole octaves is the right operation
+
+Because the errors land on **powers of two**. Measured across every outlier `ng_kipin` produces:
+
+- 19 notes sit on the **2nd, 4th or 8th** harmonic. Those are octave-related, so folding by
+  whole octaves reaches them and **pitch class is preserved** — the note name was right all
+  along, only the octave was wrong, which is why the key estimate survives folding untouched.
+- 4 notes sit on the **3rd or 6th** harmonic — an octave *plus a fifth*. B4 with G3/D3 either
+  side implies E3 (3rd harmonic, 0.5 semitones off); A#4 between two D#2s implies D#2 (6th,
+  exactly 0). Whole-octave folding **cannot** reach these, and correcting them would change
+  pitch class, breaking the property that makes folding safe for key detection.
+
+The confidence test in the fold design — does the best octave shift land within a fourth of
+the neighbours? — turns out to separate those two populations exactly, without knowing
+anything about harmonics. Notes it declines to fold are not noise; they are the odd-harmonic
+cases, and they are marked rather than guessed.
+
 ## Layer 4 — edits (human)
 
 Not built yet. When it is: overrides anchored to time ranges, layered over derived notes, so

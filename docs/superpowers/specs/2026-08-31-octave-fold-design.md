@@ -40,6 +40,32 @@ small will never overcome.
 at the note layer, which is why the correction belongs there and is not a workaround for
 insufficient effort at the frame layer.
 
+This is the **泛音 / harmonic** error — the detector locking onto an overtone and reading too
+high. It is the mirror image of the **次諧波 / subharmonic** error that `hmm-v1` was built for
+in v1.12.0, which reads an octave *low*. Both dips sit in the same CMND curve; only the
+subharmonic one is reachable from inside a frame. See
+[`transcription.md` → Two octave errors](../../transcription.md) for the full comparison.
+
+### Why whole octaves is the right operation
+
+Measured across every outlier in `ng_kipin`, the errors land on **powers of two**:
+
+| harmonic | notes | interval | octave-foldable? |
+|---|---|---|---|
+| 2nd, 4th, 8th | **19** | 1, 2, 3 octaves | yes — pitch class preserved |
+| 3rd, 6th | **4** | octave + a fifth | **no** |
+
+All 19 power-of-two cases preserve pitch class, which is exactly why folding leaves the key
+estimate untouched. The four odd-harmonic cases are unreachable by any whole-octave shift:
+B4 between G3 and D3 implies E3 (3rd harmonic, 0.5 semitones off), and A#4 between two D#2s
+implies D#2 (6th, exactly 0).
+
+The confidence test below — best octave shift within a fourth of the neighbours — separates
+those two populations **exactly**, without being told anything about harmonics. That is the
+justification for the threshold, and it means the doubtful bucket is a diagnosable failure
+mode rather than leftovers. Correcting the odd-harmonic cases would change pitch class and so
+break the key-detection guarantee; it is deliberately out of scope.
+
 ## Goals
 
 1. Correct octave-outlier notes using melodic context, when that context is clear.

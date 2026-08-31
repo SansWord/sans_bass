@@ -477,6 +477,9 @@ input[type=range] { width: 110px; }
 .notes-stats { font: 12px var(--mono); font-variant-numeric: tabular-nums; }
 .notes-stats .n-fold { color: #6cc5e0; }
 .notes-stats .n-mute { color: #a8a8b8; }
+/* The A-B orange, reused for its established meaning in this app: look at this. Above ~2.5
+   the fold starts accepting octave-plus-a-fifth errors and drawing them as trusted. */
+.notes-val.risky { color: var(--loop); }
 .notes-sub:has(input:disabled) { opacity: .45; }
 .notes-adv summary { font: 12px var(--mono); color: var(--dim); cursor: pointer; }
 .notes-adv[open] summary { margin-bottom: 6px; }

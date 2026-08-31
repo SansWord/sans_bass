@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.11.0](#v1110--notes-ribbon-in-the-player-2026-08-30-2059) | A notes lane under the vocals stem: detected notes drawn over the pitch contour they came from, on the shared time grid, seekable. Analysis once in a worker; interpretation re-derived live at ~12 ms. |
 | [v1.10.0](#v1100--notes-and-key-from-a-vocal-stem-2026-08-30-1417) | Notes and key detection from a stem: decimated YIN, segmentation, Krumhansl-Schmuckler key with a confidence margin. Bench page only, no UI. |
 | [v1.9.0](#v190--favicon-and-home-screen-icon-2026-08-26-1429) | Favicon and iPhone home-screen icon: six stem bars with the bass lane flattened, so the mark is the song *sans bass*. |
 | [v1.8.0](#v180--separation-is-a-desktop-feature-2026-08-21-2225) | Separation hidden on phones and tablets, with an honest message; the crash is unfixable from this repo. |
@@ -30,6 +31,66 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.11.0 — notes ribbon in the player (2026-08-30 20:59)
+
+**Review:** not yet
+
+**Design docs:**
+- Notes ribbon: [Spec](superpowers/specs/2026-08-30-notes-ribbon-design.md) [Plan](superpowers/plans/2026-08-30-notes-ribbon.md)
+
+**What was built:**
+- `lib/ribbon.js` — classic script, `window.SansRibbon`: duration-weighted vertical range
+  with octave clipping, and contour polylines that break at unvoiced frames.
+- `notes.worker.js` — ESM, runs `decimate` + `f0Track` off the main thread.
+- `notes.js` — ESM, mirrors `separate.js`: owns the worker, and re-derives notes on the
+  main thread whenever a parameter moves.
+- `app.js` — a ribbon lane built inside `buildLanes()`, `renderRibbon`, and two new
+  `window.sansBass` members (`stemBuffer`, `setNotes`).
+- Asset version v1.9.0 → **v1.11.0**. v1.10.0 never appears in a `?v=` because that
+  release changed no file `index.html` loads.
+
+**Measured, on `6 南國的風`:**
+
+| `minDurationMs` | notes | re-derive |
+|---|---|---|
+| 80 | 437 | 13.2 ms |
+| 120 (default) | 228 | — |
+| 150 | 171 | 11.1 ms |
+| 200 | 99 | 15.1 ms |
+
+Analysis for the same track is ~2.0 s warm and ~7 s cold. The whole architecture is that
+ratio.
+
+**Key technical learnings:**
+- `[gotcha]` `el.lanes.innerHTML = ''` destroys anything parked inside `#lanes`, so the
+  ribbon lane is built in `buildLanes()` rather than declared in `index.html`. A static
+  element would have worked for exactly one song.
+- `[gotcha]` Canvas width must come from `canvas.clientWidth`, not
+  `canvas.parentElement.clientWidth`. The parent is the `.lane` grid, 224 px wider than
+  the canvas — the ribbon drew on a different time scale than the waveforms above it, and
+  the symptom was a lane that looked plausible and was silently misaligned.
+- `[gotcha]` `.notes { display: flex }` is exactly the trap the `[hidden]` rule exists for.
+  Verified with `getComputedStyle().display`, never `.hidden`.
+- `[insight]` Reusing `paint()` cost nothing but keeping the `{ idle, active, h, w }` layer
+  shape, and bought the playhead, A–B shading and clip behaviour for free. Matching an
+  existing contract beat writing a second draw path.
+- `[insight]` Splitting analysis from interpretation in `lib/pitch.js` during the PoC — a
+  boundary drawn for testability, not for this — is the only reason a live slider is
+  possible. Re-deriving measured 92× cheaper than re-analysing.
+- `[gotcha]` **Octave errors on this material are not rare blips.** 4.8% of note time sits
+  in MIDI 36–47, an octave below the melody, in notes with a *median duration of 186 ms*.
+  A 3rd-percentile clip cannot exclude them, so the lane spans 27 semitones and the melody
+  is squashed. Threshold tuning cannot fix a sustained error; this is direct evidence for
+  the Viterbi note decoder described in `docs/transcription.md`.
+
+**Process learnings:**
+- `[gotcha]` A page loaded before an edit keeps the old `app.js` in memory. `renderRibbon
+  is not defined` came from testing against a stale page, not from a hoisting problem —
+  the same class of confusion the `?v=` cache-buster exists to prevent in production.
+- `[note]` A stems zip can be built in the browser with `lib/zip.js` and fed through
+  `#file-input` via `DataTransfer`, which exercises the real load path — `ensureAudio()`
+  included — instead of reaching past it into the seam.
 
 ## v1.10.0 — notes and key from a vocal stem (2026-08-30 14:17)
 

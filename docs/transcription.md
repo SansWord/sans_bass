@@ -125,6 +125,6 @@ errors rather than removing them.
 | notes | built — `segmentNotes()`, threshold-v1 |
 | key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer |
 | sonification | built — `lib/sonify.js`, plays notes back against the stem |
-| notes lane in the app | designed, not built — see the Phase B2 spec |
+| notes lane in the app | built — `notes.js`, `notes.worker.js`, `lib/ribbon.js` |
 | edits | not designed |
 | beat / tempo | not built |

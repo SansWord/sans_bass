@@ -331,3 +331,75 @@ test('sonify: cutting at B does not shorten a note that ends mid-lap', async () 
   assertClose(rms(looped, from, to), rms(plain, from, to), 1e-9,
               'and the looped render keeps it — the clamp is to B, never to note.end');
 });
+
+test('sonify: a remainder too short to be a pitch is dropped', async () => {
+  /* Entering a note 5 ms before it ends gives a transient, not a note — and one
+   * oscillator per lap for it. The floor is 10 ms.
+   *
+   * The note is SHORT on purpose. A 5 ms remainder of a long note is inaudible anyway:
+   * by then the envelope has fallen to ~2e-4, so the assertion would hold with no floor
+   * in the code at all. Here envLen is 82 ms, so 5 ms before the end the envelope is
+   * still at 6e-3 — six times the threshold — and only the floor silences it. */
+  const ctx = new OfflineAudioContext(1, SR, SR);
+  const notes = [{ start: 0.1, end: 0.15, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset: 0.145, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  const peak = Math.max(...Array.from(out, Math.abs));
+  assert(peak < 1e-3, `a 5 ms remainder makes no sound (peak ${peak.toFixed(6)})`);
+});
+
+test('sonify: the audibility floor never drops a whole note', async () => {
+  /* interpret() enforces minDurationMs >= 20, so no real note is shorter than the 10 ms
+   * floor. This pins that relationship: if the floor is ever raised above the shortest
+   * note the interpreter can emit, notes start vanishing from the playback entirely. */
+  const ctx = new OfflineAudioContext(1, SR, SR);
+  const notes = [{ start: 0.1, end: 0.12, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset: 0, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  assert(rms(out, Math.round(0.11 * SR), Math.round(0.16 * SR)) > 0.001,
+         'the shortest note the interpreter can produce still sounds');
+});
+
+test('sonify: a note spanning the whole loop region resumes at A and is cut at B', async () => {
+  /* Both boundaries at once: the note starts before A and ends after B, so it is entered
+   * partway AND truncated. The lap should be one continuous tone with nothing after it. */
+  const ctx = new OfflineAudioContext(1, SR, SR);
+  const notes = [{ start: 0.0, end: 2.0, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  // Loop [0.1, 0.3): a 0.2 s window entirely inside a 2 s note.
+  scheduleNotes(ctx, ctx.destination, notes,
+                { when: 0, offset: 0.1, loopA: 0.1, loopB: 0.3, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  assert(rms(out, Math.round(0.01 * SR), Math.round(0.18 * SR)) > 0.001,
+         'the lap sounds throughout');
+});
+
+test('sonify: a region with no note onsets but one sustained note still generates laps', async () => {
+  /* This case used to leave loopBase EMPTY, which trips the guard that stops lap
+   * generation — so the region was silent for ever. It now yields one event per lap.
+   *
+   * The guard itself must still work: this test would hang rather than fail if lap
+   * generation ran away, so a timeout here is the signal, not an assertion failure. */
+  const ctx = new OfflineAudioContext(1, SR, SR);
+  const notes = [{ start: 0.0, end: 5.0, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes,
+                { when: 0, offset: 0.2, loopA: 0.2, loopB: 0.4, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  for (const lapStart of [0, 0.2, 0.4, 0.6]) {
+    assert(rms(out, Math.round((lapStart + 0.01) * SR), Math.round((lapStart + 0.15) * SR)) > 0.001,
+           `the sustained note sounds on the lap at ${lapStart}s`);
+  }
+});
+
+test('sonify: a doubtful note straddling A is still silent', async () => {
+  /* N36 on the new path. Folding marks a note it cannot justify; sounding it would
+   * re-introduce the wrong-octave shriek folding exists to remove — and "it was already
+   * playing when we got here" is not an exception to that. */
+  const ctx = new OfflineAudioContext(1, SR, SR);
+  const notes = [{ start: 0.0, end: 0.4, midi: 84, cents: 8400, name: 'C6', confidence: 0.9,
+                   fix: { from: 84, state: 'doubt', doubt: true } }];
+  scheduleNotes(ctx, ctx.destination, notes,
+                { when: 0, offset: 0.2, loopA: 0.2, loopB: 0.6, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  const peak = Math.max(...Array.from(out, Math.abs));
+  assert(peak < 1e-3, `an untrusted note stays silent when straddled (peak ${peak.toFixed(6)})`);
+});

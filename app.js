@@ -13,6 +13,8 @@ const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
 let audio = null;          // AudioContext (created on first user gesture)
 let master = null;         // master GainNode
 let tracks = [];           // loaded tracks
+let ribbon = null;         // { notes, frames, params, clip } from notes.js, or null
+let ribbonEl = null;       // { lane, canvas, txt } — rebuilt with the lanes on every load
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
 let startedAt = 0;         // audio.currentTime at which playback began
@@ -384,6 +386,9 @@ function buildUI(title) {
   buildModeOptions();
 
   // lanes
+  /* The previous song's frames describe the previous song's audio; drawn against the new
+   * duration they would be silently wrong. Drop them before the lanes are rebuilt. */
+  ribbon = null;
   el.lanes.innerHTML = '';
   tracks.forEach((t, i) => {
     const lane = document.createElement('div');
@@ -428,8 +433,47 @@ function buildUI(title) {
     attachSeek(canvas);
   });
 
+  /* Built here rather than parked in index.html: el.lanes.innerHTML = '' above destroys
+   * anything inside #lanes, so a static element would vanish on the second song. Built
+   * with the lanes it survives by construction, and lands directly under vocals. */
+  ribbonEl = null;
+  const vocals = tracks.find((t) => t.stem === 'vocals');
+  if (vocals) {
+    const lane = document.createElement('div');
+    lane.className = 'lane ribbon';
+    lane.hidden = true;
+
+    const name = document.createElement('div');
+    name.className = 'lane-name';
+    const txt = document.createElement('span');
+    txt.className = 'txt';
+    txt.textContent = tr('notes.lane');
+    name.appendChild(txt);
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'wave';
+
+    const spacer = document.createElement('div');
+
+    lane.append(name, canvas, spacer);
+    el.lanes.insertBefore(lane, vocals.laneEl.nextSibling);
+    attachSeek(canvas);
+    ribbonEl = { lane, canvas, txt };
+  }
+
   attachSeek(el.mainWave);
   renderAll();
+}
+
+/* The interpretation layer hands its result over here. Called again on every change of a
+ * detection parameter — see docs/transcription.md — so it must be cheap and idempotent. */
+function setNotes(payload) {
+  ribbon = payload && payload.notes && payload.frames ? payload : null;
+  if (!ribbonEl) return;
+  ribbonEl.lane.hidden = !ribbon;
+  if (!ribbon) { ribbonEl.canvas.__layers = null; return; }
+  renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.parentElement.clientWidth);
+  draw();
 }
 
 function renderAll() {
@@ -1011,5 +1055,12 @@ window.sansBass = {
   },
   /** True when exactly one track is loaded — i.e. an unseparated song. */
   isSingleTrack: () => tracks.length === 1,
+  /** A loaded stem's buffer by name, or null. notes.js reads 'vocals' through this. */
+  stemBuffer: (stem) => {
+    const t = tracks.find((x) => x.stem === stem);
+    return t ? { name: t.name, buffer: t.buffer } : null;
+  },
+  /** Hand detected notes to the player, or null to clear the lane. */
+  setNotes,
   say,
 };

@@ -47,6 +47,16 @@ the detector originally said.
 Note that action 1 of note editing is the same operation by hand. The two should share one
 representation rather than becoming two mechanisms that disagree.
 
+## 簡譜 — notes as scale degrees
+
+**Designed** — [spec](superpowers/specs/2026-08-31-jianpu-design.md), approved 2026-08-31.
+Not yet implemented.
+
+A display mode showing each note as a scale degree instead of an absolute name, with the key
+picked automatically and overridable: a `1=` selector, a major/minor selector that changes what
+the degrees mean, and a ⇄ button swapping the current key for its relative. This is also the
+first time `detectKey()` reaches the player — it has been bench-page-only since v1.10.0.
+
 ## Paste a YouTube link, extract the audio for separation
 
 Wanted: paste a URL, get the audio, separate it — without the manual download step.

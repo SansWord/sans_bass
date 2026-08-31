@@ -583,10 +583,27 @@ test('pitch: pitchBand weights by duration, not by note count', () => {
   }
   const [lo, hi] = pitchBand(notes);
   const centre = (lo + hi) / 2;
-  assert(Math.abs(centre - 40) < Math.abs(centre - 64), `the held note pulls the centre (${centre})`);
+  assertEq(centre, 40, 'the held note defines the centre');
 });
 
 test('pitch: pitchBand survives an empty list', () => {
   const [lo, hi] = pitchBand([]);
   assert(Number.isFinite(lo) && Number.isFinite(hi) && hi > lo, 'a usable band, not NaN');
+});
+
+test('pitch: pitchBand widens for a wide-ranging singer, where the MAD term binds', () => {
+  /* Every other test here is carried by the minHalfWidth floor, which would leave
+   * madMultiple untested while it is the term that actually binds on real material
+   * (measured MAD 4-5 on ng_kipin, so half = 15 and the floor never applies). Three
+   * octaves of spread makes 3 x MAD exceed the floor. */
+  const [lo, hi] = pitchBand(notesAt([36, 40, 44, 48, 52, 56, 60, 64, 68, 72]));
+  assertEq(hi - lo, 72, `the MAD term set the width, not the floor (${lo}..${hi})`);
+});
+
+test('pitch: pitchBand opts override the defaults', () => {
+  const notes = notesAt([48, 50, 52, 53, 55, 52, 50, 48]);
+  const floored = pitchBand(notes);
+  const bare = pitchBand(notes, { minHalfWidth: 0 });
+  assertEq(floored[1] - floored[0], 24, 'the default is floored to an octave either side');
+  assertEq(bare[1] - bare[0], 12, 'with the floor removed, 3 x MAD sets the width');
 });

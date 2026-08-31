@@ -8,7 +8,8 @@ import { test, assert, assertEq } from './assert.js';
  * It reads the shipped files over HTTP rather than a constant, so it checks what the browser
  * actually gets. Needs ./scripts/serve.sh, like the rest of tests/. */
 
-const FILES = ['../index.html', '../separate.js', '../separate.worker.js'];
+const FILES = ['../index.html', '../separate.js', '../separate.worker.js',
+               '../notes.js', '../notes.worker.js'];
 
 // Only local assets are versioned; a jsDelivr or Hugging Face URL carries its own version.
 // Images are in the list because the icons are local assets like any other — an icon left

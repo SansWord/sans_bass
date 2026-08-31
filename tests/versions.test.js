@@ -8,7 +8,8 @@ import { test, assert, assertEq } from './assert.js';
  * It reads the shipped files over HTTP rather than a constant, so it checks what the browser
  * actually gets. Needs ./scripts/serve.sh, like the rest of tests/. */
 
-const FILES = ['../index.html', '../separate.js', '../separate.worker.js'];
+const FILES = ['../index.html', '../separate.js', '../separate.worker.js',
+               '../notes.js', '../notes.worker.js'];
 
 // Only local assets are versioned; a jsDelivr or Hugging Face URL carries its own version.
 // Images are in the list because the icons are local assets like any other — an icon left
@@ -38,7 +39,7 @@ test('versions: every local asset URL carries a ?v=', async () => {
   assertEq(missing.length, 0, `unversioned local assets: ${missing.join(', ')}`);
 });
 
-test('versions: all three files agree on one version', async () => {
+test('versions: every versioned file agrees on one version', async () => {
   const sources = await fetchAll();
   const found = new Map();
   for (const [file, text] of Object.entries(sources)) {

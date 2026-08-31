@@ -72,6 +72,11 @@ function syncFoldControls() {
   const on = el.fold.checked;
   el.foldTol.disabled = !on;
   el.foldTolOut.textContent = tr('notes.foldTolVal', { n: el.foldTol.value });
+  /* An octave-plus-a-fifth error lands about 4.98 semitones from its neighbours, and ordinary
+   * melodic movement lands 2-3 out — so the two populations overlap and there is no safe
+   * dividing line. From 2.5 up the fold increasingly accepts harmonic errors and draws them
+   * blue, i.e. as trusted. Marked rather than forbidden: the range is there to be explored. */
+  el.foldTolOut.classList.toggle('risky', Number(el.foldTol.value) >= 2.5);
   el.foldStats.hidden = !on;
   if (!on) return;
   let folded = 0;

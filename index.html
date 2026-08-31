@@ -164,11 +164,12 @@
             <span id="notes-fold-stats" class="notes-stats" hidden></span>
           </div>
           <!-- Only meaningful while the box above is ticked, so notes.js disables it when it
-               is not. Capped at 3 deliberately: the old default of 5 was measured folding
-               octave-plus-a-fifth errors and marking them confident. -->
+               is not. Runs to 8 so the whole range can be explored, but notes.js marks the
+               readout from 2.5 up: an octave-plus-a-fifth error lands ~4.98 semitones out, so
+               past there the fold starts trusting corrections it cannot justify. -->
           <label class="notes-ctl notes-sub">
             <span data-i18n="notes.foldTol">Fold tolerance</span>
-            <input id="notes-fold-tol" type="range" min="0.5" max="3" step="0.25" value="1.5" disabled>
+            <input id="notes-fold-tol" type="range" min="0.5" max="8" step="0.25" value="1.5" disabled>
             <output id="notes-fold-tol-out" class="notes-val">1.5 semitones</output>
           </label>
         </details>

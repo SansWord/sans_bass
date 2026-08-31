@@ -668,9 +668,9 @@ test('pitch: foldOctaves stays fast when almost every note is an outlier', () =>
    * the right-hand scan walks to the end of the list and finds nothing, every time.
    * This runs on the main thread during a slider drag, the same place an unbounded running
    * median cost 5.9 s in v1.11.0. */
-  const notes = [{ start: 0, end: 60, midi: 50, cents: 5000, name: 'D3', confidence: 0.9 }];
+  const notes = [{ start: 0, end: 120, midi: 50, cents: 5000, name: 'D3', confidence: 0.9 }];
   for (let i = 0; i < 1199; i++) {
-    notes.push({ start: 60 + i * 0.05, end: 60.05 + i * 0.05, midi: 96,
+    notes.push({ start: 120 + i * 0.05, end: 120.05 + i * 0.05, midi: 96,
                  cents: 9600, name: 'C7', confidence: 0.9 });
   }
   const [lo, hi] = pitchBand(notes);
@@ -717,4 +717,17 @@ test('pitch: foldOctaves carries the measured detune through a fold', () => {
   const out = foldOctaves(notes);
   assertEq(out[2].midi, 42, 'still folds three octaves down');
   assertEq(out[2].cents, 4215, 'and keeps the 15 cents of detune');
+});
+
+test('pitch: foldOctaves declines a fold whose residual only just exceeds the threshold', () => {
+  /* THE guard on confidentWithin itself. Every other fold test here has residual 0 and the
+   * odd-harmonic guard has residual 5, so without this the whole suite passes for any
+   * threshold in [0, 5) — including the 3 that reintroduces the original defect. This
+   * fixture's residual is 2.5, so it doubts at 1.5 and folds at 2.5, bracketing the setting.
+   * The shape is real: a residual-2.5 third-harmonic outlier is one of the measured
+   * ng_kipin cases. */
+  const notes = notesAt([50, 53, 78, 50, 53, 50, 53, 50]);
+  assertEq(foldOctaves(notes)[2].fix.state, 'doubt', 'at the shipped 1.5 it is marked');
+  assertEq(foldOctaves(notes, { confidentWithin: 3 })[2].fix.state, 'folded',
+    'and a looser threshold would fold it — so this test is what pins the setting');
 });

@@ -260,3 +260,19 @@ test('sonify: a note straddling the loop start sounds on the first pass', async 
   assert(rms(out, Math.round(0.01 * SR), Math.round(0.15 * SR)) > 0.001,
          'the part of the note inside the loop sounds');
 });
+
+test('sonify: the note straddling A resumes on every lap, not just the first', async () => {
+  /* Sounding once and then never again is the shape this bug takes if only lap 0 is
+   * fixed — and it reads as "the loop stopped working" rather than as a missing note. */
+  const ctx = new OfflineAudioContext(1, SR * 2, SR);
+  const notes = [{ start: 0.0, end: 0.4, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  // Loop [0.2, 0.6): 0.4 s laps starting at context time 0, 0.4, 0.8, 1.2, 1.6.
+  scheduleNotes(ctx, ctx.destination, notes,
+                { when: 0, offset: 0.2, loopA: 0.2, loopB: 0.6, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  for (const lapStart of [0, 0.4, 0.8, 1.2]) {
+    const from = Math.round((lapStart + 0.01) * SR);
+    const to = Math.round((lapStart + 0.15) * SR);
+    assert(rms(out, from, to) > 0.001, `the note sounds on the lap starting at ${lapStart}s`);
+  }
+});

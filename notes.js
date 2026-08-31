@@ -25,7 +25,21 @@ const el = {
   foldTolOut: document.getElementById('notes-fold-tol-out'),
   foldStats: document.getElementById('notes-fold-stats'),
   show: document.getElementById('notes-show'),
+  jianpu: document.getElementById('notes-jianpu'),
+  keyTonic: document.getElementById('notes-key-tonic'),
+  keyMode: document.getElementById('notes-key-mode'),
+  keyRel: document.getElementById('notes-key-rel'),
 };
+
+/* Note names are never translated in this app — a saved zip is `vocals.wav` in every
+ * language, and C# is C# in every language too. */
+const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+for (let i = 0; i < 12; i++) {
+  const o = document.createElement('option');
+  o.value = String(i);
+  o.textContent = PITCH_CLASSES[i];
+  el.keyTonic.appendChild(o);
+}
 
 const tr = (key, params) => window.SansI18n.t(key, params);
 
@@ -36,6 +50,8 @@ const syncTips = () => {
   el.clip.parentElement.title = tr('notes.clipTip');
   el.fold.parentElement.title = tr('notes.foldTip');
   el.foldTol.parentElement.title = tr('notes.foldTolTip');
+  el.jianpu.parentElement.title = tr('notes.jianpuTip');
+  el.keyRel.title = tr('notes.relativeTip');
 };
 syncTips();
 
@@ -104,6 +120,14 @@ function syncFoldControls() {
     document.createTextNode(' · '),
     frag('notes.foldStatsMuted', muted, 'n-mute'),
   );
+}
+
+/* The key selectors mean nothing while 簡譜 is off, so they go visibly inert rather than
+ * silently doing nothing — the same pattern as the fold tolerance slider. */
+function syncJianpuControls() {
+  el.keyTonic.value = String(jianpu.tonic);
+  el.keyMode.value = jianpu.mode;
+  for (const c of [el.keyTonic, el.keyMode, el.keyRel]) c.disabled = !jianpu.on;
 }
 
 /** Re-derive notes from the existing frames. No worker, no re-analysis. */
@@ -218,6 +242,7 @@ function refresh() {
 }
 setInterval(refresh, 400);
 refresh();
+syncJianpuControls();      // the selectors are inert until 簡譜 is ticked, from the first paint
 
 el.go.addEventListener('click', analyse);
 el.min.addEventListener('input', reinterpret);
@@ -225,6 +250,29 @@ el.clip.addEventListener('change', reinterpret);   // clip rides in the payload
 el.hmm.addEventListener('change', reinterpret);
 el.fold.addEventListener('change', reinterpret);
 el.foldTol.addEventListener('input', reinterpret);
+el.jianpu.addEventListener('change', () => {
+  jianpu.on = el.jianpu.checked;
+  syncJianpuControls();
+  reinterpret();
+});
+/* Touching either selector ends the automatic tracking: a detected key is a suggestion, and
+ * once it has been overruled a later re-interpretation must not quietly undo that. */
+for (const c of [el.keyTonic, el.keyMode]) {
+  c.addEventListener('change', () => {
+    jianpu.auto = false;
+    jianpu.tonic = Number(el.keyTonic.value);
+    jianpu.mode = el.keyMode.value;
+    reinterpret();
+  });
+}
+el.keyRel.addEventListener('click', () => {
+  const r = relativeKey(jianpu.tonic, jianpu.mode);
+  jianpu.auto = false;
+  jianpu.tonic = r.tonic;
+  jianpu.mode = r.mode;
+  syncJianpuControls();
+  reinterpret();
+});
 el.show.addEventListener('click', () => {
   window.sansBass.setRibbonVisible(!window.sansBass.ribbonVisible());
   syncShowLabel();

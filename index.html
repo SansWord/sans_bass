@@ -137,6 +137,20 @@
         <button id="notes-go" class="btn" data-i18n="notes.find">Find notes</button>
         <span id="notes-count" class="notes-count"></span>
         <button id="notes-show" class="btn ghost" data-i18n="notes.hide" hidden>Hide notes</button>
+        <label class="notes-ctl">
+          <input id="notes-jianpu" type="checkbox">
+          <span data-i18n="notes.jianpu">簡譜</span>
+        </label>
+        <span class="notes-ctl notes-key">
+          <span data-i18n="notes.keyIs">1 =</span>
+          <select id="notes-key-tonic" disabled></select>
+          <select id="notes-key-mode" disabled>
+            <option value="major" data-i18n="notes.major">major</option>
+            <option value="minor" data-i18n="notes.minor">minor</option>
+          </select>
+          <button id="notes-key-rel" class="mini" type="button" disabled
+                  data-i18n-attr="title:notes.relativeTip">⇄</button>
+        </span>
       </div>
       <div id="notes-tune" class="notes-row" hidden>
         <label class="notes-ctl">

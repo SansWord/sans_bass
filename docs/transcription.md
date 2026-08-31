@@ -80,6 +80,26 @@ not.
 `driftCents` reads as inert because the drift rule needs three *consecutive* frames past the
 threshold, and vibrato oscillates — it rarely stays on one side that long.
 
+### The floor on `minDurationMs`
+
+The hard limit is the analysis frame hop, **11.61 ms** — a note cannot be shorter than one
+frame, so nothing below that is representable at all.
+
+The musical limit is higher but not by as much as it looks. In 4/4:
+
+| tempo | quarter | sixteenth | thirty-second |
+|---|---|---|---|
+| 60 BPM | 1000 ms | 250 ms | 125 ms |
+| 120 BPM | 500 ms | 125 ms | 62.5 ms |
+| 200 BPM | 300 ms | 75 ms | 37.5 ms |
+| 240 BPM | 250 ms | 63 ms | 31 ms |
+
+So a 60 ms floor already discards a sixteenth at 240 BPM and a thirty-second at 120 — and
+melismatic runs go faster still. The control ranges from 20 ms for that reason. Below
+roughly 40 ms most of what appears is artefact rather than note (1191 notes at no floor
+against 522 at 60 ms on `6 南國的風`), but seeing it is how you tell an artefact from a
+fast passage, which is the whole reason the control is exposed.
+
 ### Where the spurious notes actually come from
 
 Of 437 notes, **148 touch their neighbour with zero gap, and only 8 of those share a pitch.**

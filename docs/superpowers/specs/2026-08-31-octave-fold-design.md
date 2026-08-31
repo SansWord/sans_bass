@@ -255,6 +255,13 @@ chroma vector. That is asserted in the tests rather than assumed.
   visible throughout, and the alternative is that it sounds an octave or more wrong, but this
   is a materially larger silence than the figure the design was first approved against.
 
+  **Decision (2026-08-31), taken with the corrected figure in hand: keep 1.5.** A silent gray
+  note is honest about what the detector could not establish, and the notes it silences are
+  precisely the ones that would otherwise shriek an octave or more off. The alternative
+  considered and rejected was letting doubtful notes sound at their detected pitch, which
+  would return the exact defect the feature exists to remove. Revisit once layer-4 editing
+  lands and these can be corrected by hand instead of merely marked.
+
 ### Controls
 
 A new checkbox in the Advanced disclosure, **off by default**, beside the existing two:

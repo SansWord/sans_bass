@@ -483,3 +483,27 @@ test('pitch: a higher onsetCost yields fewer notes, monotonically', () => {
   }
   assert(counts[0] > counts[counts.length - 1], `the control has real range (${counts})`);
 });
+
+import { interpret } from '../lib/pitch.js';
+
+test('pitch: interpret dispatches on the interpreter name', () => {
+  const tr = fakeTrack([[6000, 40], [0, 6], [6400, 40]]);
+  tr.candidates = new Array(tr.cents.length);
+  for (let i = 0; i < tr.cents.length; i++) {
+    tr.candidates[i] = tr.cents[i]
+      ? [{ cents: tr.cents[i], f0: hzFromCents(tr.cents[i]), tau: 0, p: 1 }]
+      : [];
+  }
+  const a = interpret(tr, { interpreter: 'threshold-v1', params: { minDurationMs: 80 } });
+  const b = interpret(tr, { interpreter: 'hmm-v1', params: { minDurationMs: 80 } });
+  assert(a.length >= 2, 'threshold-v1 finds the two notes');
+  assert(b.length >= 2, 'hmm-v1 finds the two notes');
+  assertEq(a[0].name, 'C4', 'threshold-v1 first note');
+  assertEq(b[0].name, 'C4', 'hmm-v1 first note');
+});
+
+test('pitch: interpret falls back to threshold-v1 for an unknown interpreter', () => {
+  const tr = fakeTrack([[6000, 40]]);
+  const notes = interpret(tr, { interpreter: 'nonesuch-v9', params: {} });
+  assertEq(notes.length, 1, 'a file written by a future version still opens');
+});

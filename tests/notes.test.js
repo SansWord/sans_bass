@@ -10,7 +10,7 @@ function sine(hz, seconds, sampleRate, amp = 0.5) {
 
 function analyse(channels, sampleRate) {
   return new Promise((resolve, reject) => {
-    const w = new Worker('../notes.worker.js?v=1.12.0', { type: 'module' });
+    const w = new Worker('../notes.worker.js?v=1.13.0', { type: 'module' });
     const timer = setTimeout(() => { w.terminate(); reject(new Error('worker never answered')); }, 20000);
     w.onmessage = (e) => {
       clearTimeout(timer);

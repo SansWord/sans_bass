@@ -18,9 +18,15 @@ pitch move and a time move want different anchors, so this decides the override 
 
 ## Automatic octave folding
 
-**Planned** — [spec](superpowers/specs/2026-08-31-octave-fold-design.md) and
-[plan](superpowers/plans/2026-08-31-octave-fold.md), both approved 2026-08-31.
-Branch `feat/octave-fold`; not yet implemented. A checkbox that folds
+**Built — v1.13.0.** [Spec](superpowers/specs/2026-08-31-octave-fold-design.md),
+[plan](superpowers/plans/2026-08-31-octave-fold.md).
+
+**What remains.** The odd-harmonic (3rd/6th) errors are still uncorrected — an octave plus a
+fifth is unreachable by any whole-octave shift, and correcting them would change pitch class
+and so break the key-detection guarantee that makes folding safe. They are marked doubtful
+instead. That is the natural next step and needs a different safety argument. Also: the
+threshold bounds the *residual*, not the error, so when the neighbours themselves sit a fifth
+from the truth a 6th-harmonic error lands on them with residual 0 and nothing catches it. A checkbox that folds
 octave-outlier notes by whole octaves into the singer's range, instead of only clipping them
 from the lane's scale the way **Fit the lane to the melody** does today.
 

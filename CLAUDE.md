@@ -81,7 +81,8 @@ lib/unzip.js                       zip reading, classic script — window.SansUn
 lib/i18n.js                        zh-TW/en dictionary + runtime, classic script
 lib/platform.js                    isHandheld() device predicate, classic script
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
-lib/pitch.js                       ESM — YIN, candidates, Viterbi decoding, segmentation, key
+lib/pitch.js                       ESM — YIN, candidates, Viterbi decoding, segmentation,
+                                   octave folding, key
 lib/sonify.js                      ESM — plays detected notes back as tones
 lib/ribbon.js                      ribbon geometry, classic script — window.SansRibbon
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
@@ -169,7 +170,7 @@ out of the project; never commit them.
   `separate.worker.js` (1), `notes.js` (3) and `notes.worker.js` (1) — 22 in all;
   `tests/versions.test.js` fails if they drift — and it
   covers `.png` and `.svg` as well as `.js`/`.css`, so the icons are included. Currently
-  `v1.12.0`.
+  `v1.13.0`.
 - **Separation is desktop-only, and that is not fixable from this repo.** On iOS the first
   `session.run()` kills the tab; the accumulators, the 285 MB model, the memory floor,
   WebGPU and asyncify were each ruled out by measurement, and `N_SAMPLES = 343980` is baked

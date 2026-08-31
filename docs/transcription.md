@@ -240,6 +240,7 @@ errors rather than removing them.
 | key estimate | built — `notesToChroma()` + `detectKey()`, a sibling of notes rather than a layer | **bench page only** (`tests/notes.html`); no player UI |
 | sonification | built — `lib/sonify.js`, with lap generation for A–B repeat | the notes lane plays it, muted by default |
 | notes lane | built — `lib/ribbon.js` geometry, drawn by `app.js` | full-song lane under vocals; **Fit the lane to the melody** is a display choice about the vertical scale only |
+| octave folding | built — `pitchBand()` + `foldOctaves()` over the note list | the **Fix octave outliers** checkbox; corrects what it can justify, marks the rest |
 | zoomed reading pane | built | above the lane; ~10 s window, 2–60 s |
 | edits | not built; the six intended actions are listed under Layer 4 | — |
 | beat / tempo | not built | — |

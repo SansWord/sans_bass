@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.13.0](#v1130--octave-folding-2026-08-31-1214) | Octave-outlier notes are folded back into the singer's range using their neighbours, and the ones that cannot be justified are marked rather than guessed. Off by default. Nothing is deleted: every note keeps a `fix` record, folded ones draw blue, untrusted ones gray and silent. |
 | [v1.12.0](#v1120--hmm-note-decoding-switchable-2026-08-30-2241) | A second note interpreter, `hmm-v1`: `yinFrame` keeps every CMND local minimum as a weighted candidate, and two Viterbi passes decode a pitch path and segment it into notes. Off by default — it cuts octave-down errors by a third to a half, but trades some of that for octave-up errors on two of three tracks. Confirmed better by ear at a 100 ms shortest-note setting. |
 | [v1.11.0](#v1110--notes-ribbon-in-the-player-2026-08-30-2059) | A notes lane under the vocals stem: detected notes drawn over the pitch contour they came from, on the shared time grid, seekable. Analysis once in a worker; interpretation re-derived live at ~12 ms. |
 | [v1.10.0](#v1100--notes-and-key-from-a-vocal-stem-2026-08-30-1417) | Notes and key detection from a stem: decimated YIN, segmentation, Krumhansl-Schmuckler key with a confidence margin. Bench page only, no UI. |
@@ -32,6 +33,89 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.13.0 — octave folding (2026-08-31 12:14)
+
+**Review:** not yet
+
+**Design docs:**
+- Octave folding: [Spec](superpowers/specs/2026-08-31-octave-fold-design.md) [Plan](superpowers/plans/2026-08-31-octave-fold.md)
+
+**What was built:**
+- `pitchBand()` — the singer's plausible range, duration-weighted median ± max(12, 3×MAD).
+- `foldOctaves()` — shifts an out-of-band note by whole octaves toward its nearest **in-band**
+  neighbours. Never adds or removes a note. A corrected one carries
+  `fix: {from, state:'folded', shift}`; one it declines carries `fix: {from, state:'doubt'}`.
+- `interpret()` applies it as a post-pass when `params.fold` is set, for both interpreters.
+- `lib/sonify.js` skips doubtful notes in **both** collection loops.
+- `app.js` gains a `NOTE_FILL` table: folded blue, doubtful gray, in both draw sites.
+- A **Fix octave outliers** checkbox, off by default. The old **Clip octave outliers** was
+  renamed **Fit the lane to the melody**.
+- The bench page reports folded/doubtful counts and sweeps `confidentWithin`.
+
+**Measured** (four tracks, `minDurationMs: 100`, `threshold-v1`):
+
+| track | notes | folded | doubtful |
+|---|---|---|---|
+| ng_kipin | 187 | 9 | 14 |
+| 6 南國的風 | 313 | 7 | 17 |
+| 12 早安台灣 | 270 | 13 | 6 |
+| 9 繼續向前行 | 342 | 22 | 37 |
+
+Note counts identical with and without folding on all eight track × interpreter combinations.
+
+**Key technical learnings:**
+
+- `[insight]` **The two octave errors are opposites and only one is fixable at the frame
+  layer.** `d(τ)` dips at every integer multiple of the true period — reads an octave low,
+  次諧波, what `hmm-v1` fixed — and at `T/2`, `T/4`, `T/8` when the fundamental is weak, which
+  reads octaves *high*: 泛音. Measured, the fundamental's dip is genuinely absent from the
+  frame: it surfaces only at `candidateThreshold` 1.2 / `maxCandidates` 20, ranked fifteenth
+  at p = 0.04, while the frame still prefers the wrong answer 2.5 to 1. The neighbouring
+  notes resolve it and they exist only at the note layer.
+- `[gotcha]` **A threshold can sit exactly on the failure mode it is meant to exclude.** A
+  power-of-two harmonic error leaves a residual of 0 after the right octave shift; a 3rd or
+  6th harmonic leaves **4.98** semitones. `confidentWithin: 5` therefore folded them and
+  tagged them confident — 7 wrong folds per song on `threshold-v1`, 24 on `hmm-v1`. Changing
+  `>` to `>=` would not have helped either, since 4.98 < 5 both ways.
+- `[gotcha]` **Classifying by the thing you are testing proves nothing.** The spec claimed the
+  confidence test separated foldable from unfoldable harmonics "exactly". It was circular:
+  notes were classified power-of-two *because* they folded within the threshold. Classified
+  independently the populations overlap, and no threshold separates them cleanly.
+- `[insight]` **A percentile band cannot exclude a population that large.** At 16.6%
+  contamination the 5th/95th percentile stretched to E2–D#5 and absorbed the very outliers it
+  was meant to flag. Median and MAD are robust to a contaminated tail; percentiles at those
+  fractions are not.
+- `[gotcha]` **A test can pass for the wrong reason and hide the branch that matters.** Every
+  positive fold fixture had residual 0 and the negative guard had residual 5, so the whole
+  suite was green for *any* threshold in [0, 5) — including the 3 that reintroduces the bug.
+  Same shape as `pitchBand`'s MAD branch, which no test exercised while the floor won every
+  time. Both needed a fixture landing *between* the two behaviours.
+- `[gotcha]` **A throw in the ribbon draw loop does not fail loudly.** `tick()` re-arms the rAF
+  chain only after `draw()` returns, so one malformed note freezes the playhead for the rest
+  of playback while the audio keeps going. `noteFillKey` degrades rather than indexing a
+  colour table with an unknown state.
+- `[gotcha]` **Contrast has to clear the floor in the *dim* variant, not just the active one.**
+  `paint()` blits the idle layer across the whole lane and clips active only over the played
+  portion, so dim is what a note looks like for most of a listen — and the note name is drawn
+  on top of the fill. The first gray measured 1.6:1 dim, with the name at 1.5:1.
+- `[note]` The worker builds its frames message from an explicit field list, so a new array on
+  the track has to be named there too — the lesson from v1.12.0, which held again here.
+
+**Process learnings:**
+
+- `[insight]` **Two review gates catch different things, and the second one earned its keep.**
+  Spec review passed Task 2 correctly — the implementation was byte-for-byte faithful to the
+  plan. The defect was *in the plan*, reproduced faithfully. Only a reviewer asked whether the
+  code serves its purpose, rather than whether it matches instructions, could have found it.
+  Five defects this phase traced to the plan rather than to an implementer.
+- `[gotcha]` **A measured figure quoted in a design doc goes stale when a parameter moves.**
+  The spec said doubtful notes cost ~1.6% of note time. That was measured at
+  `confidentWithin: 5`; at the shipped 1.5 it is 7.5–8.1%, and the decision to keep 1.5 had
+  been taken against the wrong number. Re-measure every quoted figure after a tuning change.
+- `[note]` An ESM named import of a missing export fails the **whole module** at link time, so
+  the red step for a not-yet-written function is an empty `window.__testResults` plus one
+  console `SyntaxError` — not a test failure. Worth telling anyone executing a TDD plan here.
 
 ## v1.12.0 — HMM note decoding, switchable (2026-08-30 22:41)
 

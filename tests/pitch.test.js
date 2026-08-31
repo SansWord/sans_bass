@@ -287,3 +287,257 @@ test('pitch: detectKey survives an all-zero chroma', () => {
   assertEq(typeof r.key, 'string', 'still returns a key rather than throwing');
   assertClose(r.ranked[0].score, 0, 1e-6, 'a flat profile correlates with nothing');
 });
+
+/* A signal whose second harmonic is stronger than its fundamental. YIN's CMND curve dips
+ * at BOTH the true period and twice it; the deeper dip is the wrong one. This is the shape
+ * that produces a sustained octave error, and the candidate list must keep both. */
+function subharmonicSignal(f0, seconds, sampleRate) {
+  const out = new Float32Array(Math.round(seconds * sampleRate));
+  for (let i = 0; i < out.length; i++) {
+    const t = i / sampleRate;
+    out[i] = 0.25 * Math.sin(2 * Math.PI * f0 * t)
+           + 0.60 * Math.sin(2 * Math.PI * 2 * f0 * t)
+           + 0.30 * Math.sin(2 * Math.PI * 3 * f0 * t);
+  }
+  return out;
+}
+
+test('pitch: yinFrame returns weighted candidates, normalised and ordered', () => {
+  const r = yinFrame(sine(220, 0.2, 11025), 0, 11025);
+  assert(Array.isArray(r.candidates), 'candidates come back as an array');
+  assert(r.candidates.length >= 1, 'at least one candidate');
+  let sum = 0;
+  for (let i = 0; i < r.candidates.length; i++) {
+    const c = r.candidates[i];
+    assert(c.f0 > 0 && Number.isFinite(c.cents), `candidate ${i} carries a usable pitch`);
+    assert(c.p > 0, `candidate ${i} has positive probability`);
+    if (i > 0) assert(r.candidates[i - 1].p >= c.p, 'ordered most likely first');
+    sum += c.p;
+  }
+  assertClose(sum, 1, 1e-6, 'probabilities are normalised');
+});
+
+test('pitch: yinFrame keeps the true period alive when the octave-down dip is deeper', () => {
+  const SR = 11025;
+  const TRUE_HZ = 220;
+  const r = yinFrame(subharmonicSignal(TRUE_HZ, 0.2, SR), 0, SR);
+  const wanted = centsFromHz(TRUE_HZ);
+  const near = r.candidates.filter((c) => Math.abs(c.cents - wanted) < 60);
+  assert(near.length > 0,
+    `the true period survives as a candidate (got ${r.candidates.map(c => Math.round(c.cents)).join(', ')} want ~${Math.round(wanted)})`);
+});
+
+test('pitch: yinFrame candidates do not change the single tau it already returned', () => {
+  // The guard on the whole phase: threshold-v1 must see identical input.
+  for (const hz of [82.41, 220, 440, 1046.5]) {
+    const r = yinFrame(sine(hz, 0.2, 11025), 0, 11025);
+    assertClose(centsFromHz(r.f0), centsFromHz(hz), 20, `${hz} Hz unchanged`);
+  }
+});
+
+test('pitch: f0Track stores per-frame candidates without changing what it already returned', () => {
+  const SR = 11025;
+  const samples = sine(220, 1, SR);
+  const track = f0Track(samples, SR);
+
+  assert(Array.isArray(track.candidates), 'candidates array is present');
+  assertEq(track.candidates.length, track.cents.length, 'one entry per frame');
+
+  const voicedIdx = [...track.cents].findIndex((c) => c !== 0);
+  assert(voicedIdx >= 0, 'the tone is voiced somewhere');
+  assert(track.candidates[voicedIdx].length >= 1, 'a voiced frame carries candidates');
+
+  // The existing arrays must be untouched — this is the additive-ness guard.
+  for (const c of [...track.cents].filter(Boolean)) {
+    assertClose(c, centsFromHz(220), 20, 'cents unchanged by the addition');
+  }
+});
+
+test('pitch: f0Track leaves an unvoiced frame with no candidates', () => {
+  const track = f0Track(new Float32Array(11025), 11025);
+  assert(track.candidates.every((c) => c.length === 0), 'silence carries no candidates');
+});
+
+import { viterbiPitch } from '../lib/pitch.js';
+
+/* Build a track by hand: a steady A#3 with a planted 16-frame dip an octave down. That is
+ * the shape measured on real material — 4.8% of note time, notes averaging 186 ms — and it
+ * is far too long for a 5-frame median filter to reach. */
+function trackWithOctaveDip(totalFrames, dipStart, dipLength) {
+  const HIGH = 5800;                 // ~A#3
+  const LOW = HIGH - 1200;           // an octave below
+  const frameSeconds = 128 / 11025;
+  const cents = new Float32Array(totalFrames);
+  const t = new Float32Array(totalFrames);
+  const conf = new Float32Array(totalFrames);
+  const candidates = new Array(totalFrames);
+  for (let i = 0; i < totalFrames; i++) {
+    t[i] = i * frameSeconds;
+    conf[i] = 0.9;
+    const inDip = i >= dipStart && i < dipStart + dipLength;
+    cents[i] = inDip ? LOW : HIGH;
+    // Both readings are always available; inside the dip the wrong one merely looks better.
+    candidates[i] = inDip
+      ? [{ cents: LOW, f0: hzFromCents(LOW), tau: 0, p: 0.6 },
+         { cents: HIGH, f0: hzFromCents(HIGH), tau: 0, p: 0.4 }]
+      : [{ cents: HIGH, f0: hzFromCents(HIGH), tau: 0, p: 0.9 },
+         { cents: LOW, f0: hzFromCents(LOW), tau: 0, p: 0.1 }];
+  }
+  return { t, f0: new Float32Array(totalFrames), conf, cents, candidates, frameSeconds, HIGH, LOW };
+}
+
+test('pitch: viterbiPitch removes a sustained octave dip that the median filter cannot', () => {
+  const tr = trackWithOctaveDip(120, 50, 16);
+
+  // The existing smoother, at any span, follows the dip — that is the problem being solved.
+  const medianed = Float32Array.from(tr.cents);
+  medianFilterVoiced(medianed, 13);
+  assertClose(medianed[56], tr.LOW, 50, 'the median filter still sits an octave low mid-dip');
+
+  const out = viterbiPitch(tr);
+  assertEq(out.length, tr.cents.length, 'one value per frame');
+  for (let i = tr.cents.length; i--;) {
+    if (out[i] === 0) continue;
+    assertClose(out[i], tr.HIGH, 50, `frame ${i} stays on the true pitch`);
+  }
+});
+
+test('pitch: viterbiPitch follows a real octave leap rather than flattening it', () => {
+  // Half the track an octave above the other half, unambiguous at every frame. Suppressing
+  // this would turn a melody into a drone — the failure mode to fear.
+  const frameSeconds = 128 / 11025;
+  const n = 120;
+  const LOW = 5800;
+  const HIGH = 7000;
+  const cents = new Float32Array(n);
+  const t = new Float32Array(n);
+  const conf = new Float32Array(n).fill(0.95);
+  const candidates = new Array(n);
+  for (let i = 0; i < n; i++) {
+    t[i] = i * frameSeconds;
+    const v = i < 60 ? LOW : HIGH;
+    cents[i] = v;
+    candidates[i] = [{ cents: v, f0: hzFromCents(v), tau: 0, p: 0.98 },
+                     { cents: v - 1200, f0: hzFromCents(v - 1200), tau: 0, p: 0.02 }];
+  }
+  const out = viterbiPitch({ t, f0: new Float32Array(n), conf, cents, candidates, frameSeconds });
+  assertClose(out[10], LOW, 50, 'the first half is low');
+  assertClose(out[110], HIGH, 50, 'the second half is high');
+});
+
+test('pitch: viterbiPitch marks frames with no candidates unvoiced', () => {
+  const frameSeconds = 128 / 11025;
+  const n = 30;
+  const candidates = new Array(n);
+  for (let i = 0; i < n; i++) candidates[i] = [];
+  const out = viterbiPitch({ t: new Float32Array(n), f0: new Float32Array(n),
+                             conf: new Float32Array(n), cents: new Float32Array(n),
+                             candidates, frameSeconds });
+  assert([...out].every((v) => v === 0), 'no candidates anywhere means no pitch anywhere');
+});
+
+import { segmentNotesHmm } from '../lib/pitch.js';
+
+test('pitch: segmentNotesHmm splits two steady pitches into two notes', () => {
+  const notes = segmentNotesHmm(fakeTrack([[6000, 40], [6400, 40]]));
+  assertEq(notes.length, 2, 'two notes');
+  assertEq(notes[0].midi, 60, 'C4');
+  assertEq(notes[1].midi, 64, 'E4');
+});
+
+test('pitch: segmentNotesHmm splits on an unvoiced gap', () => {
+  const notes = segmentNotesHmm(fakeTrack([[6000, 40], [0, 6], [6000, 40]]));
+  assertEq(notes.length, 2, 'silence separates two notes at the same pitch');
+});
+
+test('pitch: segmentNotesHmm emits the same note shape as segmentNotes', () => {
+  const [n] = segmentNotesHmm(fakeTrack([[6900, 43]]));
+  for (const key of ['start', 'end', 'midi', 'cents', 'name', 'confidence']) {
+    assert(key in n, `note carries ${key}`);
+  }
+  assertEq(n.name, 'A4', '6900 cents is concert A');
+  assert(n.end > n.start, 'positive duration');
+});
+
+test('pitch: segmentNotesHmm stays fast on a long single-state track', () => {
+  /* The note stage is O(states) per frame, not O(states^2). A four-minute track that sits
+   * on one pitch is the worst case for the transition search, and it runs during a slider
+   * drag on the main thread — the same place an unbounded running median cost 5.9 s in the
+   * previous phase. */
+  const frames = 20000;
+  const spec = [[6000, frames]];
+  const t0 = performance.now();
+  const notes = segmentNotesHmm(fakeTrack(spec));
+  const ms = performance.now() - t0;
+  assert(notes.length >= 1, 'it still finds the note');
+  assert(ms < 400, `20k frames decode in well under half a second (${ms.toFixed(0)} ms)`);
+});
+
+test('pitch: a higher onsetCost yields fewer notes, monotonically', () => {
+  // Alternating pitches: how many survive is exactly what onsetCost governs.
+  const spec = [];
+  for (let i = 0; i < 30; i++) spec.push([i % 2 ? 6000 : 6200, 4]);
+  const counts = [1, 6, 20, 60].map((c) => segmentNotesHmm(fakeTrack(spec), { onsetCost: c }).length);
+  for (let i = 1; i < counts.length; i++) {
+    assert(counts[i] <= counts[i - 1], `onsetCost ${i} does not increase the count (${counts})`);
+  }
+  assert(counts[0] > counts[counts.length - 1], `the control has real range (${counts})`);
+});
+
+import { interpret } from '../lib/pitch.js';
+
+test('pitch: interpret dispatches on the interpreter name', () => {
+  const tr = fakeTrack([[6000, 40], [0, 6], [6400, 40]]);
+  tr.candidates = new Array(tr.cents.length);
+  for (let i = 0; i < tr.cents.length; i++) {
+    tr.candidates[i] = tr.cents[i]
+      ? [{ cents: tr.cents[i], f0: hzFromCents(tr.cents[i]), tau: 0, p: 1 }]
+      : [];
+  }
+  const a = interpret(tr, { interpreter: 'threshold-v1', params: { minDurationMs: 80 } });
+  const b = interpret(tr, { interpreter: 'hmm-v1', params: { minDurationMs: 80 } });
+  assert(a.length >= 2, 'threshold-v1 finds the two notes');
+  assert(b.length >= 2, 'hmm-v1 finds the two notes');
+  assertEq(a[0].name, 'C4', 'threshold-v1 first note');
+  assertEq(b[0].name, 'C4', 'hmm-v1 first note');
+});
+
+test('pitch: interpret falls back to threshold-v1 for an unknown interpreter', () => {
+  const tr = fakeTrack([[6000, 40]]);
+  const notes = interpret(tr, { interpreter: 'nonesuch-v9', params: {} });
+  assertEq(notes.length, 1, 'a file written by a future version still opens');
+});
+
+test('pitch: interpret degrades to threshold-v1 when the track has no candidates', () => {
+  /* An analysis from before candidates existed — or one that lost them crossing a
+   * postMessage boundary. hmm-v1 cannot run, and throwing would take out the caller's
+   * whole re-interpretation. Degrade, exactly as an unknown interpreter name does. */
+  const tr = fakeTrack([[6000, 40]]);
+  delete tr.candidates;
+  const notes = interpret(tr, { interpreter: 'hmm-v1', params: { minDurationMs: 80 } });
+  assertEq(notes.length, 1, 'still returns the note rather than throwing');
+});
+
+/* The guard on the entire phase. If candidates changed what f0Track produces, then
+ * threshold-v1 has been running on different input all along and the comparison in
+ * tests/notes.html means nothing. These are the exact values from the tests that existed
+ * before this work. */
+test('pitch: threshold-v1 behaviour is unchanged by the candidate additions', () => {
+  const SR = 44100;
+  const a = sine(220, 0.6, SR);
+  const gap = new Float32Array(Math.round(0.15 * SR));
+  const b = sine(277.18, 0.6, SR);
+  const buf = new Float32Array(a.length + gap.length + b.length);
+  buf.set(a, 0);
+  buf.set(gap, a.length);
+  buf.set(b, a.length + gap.length);
+
+  const { notes } = detectNotes([buf], SR);
+  assertEq(notes.length, 2, 'still exactly two notes');
+  assertEq(notes[0].name, 'A3', 'first note unchanged');
+  assertEq(notes[1].name, 'C#4', 'second note unchanged');
+
+  const track = f0Track(decimate([buf], SR).samples, 11025);
+  assertEq(segmentNotes(track, { minDurationMs: 80 }).length,
+           segmentNotes(track, { minDurationMs: 80 }).length, 'segmentNotes is deterministic');
+});

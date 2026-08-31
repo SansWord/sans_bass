@@ -47,8 +47,9 @@
 </div>
 
 <pre id="out">running…</pre>
+<script src="../lib/ribbon.js"></script>
 <script type="module">
-import { detectNotes, notesToChroma, detectKey } from '../lib/pitch.js';
+import { detectNotes, notesToChroma, detectKey, interpret } from '../lib/pitch.js';
 import { scheduleNotes, LOOKAHEAD } from '../lib/sonify.js';
 
 const out = document.getElementById('out');
@@ -149,6 +150,67 @@ const meanDev = notes.length
   : 0;
 log(`\nmean deviation ${meanDev > 0 ? '+' : ''}${meanDev.toFixed(1)} cents from equal temperament.`);
 
+// ---------------------------------------------------------------- interpreter comparison
+
+/* Both interpreters over the SAME frames. Anything that differs is attributable to the
+ * interpreter and to nothing else, which is the whole reason the candidate work was
+ * additive. */
+const metrics = (list) => {
+  if (!list.length) return { notes: 0, octaveOutliers: 0, lowTimePct: 0, touchingSame: 0, rangeSemitones: 0 };
+  const dur = (x) => x.end - x.start;
+  const total = list.reduce((s, x) => s + dur(x), 0);
+
+  // An isolated note 10+ semitones from BOTH neighbours: the octave-error signature.
+  let octaveOutliers = 0;
+  for (let i = 1; i < list.length - 1; i++) {
+    const d1 = Math.abs(list[i].midi - list[i - 1].midi);
+    const d2 = Math.abs(list[i].midi - list[i + 1].midi);
+    if (d1 >= 10 && d2 >= 10) octaveOutliers++;
+  }
+
+  const mids = list.map((x) => x.midi).sort((a, b) => a - b);
+  const median = mids[(mids.length / 2) | 0];
+  const lowTime = list.filter((x) => x.midi < median - 8).reduce((s, x) => s + dur(x), 0);
+
+  let touchingSame = 0;
+  for (let i = 1; i < list.length; i++) {
+    if (Math.abs(list[i].start - list[i - 1].end) < 1e-6 && list[i].midi === list[i - 1].midi) touchingSame++;
+  }
+
+  const [rlo, rhi] = window.SansRibbon
+    ? window.SansRibbon.pitchRange(list, { clip: true })
+    : [mids[0], mids[mids.length - 1]];
+
+  return {
+    notes: list.length,
+    octaveOutliers,
+    lowTimePct: +(100 * lowTime / total).toFixed(1),
+    touchingSame,
+    rangeSemitones: +(rhi - rlo).toFixed(1),
+  };
+};
+
+log('\n== INTERPRETERS ==   (same frames, same shortest-note setting)');
+const compare = {};
+for (const name of ['threshold-v1', 'hmm-v1']) {
+  const spec = { interpreter: name, params: { minDurationMs: opts.minDurationMs ?? 120 } };
+  const c0 = performance.now();
+  const list = interpret(frames, spec);
+  const ms = +(performance.now() - c0).toFixed(1);
+  compare[name] = { ...metrics(list), decodeMs: ms };
+}
+const cols = ['notes', 'octaveOutliers', 'lowTimePct', 'touchingSame', 'rangeSemitones', 'decodeMs'];
+const labels = { notes: 'notes', octaveOutliers: 'octave outliers', lowTimePct: 'time an octave low %',
+                 touchingSame: 'touching same-pitch', rangeSemitones: 'pitch range (semitones)',
+                 decodeMs: 'decode ms' };
+log(`${''.padEnd(24)} ${'threshold-v1'.padStart(13)} ${'hmm-v1'.padStart(13)}`);
+for (const k of cols) {
+  log(`${labels[k].padEnd(24)} ${String(compare['threshold-v1'][k]).padStart(13)} ${String(compare['hmm-v1'][k]).padStart(13)}`);
+}
+log('\nThe two that decide this phase are "time an octave low %" and "pitch range".');
+log('If they do not move, the candidate stage is not working — no amount of cost tuning');
+log('will fix that, and the place to look is yinFrame\'s candidate extraction.');
+
 // ---------------------------------------------------------------- transport
 
 let stemSrc = null;
@@ -228,6 +290,7 @@ window.__notes = {
   noteCount: notes.length,
   meanDeviationCents: +meanDev.toFixed(1),
   key,
+  interpreters: compare,
   notes,
 };
 window.__transport = {

@@ -10,7 +10,7 @@ function sine(hz, seconds, sampleRate, amp = 0.5) {
 
 function analyse(channels, sampleRate) {
   return new Promise((resolve, reject) => {
-    const w = new Worker('../notes.worker.js?v=1.11.0', { type: 'module' });
+    const w = new Worker('../notes.worker.js?v=1.12.0', { type: 'module' });
     const timer = setTimeout(() => { w.terminate(); reject(new Error('worker never answered')); }, 20000);
     w.onmessage = (e) => {
       clearTimeout(timer);
@@ -45,4 +45,18 @@ test('notes: the worker reports an error rather than hanging', async () => {
     assert(e.message.length > 0, 'the failure carries a message');
   }
   assert(threw, 'an empty channel list is reported, not swallowed');
+});
+
+/* The worker builds its message from an explicit field list, so every array the
+ * interpreters need has to be named there. `candidates` was missing at first and
+ * hmm-v1 threw on `undefined.length` in the app while every unit test stayed green —
+ * the pure functions never crossed the postMessage boundary. */
+test('notes: the worker carries candidates across postMessage', async () => {
+  const frames = await analyse([sine(220, 1.5, SR)], SR);
+  assert(Array.isArray(frames.candidates), 'candidates survive the structured clone');
+  assert(frames.candidates.length === frames.cents.length, 'one entry per frame');
+  const voicedIdx = [...frames.cents].findIndex((c) => c !== 0);
+  const c = frames.candidates[voicedIdx][0];
+  assert(c && typeof c.cents === 'number' && typeof c.p === 'number',
+    'a candidate arrives as a usable {cents, p} object, not a stringified husk');
 });

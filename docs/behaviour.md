@@ -162,6 +162,12 @@ The button and the `0` key are the same action.
 | R5 | ⚠ A stem shorter than `loopEnd` is left unlooped and falls silent rather than wrapping early and drifting. | Its source has `loop === false`. |
 | R6 | The badge is hidden when no point is set. | Computed `display`, not `.hidden`. |
 | R7 | ⚠ Loading a song clears both points. | Badge hidden after load. |
+| R8 | A note **still sounding at A** plays its remainder rather than being skipped, on every lap. | Set A one third into a held note: the tone sounds each lap. Offline, `tests/sonify.test.js` renders four laps and asserts RMS > 0 after each lap's A. |
+| R9 | It **resumes** the envelope rather than re-attacking — quieter at A than the same note played from its start. | Render from `offset = 0` and from mid-note; the peak in the first 10 ms is strictly lower for the mid case. This is the only assertion separating "resume" from "re-attack, shortened". |
+| R10 | A note is **cut at B**, not left ringing across the restart. | Loop with a 1 s note starting 100 ms before B and nothing in the next lap's first 150 ms: the window after B is silent. The stems hard-cut at `loopEnd`, so a tone overhanging B desynchronises from them. Use a note whose envelope is still loud at B — a short one has already fallen to the 1e-4 floor there and reads as silent either way. |
+| R11 | **Seeking** into a note does the same thing as entering at A. | `offset` mid-note, no loop: the remainder sounds. One rule for every entry point. |
+| R12 | A remainder under **10 ms** is dropped, and no whole note ever is. | Entering 5 ms before a *short* note ends makes no sound. `interpret()` enforces `minDurationMs >= 20`, so the shortest real note is twice the floor — pinned by a test. |
+| R13 | An untrusted note straddling A stays **silent**, as N36 requires. | A `fix.state === 'doubt'` note spanning A renders to silence. "It was already playing" is not an exception to the fold's judgement. |
 
 ## Separation panel
 

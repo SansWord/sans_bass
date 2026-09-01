@@ -6,13 +6,14 @@ The other two — inline note-value fields, and compressing edit history with a 
 undo — are deferred to their own specs; see Non-goals.
 **Branch:** `docs/note-editing-ergonomics-design` (design only; implementation gets its own
 branch off `feat/note-editing`, since this depends on code not yet on `main`)
-**Scope:** three small, independent fixes to the note-editing feature shipped in v1.16.0 —
+**Scope:** four small, independent fixes to the note-editing feature shipped in v1.16.0 —
 consistent hit-test/paint order when notes overlap, a remap of scroll-wheel and arrow-key
-input in the zoomed pane, and extending range-select-and-delete to the full-song notes lane.
+input in the zoomed pane, extending range-select-and-delete to the full-song notes lane, and
+seeking the playhead to wherever a note is clicked or tapped.
 
 ## Motivation
 
-Using the freshly-shipped note editor surfaced three rough edges, none of them touching the
+Using the freshly-shipped note editor surfaced four rough edges, none of them touching the
 data model (`applyEdits`, edit groups, undo) — they're all in `app.js`'s pointer/keyboard
 handling and rendering:
 
@@ -28,6 +29,12 @@ handling and rendering:
    notes lane has no editing affordance at all, even though it's often the faster place to spot
    and clear a whole noisy section (an intro hum, a mis-detected non-vocal passage) that would
    take many small range-selects to clear at zoomed-in scale.
+4. Selecting a note doesn't move the playhead, so splitting it means a separate seek action
+   first — clicking the exact spot you want to cut is right there and already thrown away.
+   Worse, once a note is already selected, clicking its body or edge *without* dragging does
+   nothing at all: `noteDrag` (Task 5) starts unconditionally on that press, and a release with
+   no net displacement dispatches no edit but also never seeks — the click is silently
+   swallowed.
 
 ## Goals
 
@@ -38,6 +45,10 @@ handling and rendering:
   whether a note is selected.
 - Range-select-and-delete works the same way in the full-song notes lane as it already does in
   the zoomed pane, sharing the same selection state and the same **Delete range** button.
+- Clicking or tapping a note — whether selecting it for the first time, or tapping an
+  already-selected note's body/edge without actually dragging it — moves the playhead to
+  exactly that point, so it's immediately ready for a split. An actual drag past the existing
+  slop threshold still moves/resizes the note as it does today, with no incidental seek.
 
 ## Non-goals
 
@@ -66,6 +77,11 @@ handling and rendering:
 - Dragging the bottom band of the full-song notes lane selects a range and enables **Delete
   range**, identically to the zoomed pane; clicking it removes every overlapping note. Both
   panes' resting-state bands and their captions are visible whenever edit mode is on.
+- Clicking an unselected note selects it and moves the playhead to the clicked time, not the
+  note's midpoint. Tapping (press-release with no meaningful movement) an already-selected
+  note's body or edge seeks the playhead to the release point and leaves the note otherwise
+  untouched (no edit dispatched). A real drag on an already-selected note still moves/resizes
+  it exactly as before, with no incidental seek.
 - The full automated suite still passes (215/215 baseline going in); none of this adds new
   automated coverage since it's all pointer/keyboard/canvas behavior, verified by hand per
   `docs/behaviour.md`'s existing convention.
@@ -179,10 +195,63 @@ pane together from one toggle (`ribbonVisible && !!ribbon`), so the existing **D
 button in the zoomed toolbar is always reachable whenever either pane's band could have a
 selection to act on.
 
+### 4. Click-to-seek on note selection and taps
+
+Two separate call sites, because "which note is selected" and "where is the playhead" are
+different concerns that happen to be triggered by the same gesture.
+
+**Fresh selection** (`pointerdown`'s plain-select branch, reached only when the clicked note
+isn't already the selected one): after setting `selectedNote`, also seek to the exact clicked
+time — not the note's midpoint `selectedNote.at` uses. The two anchors serve different
+purposes: `selectedNote.at` has to stay reliably inside the note's span across future edits
+(that's why it's the midpoint), while the seek target is exactly where the user meant to park
+the playhead.
+
+```js
+const hit = noteAt(ribbon.notes, t);
+if (hit) {
+  selectedNote = { at: (hit.start + hit.end) / 2 };
+  seek(t);
+  draw();
+  return;
+}
+```
+
+**Taps on an already-selected note** (the `noteDrag` path from Task 5): today, pressing near an
+already-selected note's body or edge always starts a `noteDrag`, and if the release turns out
+to have moved nothing, nothing happens at all — not even a seek. Fix by tracking cumulative
+pointer movement on `noteDrag` the same way `panning` already tracks it, and treating a
+release under the existing `DRAG_SLOP` pixel threshold as a tap rather than a (no-op) drag:
+
+```js
+// pointerdown, when starting a noteDrag: add travelled: 0 to its shape.
+noteDrag = { mode, note: sel, startT: t, origStart: sel.start, origEnd: sel.end,
+             previewStart: sel.start, previewEnd: sel.end, travelled: 0, lastX: e.clientX };
+
+// pointermove, when noteDrag is active, before recomputing the preview span:
+noteDrag.travelled += Math.abs(e.clientX - noteDrag.lastX);
+noteDrag.lastX = e.clientX;
+
+// pointerup, before the existing dStart/dEnd dispatch logic:
+if (noteDrag.travelled <= DRAG_SLOP) {
+  seek(zoomTimeAt(canvas, e.clientX));
+  noteDrag = null;
+  draw();
+  return;
+}
+```
+
+The existing `dStart !== 0 || dEnd !== 0` dispatch logic is unreached for a real tap now (the
+early return above takes it instead), so no edit is ever dispatched for a movement that was
+really just a click. A drag that clears `DRAG_SLOP` falls through to the unchanged
+move/resize-and-dispatch path exactly as it does today.
+
 ## Testing
 
 No new automated tests — everything here is pointer/keyboard/canvas rendering, matching the
 existing convention (`docs/behaviour.md`'s hand-verification rows) already used for every other
 interactive piece of the note editor. The implementation plan will add behaviour.md rows for:
-overlap click-order, wheel-seeks/Shift-wheel-zooms, arrow-always-seeks/Shift-fine-step, and
-range-select-and-delete working identically in the notes lane.
+overlap click-order, wheel-seeks/Shift-wheel-zooms, arrow-always-seeks/Shift-fine-step,
+range-select-and-delete working identically in the notes lane, and click/tap-seeks-the-playhead
+(both the fresh-selection case and the already-selected-note tap case, plus confirming a real
+drag past `DRAG_SLOP` still moves/resizes with no incidental seek).

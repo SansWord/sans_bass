@@ -8,8 +8,8 @@
  * A module, so it cannot share scope with app.js. It talks to the player only through
  * window.sansBass, exactly as separate.js does. */
 
-import { interpret, applyEdits, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.16.2';
-import { scheduleNotes } from './lib/sonify.js?v=1.16.2';
+import { interpret, applyEdits, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.16.3';
+import { scheduleNotes } from './lib/sonify.js?v=1.16.3';
 
 const el = {
   panel: document.getElementById('notes'),
@@ -295,7 +295,7 @@ function analyse() {
    * detaches its backing store and the stem goes silent with no error anywhere. */
   for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i).slice());
 
-  worker = new Worker('./notes.worker.js?v=1.16.2', { type: 'module' });
+  worker = new Worker('./notes.worker.js?v=1.16.3', { type: 'module' });
   worker.onmessage = (e) => {
     const m = e.data;
     worker.terminate();

@@ -13,3 +13,6 @@ stems/**
 
 # Superpowers brainstorm scratch (visual companion mockups)
 .superpowers/
+
+# Superpowers git worktrees (isolated implementation workspaces)
+.worktrees/

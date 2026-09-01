@@ -156,6 +156,44 @@
                   data-i18n-attr="title:notes.relativeTip">⇄</button>
         </span>
       </div>
+      <div id="notes-tempo" class="notes-row">
+        <label class="notes-ctl">
+          <input id="notes-tempo-on" type="checkbox" checked>
+          <span data-i18n="notes.tempoOn">Show tempo grid</span>
+        </label>
+        <label class="notes-ctl">
+          <span data-i18n="notes.tempoBpm">BPM</span>
+          <input id="notes-tempo-bpm" type="number" min="20" max="400" step="0.1" value="120" disabled>
+        </label>
+        <span class="notes-ctl">
+          <button id="notes-tempo-half" class="mini" type="button" disabled
+                  data-i18n-attr="title:notes.tempoHalfTip">&times;&#189;</button>
+          <button id="notes-tempo-double" class="mini" type="button" disabled
+                  data-i18n-attr="title:notes.tempoDoubleTip">&times;2</button>
+        </span>
+        <label class="notes-ctl">
+          <span data-i18n="notes.tempoPhase">Phase</span>
+          <button id="notes-tempo-phase-back" class="mini" type="button" disabled
+                  data-i18n-attr="title:notes.tempoPhaseBackTip">&#9664;</button>
+          <input id="notes-tempo-phase" type="number" step="1" value="0" disabled>
+          <button id="notes-tempo-phase-fwd" class="mini" type="button" disabled
+                  data-i18n-attr="title:notes.tempoPhaseFwdTip">&#9654;</button>
+        </label>
+        <label class="notes-ctl">
+          <span data-i18n="notes.tempoBeats">Beats/bar</span>
+          <select id="notes-tempo-beats" disabled>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4" selected>4</option>
+            <option value="6">6</option>
+          </select>
+        </label>
+        <button id="notes-tempo-range" class="mini" type="button" disabled
+                data-i18n="notes.tempoRange" data-i18n-attr="title:notes.tempoRangeTip">Select BPM range</button>
+        <button id="notes-tempo-redetect" class="mini" type="button" disabled
+                data-i18n="notes.tempoRedetect">Re-detect tempo</button>
+        <span id="notes-tempo-status" class="notes-stats"></span>
+      </div>
       <div id="notes-tune" class="notes-row" hidden>
         <label class="notes-ctl">
           <span data-i18n="notes.shortest">Shortest note</span>

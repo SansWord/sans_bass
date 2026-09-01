@@ -1223,10 +1223,51 @@ function syncEditToolbar() {
   if (selectedNote && !sel) selectedNote = null;
   for (const b of [zoomToolbar.octUp, zoomToolbar.octDown, zoomToolbar.pitchUp,
                     zoomToolbar.pitchDown, zoomToolbar.timeBack, zoomToolbar.timeFwd,
-                    zoomToolbar.split, zoomToolbar.del]) {
+                    zoomToolbar.split, zoomToolbar.del, zoomToolbar.fieldStart,
+                    zoomToolbar.fieldEnd, zoomToolbar.fieldPitch, zoomToolbar.applyBtn]) {
     b.disabled = !sel;
   }
   zoomToolbar.rangeDel.disabled = !rangeSelection;
+  syncNoteFields(sel);
+}
+
+/** Keeps the three inline fields in step with the selected note without clobbering an
+ *  in-progress keystroke. A rewrite only happens when the selection's identity ({at, midi})
+ *  differs from fieldsShownFor — the same note staying selected is a no-op here, which is
+ *  what actually protects a mid-type value from draw()'s per-frame calls today (the input
+ *  exclusion in the top-level `keydown` handler, see app.js ~2144, keeps a hotkey from
+ *  changing `selectedNote` while a field has focus). The `document.activeElement` check below
+ *  is defense-in-depth on top of that: it only applies in the *routine* per-frame path
+ *  (fieldsShownFor already set), so a future call site that changes `selectedNote` while a
+ *  field is focused — without going through that keydown guard — still can't clobber it. It
+ *  does NOT apply to the *forced* refresh path: commitFields (Task 6) resets
+ *  fieldsShownFor = null right after a commit specifically so the rewrite goes through even
+ *  though the field the user just pressed Enter in is still focused at that exact moment —
+ *  that's what makes a reverted/updated value visibly snap back. Gating the focus check on
+ *  fieldsShownFor being non-null is what keeps those two paths apart. See
+ *  docs/superpowers/specs/2026-09-01-note-inline-fields-design.md ("Refresh vs. typing"). */
+function syncNoteFields(sel) {
+  if (!sel) {
+    if (fieldsShownFor !== null) {
+      zoomToolbar.fieldStart.value = '';
+      zoomToolbar.fieldEnd.value = '';
+      zoomToolbar.fieldPitch.value = '';
+      fieldsShownFor = null;
+    }
+    return;
+  }
+  const key = { at: selectedNote.at, midi: selectedNote.midi };
+  if (fieldsShownFor) {
+    const sameNote = fieldsShownFor.at === key.at && fieldsShownFor.midi === key.midi;
+    const focused = document.activeElement;
+    const fieldFocused = focused === zoomToolbar.fieldStart || focused === zoomToolbar.fieldEnd ||
+                          focused === zoomToolbar.fieldPitch;
+    if (sameNote || fieldFocused) return;
+  }
+  zoomToolbar.fieldStart.value = fmtPrecise(sel.start);
+  zoomToolbar.fieldEnd.value = fmtPrecise(sel.end);
+  zoomToolbar.fieldPitch.value = sel.name;
+  fieldsShownFor = key;
 }
 
 function paint(canvas, frac) {
@@ -2112,6 +2153,10 @@ on(el.fileInput, 'change', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
+  // This exclusion is also what keeps syncNoteFields' clobber-avoidance sound: it's why a
+  // hotkey can't change `selectedNote` while an inline field has focus. Loosen it and
+  // syncNoteFields' own document.activeElement check (see its comment) is the only thing
+  // still standing between a hotkey and an in-progress keystroke.
   if (/input|select|textarea/i.test(e.target.tagName) && e.key !== ' ') return;
   if (!tracks.length) return;
   if (editMode && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {

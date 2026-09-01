@@ -1913,6 +1913,18 @@ on(el.fileInput, 'change', (e) => {
 document.addEventListener('keydown', (e) => {
   if (/input|select|textarea/i.test(e.target.tagName) && e.key !== ' ') return;
   if (!tracks.length) return;
+  if (editMode && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent('sansbass:editundo'));
+    return;
+  }
+  if (editMode && selectedNote) {
+    if (e.key === 'ArrowUp') { e.preventDefault(); e.shiftKey ? editOctave(1) : editPitchNudge(1); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); e.shiftKey ? editOctave(-1) : editPitchNudge(-1); return; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); editTimeNudge(-1); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); editTimeNudge(1); return; }
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); editDeleteNote(); return; }
+  }
   if (e.key === ' ') { e.preventDefault(); toggle(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - 5); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + 5); }

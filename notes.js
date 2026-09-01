@@ -26,6 +26,9 @@ const el = {
   foldStats: document.getElementById('notes-fold-stats'),
   show: document.getElementById('notes-show'),
   edit: document.getElementById('notes-edit'),
+  editsRow: document.getElementById('notes-edits'),
+  editUndo: document.getElementById('notes-edit-undo'),
+  editRows: document.getElementById('notes-edit-rows'),
   jianpu: document.getElementById('notes-jianpu'),
   keyTonic: document.getElementById('notes-key-tonic'),
   keyMode: document.getElementById('notes-key-mode'),
@@ -133,6 +136,62 @@ function syncFoldControls() {
   );
 }
 
+function editTypeLabel(edit) {
+  const KEYS = {
+    octave: edit.dir > 0 ? 'notes.editOctaveUp' : 'notes.editOctaveDown',
+    pitchNudge: edit.semitones > 0 ? 'notes.editPitchUp' : 'notes.editPitchDown',
+    timeAdjust: 'notes.editTimeAdjustLabel',
+    delete: 'notes.editDeleteLabel',
+    add: 'notes.editAddLabel',
+    rangeDelete: 'notes.editRangeDeleteLabel',
+  };
+  return tr(KEYS[edit.type]);
+}
+
+function groupLabel(group) {
+  return group.edits.length > 1 ? tr('notes.editSplitLabel') : editTypeLabel(group.edits[0]);
+}
+
+function groupTimeLabel(group) {
+  const e = group.edits[0];
+  if (e.type === 'rangeDelete') return `${e.from.toFixed(2)}–${e.to.toFixed(2)}s`;
+  if (e.type === 'add') return `${e.start.toFixed(2)}s`;
+  return `${e.at.toFixed(2)}s`;
+}
+
+/** Rebuilds the edit-list panel from editGroups/orphaned. Called at the end of reinterpret()
+ *  and from reset(). Every node is built and textContent-assigned, never innerHTML — the
+ *  same rule every other dynamic list in this file follows. */
+function renderEditList() {
+  el.editsRow.hidden = editGroups.length === 0;
+  el.editUndo.disabled = editGroups.length === 0;
+  el.editRows.replaceChildren(...editGroups.map((g) => {
+    const li = document.createElement('li');
+    li.className = 'edit-row';
+    if (g.edits.some((e) => orphaned.includes(e))) {
+      const warn = document.createElement('span');
+      warn.className = 'edit-warn';
+      warn.textContent = '⚠';
+      warn.title = tr('notes.editOrphanTip');
+      li.appendChild(warn);
+    }
+    const label = document.createElement('span');
+    label.textContent = `${groupLabel(g)} · ${groupTimeLabel(g)}`;
+    li.appendChild(label);
+    const rm = document.createElement('button');
+    rm.className = 'mini edit-remove';
+    rm.type = 'button';
+    rm.textContent = '✕';
+    rm.title = tr('notes.editRemoveTip');
+    rm.addEventListener('click', () => {
+      editGroups = editGroups.filter((x) => x.id !== g.id);
+      reinterpret();
+    });
+    li.appendChild(rm);
+    return li;
+  }));
+}
+
 /* The key selectors mean nothing while 簡譜 is off, so they go visibly inert rather than
  * silently doing nothing — the same pattern as the fold tolerance slider. */
 function syncJianpuControls() {
@@ -163,6 +222,7 @@ function reinterpret() {
     jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
   });
   resync();
+  renderEditList();
 }
 
 /* Start (or restart) the synth against the transport's OWN t0 and offset. Scheduling
@@ -210,6 +270,7 @@ function reset() {
   el.edit.disabled = true;
   el.edit.checked = false;
   window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false } }));
+  renderEditList();
   syncJianpuControls();
 }
 
@@ -330,5 +391,13 @@ window.addEventListener('sansbass:ribbonmute', resync);
  * grouped as one undo/list entry. See docs/superpowers/specs/2026-08-31-note-editing-design.md. */
 window.addEventListener('sansbass:noteedit', (e) => {
   editGroups.push({ id: nextEditId++, edits: e.detail.edits });
+  reinterpret();
+});
+el.editUndo.addEventListener('click', () => {
+  editGroups.pop();
+  reinterpret();
+});
+window.addEventListener('sansbass:editundo', () => {
+  editGroups.pop();
   reinterpret();
 });

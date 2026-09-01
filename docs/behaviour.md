@@ -269,6 +269,35 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N54 | The **bright gridline follows the tonic**, so the highlighted rule and the highlighted label sit on the same row. | In `1=G` the bright rules move off the C rows onto the G rows (measured: y 114/286/457 → 14/186/357/529). With 簡譜 off they are back on C. |
 | N55 | A disabled **⇄** looks disabled. | With 簡譜 off, `getComputedStyle(#notes-key-rel)` gives `opacity: .45` and `cursor: default`, and the hover rule does not brighten it. `.btn[disabled]` does not match `.mini`, so without an explicit rule the button read as live while doing nothing — the same trap as the `[hidden]` one. |
 
+## Note editing
+
+`applyEdits()` (`lib/pitch.js`) runs after `interpret()`/`foldOctaves()` inside
+`notes.js`'s `reinterpret()`. `app.js` owns the zoomed pane's selection, toolbar, and
+pointer/keyboard interactions, and talks to `notes.js` through `sansbass:noteedit` /
+`sansbass:editundo` / `sansbass:editmode` — the design is in
+[`docs/superpowers/specs/2026-08-31-note-editing-design.md`](superpowers/specs/2026-08-31-note-editing-design.md).
+
+| # | Expected | How to observe |
+|---|---|---|
+| E1 | **Edit notes** is disabled until a note detection run has completed, and resets (disabled, unticked) on a new song. | `#notes-edit.disabled` before/after **Find notes**; load a second zip and it is `disabled` and `unchecked` again. |
+| E2 | Ticking it turns on note selection in the zoomed pane; clicking a note outlines it in white. Clicking empty space still seeks, exactly as before edit mode existed. | Tick, click a note block: outline appears. Click empty space: `#t-cur` changes, no outline appears anywhere. |
+| E3 | The toolbar is hidden while edit mode is off, and every button but **+ Add note** is disabled until a note is selected. | `.note-toolbar.hidden` toggles with `#notes-edit.checked`; with it ticked and nothing selected, `.note-tbtn:not(.note-tbtn-armed)` (excluding Add) are all `disabled`. |
+| E4 | **↑ 8ve** / **↓ 8ve** move the selected note a full octave and recolour it purple (`NOTE_FILL.manual`), without changing `#notes-count`. | Select a note, click, compare `midi` before/after via the outline's position; count unchanged. |
+| E5 | **♯** / **♭** move the selected note one semitone, same recolouring rule. | As E4, one semitone of vertical movement instead of twelve. |
+| E6 | **◀t** / **▶t** move the selected note in time without changing its duration. | `end - start` unchanged; both edges shift by the same amount. |
+| E7 | Dragging the BODY of a selected note moves it in time; dragging within ~8px of an EDGE resizes just that edge. Neither ever shrinks a note below a 20ms floor. | Drag the middle: both edges move equally. Drag near the left edge: only `start` moves. Drag it past the floor: it stops at 20ms rather than crossing zero. |
+| E8 | **✕** deletes the selected note, `#notes-count` drops by one, the toolbar disables. | Click it; compare counts; toolbar buttons `disabled` again. |
+| E9 | **✂** splits the selected note at the current playhead position, composing a shrink plus a new note — unless the cut is within 5ms of either edge, in which case it only shrinks (no new note). | Seek inside a note, click ✂: count +1, two purple notes where one was. Seek within 5ms of an edge, click ✂: count unchanged, the note just moved that edge. |
+| E10 | A split note can be split again — the tail piece is an ordinary note, not a special case. | Split once, select the new tail note, split it again: count +1 again. |
+| E11 | **+ Add note** arms placement (its label and colour change); the next drag in the pane places a new purple note at the dragged span and pitch row, then disarms. Clicking it again without dragging cancels. | Arm, drag: preview follows the pointer, count +1 on release, button reverts. Arm, click without dragging: no note added, button reverts. |
+| E12 | Dragging along the bottom ~16px of the zoomed pane selects a time range (amber highlight) and enables **Delete range**; clicking it removes every note overlapping that range. | Drag the band: highlight appears, button enables. Click it: count drops by however many notes overlapped, highlight clears. |
+| E13 | The edit list shows one row per action (a split is ONE row, not two), each removable with its own ✕; removing one re-derives without it. | Make three edits including one split: three rows, not four. Remove the split row: both its underlying changes revert together. |
+| E14 | An edit whose target no longer exists shows a warning glyph in the list rather than silently vanishing. | Edit a note, then delete that same note via a different edit: the first edit's row gains the warning glyph. |
+| E15 | Cmd/Ctrl+Z undoes the most recent edit, list-order. The same button (↺) does the same thing. | Make two edits, press Cmd/Ctrl+Z once: only the second is undone. |
+| E16 | With a note selected, ↑/↓ nudge pitch, Shift+↑/↓ shift octave, ←/→ nudge time, Delete/Backspace deletes — and these take priority over the transport's own arrow-key seek. | Select a note, press →: it moves in time, `#t-cur` does NOT jump by 5s. Deselect, press →: now it does. |
+| E17 | **Export edits** downloads a JSON file with `version`, `params`, `clip`, `jianpu`, and `edits` (one array per list entry, two elements for a split); **Import edits** restores every control and the edit list from it, re-deriving the same note list. | Export, reload, re-load the same zip, re-run detection, import: `#notes-count` and the edit-list rows match. |
+| E18 | Loading a new song clears the edit list and both toolbar/list panels, exactly as parameters and the 簡譜 key already reset. | Make an edit, load a second zip: `#notes-edits` is `hidden` again and empty. |
+
 ## Saving stems
 
 | # | Expected | How to observe |

@@ -9,7 +9,8 @@ in [`behaviour.md`](behaviour.md).
 
 ## Note editing — layer 4
 
-**Design done** — [spec](superpowers/specs/2026-08-31-note-editing-design.md). Not yet built.
+**Built — v1.16.0.** [Spec](superpowers/specs/2026-08-31-note-editing-design.md),
+[plan](superpowers/plans/2026-08-31-note-editing.md).
 
 The six actions listed in
 [`transcription.md` → Layer 4 → The actions to support](transcription.md#the-actions-to-support)

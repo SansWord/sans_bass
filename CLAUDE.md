@@ -171,7 +171,7 @@ out of the project; never commit them.
   `separate.worker.js` (1), `notes.js` (3) and `notes.worker.js` (1) — 23 in all;
   `tests/versions.test.js` fails if they drift — and it
   covers `.png` and `.svg` as well as `.js`/`.css`, so the icons are included. Currently
-  `v1.16.3`.
+  `v1.16.4`.
 - **Separation is desktop-only, and that is not fixable from this repo.** On iOS the first
   `session.run()` kills the tab; the accumulators, the 285 MB model, the memory floor,
   WebGPU and asyncify were each ruled out by measurement, and `N_SAMPLES = 343980` is baked

@@ -467,12 +467,13 @@ el.listExport.addEventListener('click', () => {
     windows.get(idx).push(n);
   }
 
-  const modeWord = tr(jianpu.mode === 'minor' ? 'notes.minor' : 'notes.major');
-  const lines = [`# ${mix ? mix.name + ' — ' : ''}1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`, ''];
+  // English only, regardless of UI language — this file is read outside the app.
+  const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
+  const lines = [`## ${mix ? mix.name + ' — ' : ''}1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`, ''];
   for (const idx of [...windows.keys()].sort((a, b) => a - b)) {
     const from = idx * secs;
     const to = from + secs;
-    lines.push(`== ${mmss(from)} - ${mmss(to)}`);
+    lines.push(`### ${mmss(from)} - ${mmss(to)}`);
     lines.push(windows.get(idx)
       .map((n) => window.SansJianpu.degreeToken(n.midi, jianpu.tonic, jianpu.mode, refOct))
       .join(' '));

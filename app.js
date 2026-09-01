@@ -1702,8 +1702,13 @@ function attachZoom(canvas) {
         return;
       }
       const t = zoomTimeAt(canvas, e.clientX);
+      const clickMidi = addMidiAt(canvas, e.clientY);
       const sel = selectedNote ? noteAt(ribbon.notes, selectedNote.at, selectedNote.midi) : null;
-      if (sel) {
+      /* Gated on pitch too, not just time: without this, clicking a DIFFERENT note that
+       * happens to share the selected note's time span (two notes overlapping in time, at
+       * different pitches) would be misread as grabbing the already-selected note to drag,
+       * instead of falling through to the fresh hit-test below and switching selection. */
+      if (sel && sel.midi === clickMidi) {
         const tol = zoomEdgeToleranceSeconds(canvas);
         let mode = null;
         if (Math.abs(t - sel.start) <= tol) mode = 'resize-start';
@@ -1716,7 +1721,7 @@ function attachZoom(canvas) {
           return;
         }
       }
-      const hit = noteAt(ribbon.notes, t, addMidiAt(canvas, e.clientY));
+      const hit = noteAt(ribbon.notes, t, clickMidi);
       if (hit) {
         selectedNote = { at: (hit.start + hit.end) / 2, midi: hit.midi };
         seek(t);
@@ -1834,17 +1839,25 @@ function dispatchEdit(edits) {
   window.dispatchEvent(new CustomEvent('sansbass:noteedit', { detail: { edits } }));
 }
 
+/* Reassigning selectedNote BEFORE dispatching, here and below: dispatchEdit's event round-trips
+ * SYNCHRONOUSLY through notes.js and back into syncEditToolbar, which re-resolves the selection
+ * by the CURRENT selectedNote.midi. If that still held the pre-edit pitch, the note — already
+ * updated to its new pitch in ribbon.notes by the time syncEditToolbar runs — wouldn't be found,
+ * nulling selectedNote out from under this function before it could read it back afterward. */
 function editOctave(dir) {
   if (!selectedNote) return;
-  dispatchEdit([{ type: 'octave', at: selectedNote.at, dir, midi: selectedNote.midi }]);
-  // start unchanged by an octave move, but the pitch identity IS changing — keep it current.
-  selectedNote = { at: selectedNote.at, midi: selectedNote.midi + 12 * dir };
+  const at = selectedNote.at;
+  const oldMidi = selectedNote.midi;
+  selectedNote = { at, midi: oldMidi + 12 * dir };
+  dispatchEdit([{ type: 'octave', at, dir, midi: oldMidi }]);
 }
 
 function editPitchNudge(semitones) {
   if (!selectedNote) return;
-  dispatchEdit([{ type: 'pitchNudge', at: selectedNote.at, semitones, midi: selectedNote.midi }]);
-  selectedNote = { at: selectedNote.at, midi: selectedNote.midi + semitones };
+  const at = selectedNote.at;
+  const oldMidi = selectedNote.midi;
+  selectedNote = { at, midi: oldMidi + semitones };
+  dispatchEdit([{ type: 'pitchNudge', at, semitones, midi: oldMidi }]);
 }
 
 const TIME_NUDGE_STEP = 0.1;   // seconds
@@ -1854,8 +1867,10 @@ function editTimeNudge(dir) {
   const n = noteAt(ribbon.notes, selectedNote.at, selectedNote.midi);
   if (!n) return;
   const d = TIME_NUDGE_STEP * dir;
-  dispatchEdit([{ type: 'timeAdjust', at: selectedNote.at, dStart: d, dEnd: d, midi: selectedNote.midi }]);
-  selectedNote = { at: selectedNote.at + d, midi: selectedNote.midi };
+  const at = selectedNote.at;
+  const midi = selectedNote.midi;
+  selectedNote = { at: at + d, midi };
+  dispatchEdit([{ type: 'timeAdjust', at, dStart: d, dEnd: d, midi }]);
 }
 
 function editDeleteNote() {

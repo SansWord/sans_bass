@@ -1701,7 +1701,7 @@ function attachZoom(canvas) {
         return;
       }
       const t = zoomTimeAt(canvas, e.clientX);
-      const sel = selectedNote ? noteAt(ribbon.notes, selectedNote.at) : null;
+      const sel = selectedNote ? noteAt(ribbon.notes, selectedNote.at, selectedNote.midi) : null;
       if (sel) {
         const tol = zoomEdgeToleranceSeconds(canvas);
         let mode = null;
@@ -1715,9 +1715,9 @@ function attachZoom(canvas) {
           return;
         }
       }
-      const hit = noteAt(ribbon.notes, t);
+      const hit = noteAt(ribbon.notes, t, addMidiAt(canvas, e.clientY));
       if (hit) {
-        selectedNote = { at: (hit.start + hit.end) / 2 };
+        selectedNote = { at: (hit.start + hit.end) / 2, midi: hit.midi };
         seek(t);
         draw();
         return;   // selecting a note is the gesture; it does not also start a pan/seek
@@ -1765,7 +1765,7 @@ function attachZoom(canvas) {
       addArmed = false;
       syncAddButton();
       dispatchEdit([{ type: 'add', start: +start.toFixed(4), end: +finalEnd.toFixed(4), midi }]);
-      selectedNote = { at: (start + finalEnd) / 2 };
+      selectedNote = { at: (start + finalEnd) / 2, midi };
       draw();
       return;
     }
@@ -1789,8 +1789,8 @@ function attachZoom(canvas) {
       const dEnd = previewEnd - note.end;
       noteDrag = null;
       if (dStart !== 0 || dEnd !== 0) {
-        dispatchEdit([{ type: 'timeAdjust', at: (note.start + note.end) / 2, dStart, dEnd }]);
-        selectedNote = { at: (previewStart + previewEnd) / 2 };
+        dispatchEdit([{ type: 'timeAdjust', at: (note.start + note.end) / 2, dStart, dEnd, midi: note.midi }]);
+        selectedNote = { at: (previewStart + previewEnd) / 2, midi: note.midi };
       }
       draw();
       return;

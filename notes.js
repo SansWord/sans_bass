@@ -267,6 +267,23 @@ function syncJianpuControls() {
   el.listExport.disabled = !notes.length;
 }
 
+/* Every control but the panel-level checkbox is meaningless without a drums stem, so they go
+ * visibly inert rather than silently doing nothing — same pattern as syncFoldControls()/
+ * syncJianpuControls(). */
+function syncTempoControls() {
+  const hasDrums = !!window.sansBass.stemBuffer('drums');
+  for (const c of [el.tempoBpm, el.tempoHalf, el.tempoDouble, el.tempoPhase,
+                    el.tempoPhaseBack, el.tempoPhaseFwd, el.tempoBeats,
+                    el.tempoRangeToggle, el.tempoRedetect]) c.disabled = !hasDrums;
+  el.tempoOn.checked = tempo.on;
+  el.tempoBpm.value = tempo.bpmValue;
+  el.tempoPhase.value = tempo.phaseMs;
+  el.tempoBeats.value = String(tempo.beatsPerBar);
+  el.tempoStatus.textContent = tempo.confidence > 0
+    ? tr('notes.tempoStatus', { bpm: tempo.bpmValue.toFixed(1), pct: Math.round(tempo.confidence * 100) })
+    : tr('notes.tempoStatusNone');
+}
+
 /** Re-derive notes from the existing frames. No worker, no re-analysis. */
 function reinterpret() {
   if (!frames) return;
@@ -284,6 +301,7 @@ function reinterpret() {
     jianpu.mode = k.mode;
   }
   syncJianpuControls();
+  syncTempoControls();
   window.sansBass.setNotes({
     notes, frames, params: p, clip: el.clip.checked,
     jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
@@ -345,6 +363,8 @@ function reset() {
   window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false } }));
   renderEditList();
   syncJianpuControls();
+  el.tempoRangeToggle.classList.remove('note-tbtn-armed');
+  syncTempoControls();
 }
 
 function analyse() {
@@ -422,6 +442,77 @@ el.jianpu.addEventListener('change', () => {
   jianpu.on = el.jianpu.checked;
   syncJianpuControls();
   reinterpret();
+});
+el.tempoOn.addEventListener('change', () => {
+  tempo.on = el.tempoOn.checked;
+  reinterpret();
+});
+el.tempoBpm.addEventListener('input', () => {
+  const v = Number(el.tempoBpm.value);
+  if (Number.isFinite(v) && v > 0) { tempo.bpmValue = v; tempo.auto = false; }
+  reinterpret();
+});
+el.tempoHalf.addEventListener('click', () => {
+  tempo.bpmValue = +(tempo.bpmValue / 2).toFixed(1);
+  tempo.auto = false;
+  reinterpret();
+});
+el.tempoDouble.addEventListener('click', () => {
+  tempo.bpmValue = +(tempo.bpmValue * 2).toFixed(1);
+  tempo.auto = false;
+  reinterpret();
+});
+const PHASE_NUDGE_MS = 10;
+el.tempoPhase.addEventListener('input', () => {
+  const v = Number(el.tempoPhase.value);
+  if (Number.isFinite(v)) { tempo.phaseMs = v; tempo.auto = false; }
+  reinterpret();
+});
+el.tempoPhaseBack.addEventListener('click', () => {
+  tempo.phaseMs -= PHASE_NUDGE_MS;
+  tempo.auto = false;
+  reinterpret();
+});
+el.tempoPhaseFwd.addEventListener('click', () => {
+  tempo.phaseMs += PHASE_NUDGE_MS;
+  tempo.auto = false;
+  reinterpret();
+});
+el.tempoBeats.addEventListener('change', () => {
+  tempo.beatsPerBar = Number(el.tempoBeats.value);
+  tempo.auto = false;
+  reinterpret();
+});
+el.tempoRangeToggle.addEventListener('click', () => {
+  tempoRangeArmed = !tempoRangeArmed;
+  el.tempoRangeToggle.classList.toggle('note-tbtn-armed', tempoRangeArmed);
+  window.dispatchEvent(new CustomEvent('sansbass:temporangemode', { detail: { on: tempoRangeArmed } }));
+});
+el.tempoRedetect.addEventListener('click', () => {
+  const drums = currentTempoRangeChannels();
+  if (!drums) return;
+  const w = new Worker('./notes.worker.js?v=1.16.5', { type: 'module' });
+  el.tempoRedetect.disabled = true;
+  w.onmessage = (e) => {
+    w.terminate();
+    if (e.data.type === 'tempo') applyTempoResult(e.data.tempo);
+    else if (e.data.type === 'error') window.sansBass.say('notes.failed', { message: e.data.message }, true);
+    syncTempoControls();
+    reinterpret();
+  };
+  w.onerror = (e) => {
+    w.terminate();
+    window.sansBass.say('notes.failed', { message: e.message || 'worker error' }, true);
+    syncTempoControls();
+  };
+  w.postMessage({ type: 'tempo', channels: drums.channels, sampleRate: drums.sampleRate });
+});
+/* app.js owns the drag surface (the drums stem's own lane) and dispatches this once a
+ * selection commits or the caption's Clear button is pressed. Mirrored into notes.js's own
+ * tempoRange because that copy is what persists across export/import and reset — see
+ * docs/superpowers/specs/2026-09-01-tempo-grid-design.md. */
+window.addEventListener('sansbass:temporange', (e) => {
+  tempoRange = e.detail;
 });
 el.edit.addEventListener('change', () => {
   window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: el.edit.checked } }));

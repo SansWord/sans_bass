@@ -58,11 +58,13 @@ Running log of what was built and what was learned building it.
   and an **Export list** button, gated together with the key selectors — disabled unless 簡譜 is
   on AND at least one note exists.
 - The export click handler in `notes.js`: buckets the in-memory `notes` array into fixed-width
-  windows by start time, then writes a Markdown file — one `== MM:SS - MM:SS` block per window,
-  a line of space-separated 簡譜 tokens, a header naming the song (when known) and the detected
-  key. No worker, no re-analysis, no new script tag — reuses the same `notes`/`jianpu` state the
-  ribbon already draws from.
-- `notes.listSecs` / `notes.exportList` i18n strings in both locales.
+  windows by start time, then writes a Markdown file — an `## ` header line naming the song
+  (when known) and the detected key, then one `### MM:SS - MM:SS` heading per window followed by
+  a line of space-separated 簡譜 tokens as its own paragraph. No worker, no re-analysis, no new
+  script tag — reuses the same `notes`/`jianpu` state the ribbon already draws from.
+- `notes.listSecs` / `notes.exportList` i18n strings in both locales — the export file's own
+  content (headings, the major/minor word) is deliberately English-only regardless of UI
+  language; see the gotcha below.
 
 **Key technical learnings:**
 
@@ -84,8 +86,15 @@ Running log of what was built and what was learned building it.
   output**, not an edge case to special-guard against — `loadSeparated` never keeps the original
   file. The export header's song-name segment (`"${mix.name} — "`) and its em dash are simply
   omitted together when there's no mix, verified against a zip of six stems with no mix file
-  (`# 1=<letter> <major|minor>`, no leading name, no stray dash) alongside a zip that does carry
+  (`## 1=<letter> <major|minor>`, no leading name, no stray dash) alongside a zip that does carry
   one.
+- `[gotcha]` **A plain-text block marker (`== MM:SS - MM:SS`) sits on the same rendered line as
+  the notes below it in a Markdown previewer**, because a single `\n` with no blank line between
+  two paragraph-like lines is a soft break, not a new block — most renderers join them with a
+  space. Caught by the user after the first ship: switching the marker to a real `###` heading
+  (and the file's own top line to `##`) fixes it for free, since a heading is a block element by
+  definition and can never merge with the paragraph after it — no manual line-break workaround
+  needed.
 
 ## v1.16.4 — Inline field labels and flat-pitch entry (2026-09-01 12:09)
 

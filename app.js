@@ -48,12 +48,18 @@ let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:edi
 let selectedNote = null;    // { at } — a time point inside the selected note, or null
 let zoomToolbar = null;     // built in Task 4; guarded with `if (zoomToolbar)` until then
 let zoomRangeHint = null;   // the "drag along the bottom" caption under the zoomed canvas
+let ribbonRangeHint = null; // the same caption under the full-song notes lane
 let noteDrag = null;   // { mode: 'move'|'resize-start'|'resize-end', note, startT, origStart, origEnd, previewStart, previewEnd }
 let addArmed = false;      // "+ Add note" pressed — the next drag places a note
 let addDrag = null;        // { startT, midi, curT }
 let rangeDrag = null;        // { startT, curT } — actively dragging
 let rangeSelection = null;   // { from, to } — committed, awaiting the delete button
 const RULER_BAND_PX = 16;    // bottom band of the zoomed canvas reserved for range-select
+const WHEEL_SEEK_FRACTION = 0.05;  // fraction of the zoom span a single wheel tick seeks
+const ARROW_SEEK_FRACTION = 0.15;  // fraction of the zoom span a single Arrow Left/Right seeks
+const FINE_SEEK_STEP = 0.001;      // seconds — Shift+Arrow Left/Right, an absolute value: this
+                                    // is for placing a cut inside a word, not view navigation,
+                                    // so it stays fixed rather than scaling with the zoom span
 let ribbonVisible = readStoredFlag(RIBBON_SHOW_KEY, true);
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
@@ -552,9 +558,17 @@ function buildUI(title) {
     grip.title = tr('notes.resizeTip');
     attachResize(grip, () => ribbonHeight, (v) => { ribbonHeight = v; }, RIBBON_H_KEY);
 
-    lane.append(name, canvas, vol, grip);
+    /* Names the bottom range-select band, same reasoning as the zoomed pane's equivalent
+     * caption (see 'sansbass:editmode' listener) — the band alone doesn't say what it's for. */
+    const rHint = document.createElement('div');
+    rHint.className = 'note-range-hint';
+    rHint.textContent = tr('notes.rangeTip');
+    rHint.hidden = !editMode;
+    ribbonRangeHint = rHint;
+
+    lane.append(name, canvas, rHint, vol, grip);
     el.lanes.insertBefore(lane, vocals.laneEl.nextSibling);
-    attachSeek(canvas);
+    attachSeek(canvas, { rangeBand: true });
     ribbonEl = { lane, canvas, txt, grip };
     lane.classList.toggle('muted', ribbonMuted);
 
@@ -1164,6 +1178,7 @@ function paint(canvas, frac) {
     c.restore();
   }
   paintLoopRegion(c, canvas, dpr, canvas === el.mainWave);
+  if (ribbonEl && canvas === ribbonEl.canvas) paintRangeBand(c, canvas, dpr);
 
   c.fillStyle = 'rgba(255,255,255,.85)';
   c.fillRect(px, 0, Math.max(1, dpr), canvas.height);
@@ -1196,6 +1211,33 @@ function paintLoopRegion(c, canvas, dpr, withLabels) {
                        c.fillText('A', xa + 3.5 * dpr, 2 * dpr); c.fillStyle = '#ff9f1c'; }
     if (xb !== null) { c.fillRect(xb - 13 * dpr, 0, 13 * dpr, 13 * dpr); c.fillStyle = '#0d0d10';
                        c.fillText('B', xb - 9.5 * dpr, 2 * dpr); }
+  }
+}
+
+/** The range-select band on the full-song notes lane: a faint resting-state strip whenever
+ *  edit mode is on (so the interactive area is discoverable at rest, same as the zoomed
+ *  pane's), plus a brighter highlight while a range is being dragged or sits committed.
+ *  Drawn directly on the live canvas, like paintLoopRegion, so a drag doesn't force
+ *  renderRibbon to rebuild its cached idle/active layers on every pointermove. */
+function paintRangeBand(c, canvas, dpr) {
+  const w = canvas.width;
+  const h = canvas.height;
+  if (editMode) {
+    c.fillStyle = 'rgba(255,209,102,.07)';
+    c.fillRect(0, h - RULER_BAND_PX * dpr, w, RULER_BAND_PX * dpr);
+    c.strokeStyle = 'rgba(255,209,102,.4)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(0, h - RULER_BAND_PX * dpr + 0.5);
+    c.lineTo(w, h - RULER_BAND_PX * dpr + 0.5);
+    c.stroke();
+  }
+  const rsel = rangeDrag || rangeSelection;
+  if (rsel && duration) {
+    const s = Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
+    const eT = Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
+    c.fillStyle = 'rgba(255,209,102,.18)';
+    c.fillRect((s / duration) * w, 0, Math.max(1, ((eT - s) / duration) * w), h);
   }
 }
 
@@ -1622,12 +1664,18 @@ function attachZoom(canvas) {
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const before = zoomTimeAt(canvas, e.clientX);
-    zoomBy(e.deltaY > 0 ? 1.15 : 1 / 1.15);
-    // Keep the instant under the cursor pinned, so zooming feels like a lens rather
-    // than a jump.
-    zoomCenter += before - zoomTimeAt(canvas, e.clientX);
-    draw();
+    if (e.shiftKey) {
+      const before = zoomTimeAt(canvas, e.clientX);
+      zoomBy(e.deltaY > 0 ? 1.15 : 1 / 1.15);
+      // Keep the instant under the cursor pinned, so zooming feels like a lens rather
+      // than a jump.
+      zoomCenter += before - zoomTimeAt(canvas, e.clientX);
+      draw();
+      return;
+    }
+    // Proportional to the current zoom span, so a tick feels similarly sized whether
+    // zoomed to a 2s window or a 60s one — the same principle zoomBy's factor already uses.
+    seek(currentTime() + (e.deltaY > 0 ? 1 : -1) * zoomSeconds * WHEEL_SEEK_FRACTION);
   }, { passive: false });
 
   /* A click seeks, a drag pans. Distinguished by distance travelled rather than by a
@@ -1661,7 +1709,7 @@ function attachZoom(canvas) {
         else if (sel.start <= t && t < sel.end) mode = 'move';
         if (mode) {
           noteDrag = { mode, note: sel, startT: t, origStart: sel.start, origEnd: sel.end,
-                       previewStart: sel.start, previewEnd: sel.end };
+                       previewStart: sel.start, previewEnd: sel.end, travelled: 0, lastX: e.clientX };
           canvas.setPointerCapture(e.pointerId);
           return;
         }
@@ -1669,6 +1717,7 @@ function attachZoom(canvas) {
       const hit = noteAt(ribbon.notes, t);
       if (hit) {
         selectedNote = { at: (hit.start + hit.end) / 2 };
+        seek(t);
         draw();
         return;   // selecting a note is the gesture; it does not also start a pan/seek
       }
@@ -1682,6 +1731,8 @@ function attachZoom(canvas) {
     if (addDrag) { addDrag.curT = zoomTimeAt(canvas, e.clientX); draw(); return; }
     if (rangeDrag) { rangeDrag.curT = zoomTimeAt(canvas, e.clientX); draw(); return; }
     if (noteDrag) {
+      noteDrag.travelled += Math.abs(e.clientX - noteDrag.lastX);
+      noteDrag.lastX = e.clientX;
       const dt = zoomTimeAt(canvas, e.clientX) - noteDrag.startT;
       let newStart = noteDrag.origStart + (noteDrag.mode === 'resize-end' ? 0 : dt);
       let newEnd = noteDrag.origEnd + (noteDrag.mode === 'resize-start' ? 0 : dt);
@@ -1726,6 +1777,12 @@ function attachZoom(canvas) {
       return;
     }
     if (noteDrag) {
+      if (noteDrag.travelled <= DRAG_SLOP) {
+        seek(zoomTimeAt(canvas, e.clientX));
+        noteDrag = null;
+        draw();
+        return;
+      }
       const { note, previewStart, previewEnd } = noteDrag;
       const dStart = previewStart - note.start;
       const dEnd = previewEnd - note.end;
@@ -1755,9 +1812,19 @@ function zoomBy(factor) {
 
 /** The note in `list` whose span contains `at`, or null. Half-open — a note's END excludes
  *  it, matching lib/pitch.js's applyEdits, so a click at a shared boundary picks the note
- *  that starts there rather than the one that just finished. */
+ *  that starts there rather than the one that just finished.
+ *
+ *  Searches from the END of the list, not the start. `renderZoom`/`renderRibbon` draw notes
+ *  in array order, so with two notes overlapping at a time point, the one drawn LAST is
+ *  visually on top — this makes it the one a click resolves to as well. `add` already pushes
+ *  new notes to the end, so a manually placed note dropped onto an existing one is both drawn
+ *  on top and the one selected, with no special-casing needed here. */
 function noteAt(list, at) {
-  return list.find((n) => n.start <= at && at < n.end) || null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const n = list[i];
+    if (n.start <= at && at < n.end) return n;
+  }
+  return null;
 }
 
 function dispatchEdit(edits) {
@@ -1875,24 +1942,44 @@ function addMidiAt(canvas, clientY) {
   return Math.max(loM, Math.min(hiM, midi));
 }
 
-function attachSeek(canvas) {
+function attachSeek(canvas, opts) {
+  const rangeBand = !!(opts && opts.rangeBand);
   const posToTime = (e) => {
     const r = canvas.getBoundingClientRect();
     return ((e.clientX - r.left) / r.width) * duration;
   };
   canvas.addEventListener('pointerdown', (e) => {
+    if (rangeBand && editMode) {
+      const r = canvas.getBoundingClientRect();
+      if (e.clientY - r.top > r.height - RULER_BAND_PX) {
+        const t = posToTime(e);
+        rangeDrag = { startT: t, curT: t };
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
     canvas.setPointerCapture(e.pointerId);
     scrubbing = true;
     seek(posToTime(e));
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (rangeDrag) { rangeDrag.curT = posToTime(e); draw(); return; }
     if (scrubbing) { offset = Math.max(0, Math.min(duration, posToTime(e))); draw(); }
   });
   canvas.addEventListener('pointerup', (e) => {
+    if (rangeDrag) {
+      const from = Math.min(rangeDrag.startT, rangeDrag.curT);
+      const to = Math.max(rangeDrag.startT, rangeDrag.curT);
+      rangeDrag = null;
+      rangeSelection = (to - from > 0.01) ? { from, to } : null;
+      draw();
+      return;
+    }
     if (!scrubbing) return;
     scrubbing = false;
     seek(posToTime(e));
   });
+  canvas.addEventListener('pointercancel', () => { rangeDrag = null; scrubbing = false; });
 }
 
 on(el.play, 'click', toggle);
@@ -1918,6 +2005,7 @@ window.addEventListener('sansbass:editmode', (e) => {
   rangeSelection = null;
   if (zoomToolbar) zoomToolbar.root.hidden = !editMode;
   if (zoomRangeHint) zoomRangeHint.hidden = !editMode;
+  if (ribbonRangeHint) ribbonRangeHint.hidden = !editMode;
   if (zoomEl) { zoomEl.canvas.classList.toggle('editing', editMode); draw(); }
 });
 renderLangToggle();
@@ -1947,13 +2035,11 @@ document.addEventListener('keydown', (e) => {
   if (editMode && selectedNote) {
     if (e.key === 'ArrowUp') { e.preventDefault(); e.shiftKey ? editOctave(1) : editPitchNudge(1); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); e.shiftKey ? editOctave(-1) : editPitchNudge(-1); return; }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); editTimeNudge(-1); return; }
-    if (e.key === 'ArrowRight') { e.preventDefault(); editTimeNudge(1); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); editDeleteNote(); return; }
   }
   if (e.key === ' ') { e.preventDefault(); toggle(); }
-  else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - 5); }
-  else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + 5); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }
   else if (e.key === '0') toggleAllTracks();
   else if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setLoopPoint('a'); }
   else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setLoopPoint('b'); }

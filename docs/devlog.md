@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.16.5](#v1165--簡譜-note-list-markdown-export-2026-09-01-1258) | A second, human-readable export from the Notes panel: **Export list** downloads the current 簡譜 reading as a Markdown file, chunked into fixed-length timecoded blocks by note start time — separate from the JSON edits round-trip. |
 | [v1.16.4](#v1164--inline-field-labels-and-flat-pitch-entry-2026-09-01-1209) | Visible labels above the Start/End/Pitch fields, and Pitch becomes three dropdowns (letter/accidental/octave) so a flat spelling can be entered directly. `parseNoteName()` moves from a sharps-only lookup to a semitone formula that resolves flats correctly, including the two letters (`Cb`, `Fb`) whose flat crosses an octave boundary. Picking a pitch dropdown auto-commits, splitting Pitch away from Start/End's Enter/Apply-staged path. |
 | [v1.16.3](#v1163--inline-note-detail-fields-2026-09-01-0956) | Three inline fields — Start, End, Pitch — beside the note editor's toolbar, directly editable and committing via Enter or Apply through the existing `timeAdjust`/`pitchNudge` edit types. Invalid input reverts silently without blocking a valid sibling edit, Escape reverts everything uncommitted, and typing is never clobbered by a redraw. `lib/pitch.js` gains `parseNoteName()`, the inverse of `noteName()`, bridged to `app.js` via a new `window.SansPitch`. |
 | [v1.16.2](#v1162--note-selection-identity-2026-09-01-0209) | Overlapping notes are disambiguated by pitch, not just time: `selectedNote` now carries `midi`, `noteAt` and `applyEdits` both accept an optional pitch qualifier, and the selection outline and every toolbar/keyboard edit resolve to the exact note under the pointer instead of an arbitrary same-time match. Old exported edit-history files (no `midi` field) still apply exactly as before. |
@@ -40,6 +41,69 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.16.5 — 簡譜 note-list markdown export (2026-09-01 12:58)
+
+**Review:** not yet
+
+**Design docs:**
+- 簡譜 note-list export: [Spec](superpowers/specs/2026-09-01-notes-jianpu-export-design.md) [Plan](superpowers/plans/2026-09-01-notes-jianpu-export.md)
+
+**What was built:**
+
+- `degreeToken()` in `lib/jianpu.js`, next to `degreeOf`/`referenceOctave`: a MIDI note as a
+  printable 簡譜 token — accidental plus digit, wrapped with an apostrophe per octave above the
+  reference octave or a comma per octave below.
+- A new `#notes-list-io` row in the Notes panel: a "seconds per line" number input (default 10)
+  and an **Export list** button, disabled only while there are zero notes — it does not need
+  簡譜 itself on; see the gotcha below.
+- The export click handler in `notes.js`: buckets the in-memory `notes` array into fixed-width
+  windows by start time, then writes a Markdown file — an `## ` header line naming the song
+  (when known) and the detected key, then one `### MM:SS - MM:SS` heading per window followed by
+  a line of space-separated 簡譜 tokens as its own paragraph. No worker, no re-analysis, no new
+  script tag — reuses the same `notes`/`jianpu` state the ribbon already draws from.
+- `notes.listSecs` / `notes.exportList` i18n strings in both locales — the export file's own
+  content (headings, the major/minor word) is deliberately English-only regardless of UI
+  language; see the gotcha below.
+
+**Key technical learnings:**
+
+- `[insight]` **Bucketing by note START time, not by overlap with a window, makes "a note
+  crossing a boundary" a non-problem instead of a special case.** A note is placed in exactly
+  the window its `start` falls into (`Math.floor(n.start / secs)`), full stop — there is no
+  clipping, no splitting, and no "which window does the tail belong to" decision to get wrong.
+  Verified this structurally while testing: halving the window width from 10s to 5s split one
+  10s block's 17 tokens into two 5s blocks with 11 and 6 tokens — 11+6, none lost or duplicated
+  — which is exactly what falls out for free from bucketing on a single timestamp instead of a
+  time range.
+- `[note]` **ASCII 簡譜 octave marks (trailing `'`, leading `,`) were chosen over Unicode
+  combining dots on purpose**, even though the on-screen ribbon already draws octaves as dots
+  (`drawOctaveDots` in `app.js`). A downloaded `.md` file is read in arbitrary text editors and
+  markdown viewers, where a combining-dot glyph over a digit is exactly the kind of thing that
+  renders inconsistently or not at all depending on font support; apostrophe/comma is the
+  traditional plain-text 簡譜 convention for the same reason and needs no font support at all.
+- `[note]` **`currentMix()` returning `null` is the normal case for in-browser-separated
+  output**, not an edge case to special-guard against — `loadSeparated` never keeps the original
+  file. The export header's song-name segment (`"${mix.name} — "`) and its em dash are simply
+  omitted together when there's no mix, verified against a zip of six stems with no mix file
+  (`## 1=<letter> <major|minor>`, no leading name, no stray dash) alongside a zip that does carry
+  one.
+- `[gotcha]` **A plain-text block marker (`== MM:SS - MM:SS`) sits on the same rendered line as
+  the notes below it in a Markdown previewer**, because a single `\n` with no blank line between
+  two paragraph-like lines is a soft break, not a new block — most renderers join them with a
+  space. Caught by the user after the first ship: switching the marker to a real `###` heading
+  (and the file's own top line to `##`) fixes it for free, since a heading is a block element by
+  definition and can never merge with the paragraph after it — no manual line-break workaround
+  needed.
+- `[insight]` **The Export list button's original gate (`!jianpu.on || !notes.length`) was
+  stricter than the data actually required.** `jianpu.tonic`/`jianpu.mode` are set from the
+  moment `notes.js` loads (`{ on: false, tonic: 0, mode: 'major', auto: true }`) and
+  `reinterpret()` runs `detectKey()` into them on every re-interpretation regardless of whether
+  the 簡譜 checkbox is ticked — `on` only controls whether the ON-SCREEN ribbon *displays*
+  degrees, not whether a key exists to compute them from. Gating the export on `on` conflated
+  "is there a key" with "is the checkbox ticked," disabling a fully-functional export for no
+  functional reason. Caught by the user after the first ship: the fix is one clause deleted
+  (`!notes.length` alone), not new state — the key was already there the whole time.
 
 ## v1.16.4 — Inline field labels and flat-pitch entry (2026-09-01 12:09)
 

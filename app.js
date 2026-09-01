@@ -1836,29 +1836,31 @@ function dispatchEdit(edits) {
 
 function editOctave(dir) {
   if (!selectedNote) return;
-  dispatchEdit([{ type: 'octave', at: selectedNote.at, dir }]);
-  // start/end unchanged by an octave move — the anchor stays valid as-is.
+  dispatchEdit([{ type: 'octave', at: selectedNote.at, dir, midi: selectedNote.midi }]);
+  // start unchanged by an octave move, but the pitch identity IS changing — keep it current.
+  selectedNote = { at: selectedNote.at, midi: selectedNote.midi + 12 * dir };
 }
 
 function editPitchNudge(semitones) {
   if (!selectedNote) return;
-  dispatchEdit([{ type: 'pitchNudge', at: selectedNote.at, semitones }]);
+  dispatchEdit([{ type: 'pitchNudge', at: selectedNote.at, semitones, midi: selectedNote.midi }]);
+  selectedNote = { at: selectedNote.at, midi: selectedNote.midi + semitones };
 }
 
 const TIME_NUDGE_STEP = 0.1;   // seconds
 
 function editTimeNudge(dir) {
   if (!selectedNote || !ribbon) return;
-  const n = noteAt(ribbon.notes, selectedNote.at);
+  const n = noteAt(ribbon.notes, selectedNote.at, selectedNote.midi);
   if (!n) return;
   const d = TIME_NUDGE_STEP * dir;
-  dispatchEdit([{ type: 'timeAdjust', at: selectedNote.at, dStart: d, dEnd: d }]);
-  selectedNote = { at: selectedNote.at + d };
+  dispatchEdit([{ type: 'timeAdjust', at: selectedNote.at, dStart: d, dEnd: d, midi: selectedNote.midi }]);
+  selectedNote = { at: selectedNote.at + d, midi: selectedNote.midi };
 }
 
 function editDeleteNote() {
   if (!selectedNote) return;
-  dispatchEdit([{ type: 'delete', at: selectedNote.at }]);
+  dispatchEdit([{ type: 'delete', at: selectedNote.at, midi: selectedNote.midi }]);
   selectedNote = null;
 }
 
@@ -1883,22 +1885,22 @@ const SPLIT_GAP = 0.005;
 
 function editSplit() {
   if (!selectedNote || !ribbon) return;
-  const n = noteAt(ribbon.notes, selectedNote.at);
+  const n = noteAt(ribbon.notes, selectedNote.at, selectedNote.midi);
   if (!n) return;
   const cutAt = currentTime();
   if (cutAt <= n.start || cutAt >= n.end) return;   // playhead must be inside the note
 
   const edits = [];
   if (n.end - cutAt < SPLIT_GAP) {
-    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end });
-    selectedNote = { at: (n.start + cutAt) / 2 };
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end, midi: n.midi });
+    selectedNote = { at: (n.start + cutAt) / 2, midi: n.midi };
   } else if (cutAt - n.start < SPLIT_GAP) {
-    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: cutAt - n.start, dEnd: 0 });
-    selectedNote = { at: (cutAt + n.end) / 2 };
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: cutAt - n.start, dEnd: 0, midi: n.midi });
+    selectedNote = { at: (cutAt + n.end) / 2, midi: n.midi };
   } else {
-    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end });
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end, midi: n.midi });
     edits.push({ type: 'add', start: cutAt + SPLIT_GAP, end: n.end, midi: n.midi });
-    selectedNote = { at: (n.start + cutAt) / 2 };
+    selectedNote = { at: (n.start + cutAt) / 2, midi: n.midi };
   }
   dispatchEdit(edits);
 }

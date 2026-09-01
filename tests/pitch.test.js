@@ -1,5 +1,5 @@
 import { test, assert, assertEq, assertClose } from './assert.js';
-import { centsFromHz, hzFromCents, midiFromCents, noteName } from '../lib/pitch.js';
+import { centsFromHz, hzFromCents, midiFromCents, noteName, parseNoteName } from '../lib/pitch.js';
 
 test('pitch: cents anchor on A4 = 440 Hz = MIDI 69', () => {
   assertClose(centsFromHz(440), 6900, 1e-6, 'A4');
@@ -24,6 +24,38 @@ test('pitch: noteName spells MIDI numbers with octaves', () => {
   assertEq(noteName(60), 'C4', 'middle C');
   assertEq(noteName(40), 'E2', 'guitar low E');
   assertEq(noteName(61), 'C#4', 'sharps, never flats');
+});
+
+test('pitch: parseNoteName inverts noteName for every output it can produce', () => {
+  for (const m of [0, 1, 12, 40, 60, 61, 69, 127, -1, -12]) {
+    assertEq(parseNoteName(noteName(m)), m, `round-trip midi ${m}`);
+  }
+});
+
+test('pitch: parseNoteName resolves flats to the correct enharmonic MIDI number', () => {
+  assertEq(parseNoteName('Db4'), parseNoteName('C#4'), 'Db4 is the same pitch as C#4');
+  assertEq(parseNoteName('Eb3'), parseNoteName('D#3'), 'Eb3 is the same pitch as D#3');
+  assertEq(parseNoteName('Cb4'), parseNoteName('B3'), 'Cb crosses an octave boundary: Cb4 is B3, not B4');
+  assertEq(parseNoteName('Fb4'), parseNoteName('E4'), 'Fb stays within the same octave: Fb4 is E4');
+  assertEq(parseNoteName('bb2'), parseNoteName('A#2'), 'lowercase flat letter accepted, same as sharps already were');
+});
+
+test('pitch: parseNoteName also resolves non-table sharps like B# and E#', () => {
+  assertEq(parseNoteName('B#4'), parseNoteName('C5'), 'B#4 crosses into the next octave, same as C5');
+  assertEq(parseNoteName('E#4'), parseNoteName('F4'), 'E#4 stays in the same octave, same as F4');
+});
+
+test('pitch: parseNoteName rejects garbage', () => {
+  assertEq(parseNoteName(''), null, 'empty string');
+  assertEq(parseNoteName('H4'), null, 'invalid letter');
+  assertEq(parseNoteName('C'), null, 'missing octave');
+  assertEq(parseNoteName('C##4'), null, 'double sharp');
+  assertEq(parseNoteName('4C'), null, 'reversed order');
+});
+
+test('pitch: parseNoteName accepts negative octaves and is case-insensitive', () => {
+  assertEq(parseNoteName('C-1'), 0, 'MIDI 0 is C-1');
+  assertEq(parseNoteName('c#-2'), -11, 'lowercase input accepted, negative octave');
 });
 
 import { lowpassKernel, decimate } from '../lib/pitch.js';

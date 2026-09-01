@@ -590,7 +590,38 @@ function buildUI(title) {
     zGrip.className = 'ribbon-grip';
     zGrip.title = tr('notes.resizeTip');
     attachResize(zGrip, () => zoomHeight, (v) => { zoomHeight = v; }, ZOOM_H_KEY);
-    zLane.append(zName, zCanvas, zSpacer, zGrip);
+
+    /* The edit toolbar. Hidden while edit mode is off (see the 'sansbass:editmode' listener);
+     * each button disabled until a note is selected. */
+    const zToolbar = document.createElement('div');
+    zToolbar.className = 'note-toolbar';
+    zToolbar.hidden = !editMode;
+
+    const mkEditBtn = (label, titleKey, fn) => {
+      const b = document.createElement('button');
+      b.className = 'mini note-tbtn';
+      b.type = 'button';
+      b.textContent = label;
+      b.title = tr(titleKey);
+      b.disabled = true;
+      b.addEventListener('click', fn);
+      return b;
+    };
+
+    const octUp = mkEditBtn('↑ 8ve', 'notes.editOctUpTip', () => editOctave(1));
+    const octDown = mkEditBtn('↓ 8ve', 'notes.editOctDownTip', () => editOctave(-1));
+    const pitchUp = mkEditBtn('♯', 'notes.editPitchUpTip', () => editPitchNudge(1));
+    const pitchDown = mkEditBtn('♭', 'notes.editPitchDownTip', () => editPitchNudge(-1));
+    const timeBack = mkEditBtn('◄t', 'notes.editTimeBackTip', () => editTimeNudge(-1));
+    const timeFwd = mkEditBtn('▶t', 'notes.editTimeFwdTip', () => editTimeNudge(1));
+    const split = mkEditBtn('✂', 'notes.editSplitTip', editSplit);
+    const del = mkEditBtn('✕', 'notes.editDeleteTip', editDeleteNote);
+    del.classList.add('note-tbtn-danger');
+
+    zToolbar.append(octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, split, del);
+    zoomToolbar = { root: zToolbar, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, split, del };
+
+    zLane.append(zName, zCanvas, zToolbar, zSpacer, zGrip);
     el.lanes.insertBefore(zLane, lane);
     attachZoom(zCanvas);
     zoomEl = { lane: zLane, canvas: zCanvas, out: zOut };
@@ -1036,7 +1067,22 @@ function draw() {
     renderZoom(zoomEl.canvas);
     zoomEl.out.textContent = `${zoomSeconds.toFixed(zoomSeconds < 10 ? 1 : 0)}s`;
   }
+  if (editMode) syncEditToolbar();
   el.tCur.textContent = fmt(t);
+}
+
+/** Keeps the toolbar's enabled state in sync with the current selection. Called from draw(),
+ *  so no handler needs to call it by hand — every edit round-trips through notes.js and back
+ *  into setNotes(), which calls draw(). Also clears a selection whose note is gone. */
+function syncEditToolbar() {
+  if (!zoomToolbar) return;
+  const sel = ribbon && selectedNote ? noteAt(ribbon.notes, selectedNote.at) : null;
+  if (selectedNote && !sel) selectedNote = null;
+  for (const b of [zoomToolbar.octUp, zoomToolbar.octDown, zoomToolbar.pitchUp,
+                    zoomToolbar.pitchDown, zoomToolbar.timeBack, zoomToolbar.timeFwd,
+                    zoomToolbar.split, zoomToolbar.del]) {
+    b.disabled = !sel;
+  }
 }
 
 function paint(canvas, frac) {
@@ -1572,6 +1618,66 @@ function zoomBy(factor) {
  *  that starts there rather than the one that just finished. */
 function noteAt(list, at) {
   return list.find((n) => n.start <= at && at < n.end) || null;
+}
+
+function dispatchEdit(edits) {
+  window.dispatchEvent(new CustomEvent('sansbass:noteedit', { detail: { edits } }));
+}
+
+function editOctave(dir) {
+  if (!selectedNote) return;
+  dispatchEdit([{ type: 'octave', at: selectedNote.at, dir }]);
+  // start/end unchanged by an octave move — the anchor stays valid as-is.
+}
+
+function editPitchNudge(semitones) {
+  if (!selectedNote) return;
+  dispatchEdit([{ type: 'pitchNudge', at: selectedNote.at, semitones }]);
+}
+
+const TIME_NUDGE_STEP = 0.1;   // seconds
+
+function editTimeNudge(dir) {
+  if (!selectedNote || !ribbon) return;
+  const n = noteAt(ribbon.notes, selectedNote.at);
+  if (!n) return;
+  const d = TIME_NUDGE_STEP * dir;
+  dispatchEdit([{ type: 'timeAdjust', at: selectedNote.at, dStart: d, dEnd: d }]);
+  selectedNote = { at: selectedNote.at + d };
+}
+
+function editDeleteNote() {
+  if (!selectedNote) return;
+  dispatchEdit([{ type: 'delete', at: selectedNote.at }]);
+  selectedNote = null;
+}
+
+/* Splitting at the playhead composes from two primitives, or one at either edge — see "The
+ * one thing to understand before starting" and the design spec's "Six edit types, not
+ * seven". 5ms keeps the two pieces unambiguously separate rather than zero-gap touching
+ * notes, the same ambiguity docs/transcription.md flags in the portamento analysis. */
+const SPLIT_GAP = 0.005;
+
+function editSplit() {
+  if (!selectedNote || !ribbon) return;
+  const n = noteAt(ribbon.notes, selectedNote.at);
+  if (!n) return;
+  const cutAt = currentTime();
+  if (cutAt <= n.start || cutAt >= n.end) return;   // playhead must be inside the note
+
+  const edits = [];
+  if (n.end - cutAt < SPLIT_GAP) {
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end });
+    selectedNote = { at: (n.start + cutAt) / 2 };
+  } else if (cutAt - n.start < SPLIT_GAP) {
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: cutAt - n.start, dEnd: 0 });
+    selectedNote = { at: (cutAt + n.end) / 2 };
+  } else {
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end });
+    edits.push({ type: 'add', start: cutAt + SPLIT_GAP, end: n.end, midi: n.midi });
+    selectedNote = { at: (n.start + cutAt) / 2 };
+  }
+  dispatchEdit(edits);
 }
 
 /** Song time under a client x position in the zoomed pane. */

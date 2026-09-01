@@ -491,3 +491,13 @@ input[type=range] { width: 110px; }
 .notes-sub:has(input:disabled) { opacity: .45; }
 .notes-adv summary { font: 12px var(--mono); color: var(--dim); cursor: pointer; }
 .notes-adv[open] summary { margin-bottom: 6px; }
+
+/* ---- note editing (layer 4) ---- */
+.note-toolbar {
+  grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  margin-top: 6px;
+}
+.note-tbtn { font: 11px var(--mono); }
+.note-tbtn:disabled { opacity: .4; cursor: default; }
+.note-tbtn-danger { border-color: color-mix(in srgb, #ff6b81 45%, var(--line)); color: #ff9aa8; }

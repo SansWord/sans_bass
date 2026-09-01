@@ -14,6 +14,8 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.16.4](#v1164--inline-field-labels-and-flat-pitch-entry-2026-09-01-1209) | Visible labels above the Start/End/Pitch fields, and Pitch becomes three dropdowns (letter/accidental/octave) so a flat spelling can be entered directly. `parseNoteName()` moves from a sharps-only lookup to a semitone formula that resolves flats correctly, including the two letters (`Cb`, `Fb`) whose flat crosses an octave boundary. Picking a pitch dropdown auto-commits, splitting Pitch away from Start/End's Enter/Apply-staged path. |
+| [v1.16.3](#v1163--inline-note-detail-fields-2026-09-01-0956) | Three inline fields — Start, End, Pitch — beside the note editor's toolbar, directly editable and committing via Enter or Apply through the existing `timeAdjust`/`pitchNudge` edit types. Invalid input reverts silently without blocking a valid sibling edit, Escape reverts everything uncommitted, and typing is never clobbered by a redraw. `lib/pitch.js` gains `parseNoteName()`, the inverse of `noteName()`, bridged to `app.js` via a new `window.SansPitch`. |
 | [v1.16.2](#v1162--note-selection-identity-2026-09-01-0209) | Overlapping notes are disambiguated by pitch, not just time: `selectedNote` now carries `midi`, `noteAt` and `applyEdits` both accept an optional pitch qualifier, and the selection outline and every toolbar/keyboard edit resolve to the exact note under the pointer instead of an arbitrary same-time match. Old exported edit-history files (no `midi` field) still apply exactly as before. |
 | [v1.16.1](#v1161--note-editing-ergonomics-batch-1-2026-08-31-2322) | Four ergonomics fixes to v1.16.0's note editor: overlapping notes resolve clicks to whichever is drawn on top, the zoomed pane's scroll wheel seeks by default (Shift zooms) and arrows always seek (Shift for a fine step), range-select-and-delete now works in the full-song notes lane too, and clicking or tapping a note parks the playhead exactly there. |
 | [v1.16.0](#v1160--note-editing-layer-4-2026-08-31-2201) | Hand-correct the detected note list from the zoomed pane — octave/semitone nudge, drag-move/resize, split, add, delete, range-delete — anchored to a time point so corrections survive every later re-interpretation (a slider drag, the HMM toggle, octave folding). Orphaned edits surface a warning instead of vanishing. The whole editing session exports/imports as one JSON file. |
@@ -36,6 +38,167 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.16.4 — Inline field labels and flat-pitch entry (2026-09-01 12:09)
+
+**Review:** not yet
+
+**Design docs:**
+- Inline field labels and flat-pitch entry: [Spec](superpowers/specs/2026-09-01-note-inline-fields-followups-design.md) [Plan](superpowers/plans/2026-09-01-note-inline-fields-followups.md)
+
+**What was built:**
+
+- Visible labels above Start, End, and Pitch — reusing the existing translated tooltip
+  strings, no new i18n keys.
+- Pitch's single text field replaced with three dropdowns (letter, accidental, octave), so a
+  flat spelling (`Db`, `Eb`, ...) is an explicit, unambiguous choice instead of something a
+  free-text parser would have to guess at.
+- `parseNoteName()` moved from a sharps-only lookup table to a semitone-offset formula, so it
+  now resolves flats to the correct MIDI number — including `Cb` (the same pitch as the B
+  *below* it) and `Fb` (the same pitch as E in the same octave), the two letters whose flat
+  crosses an octave boundary and where a naive "flat = sharp minus one, same octave" approach
+  gets the wrong answer. The formula also resolves non-table sharps like `B#`/`E#`, previously
+  rejected the same as flats were — a real, permanent behavior widening beyond just flats.
+- Picking any pitch dropdown value auto-commits a `pitchNudge` immediately, the same way the
+  toolbar's existing ♯/♭/↑8ve/↓8ve buttons already do — splitting Pitch away from Start/End's
+  Enter/Apply-staged commit path entirely. `commitFields()` is now Start/End only.
+
+**Key technical learnings:**
+
+- `[insight]` **Accepting a second, unambiguous spelling isn't the same risk as accepting an
+  ambiguous guess.** v1.16.3's `parseNoteName()` rejected flats specifically to avoid silently
+  *reinterpreting* an ambiguous-looking free-text entry. That risk doesn't exist once flat
+  becomes an explicit dropdown choice — `Db4` and `C#4` are, by definition, the identical
+  physical pitch, not two different guesses about what the user meant. Recognizing that the
+  original safety property was about ambiguity, not about flats specifically, is what made
+  extending the function safe rather than a regression of the original design intent.
+- `[gotcha]` **A flat's semitone offset can't be computed as a lookup-plus-wrap without getting
+  two letters wrong.** Naively mapping a flat letter to "one semitone below its sharp-table
+  index, wrapped within the same octave number" gets `Cb`/`Fb` wrong, because `Cb4` is not
+  `B4` — it's `B3`, one octave down. The fix is a single continuous formula
+  (`NATURAL_SEMITONE[letter] + offset + (octave+1)*12`) computed before any wrapping, so the
+  octave boundary falls out of ordinary arithmetic instead of needing a special case. Verified
+  live in the running app (not just the unit test): setting a note's Pitch to C/♭ actually
+  landed it on the B one octave down, not the same octave.
+- `[gotcha]` **A formula change's blast radius can be wider than the one case you set out to
+  fix.** The semitone-formula rewrite was scoped as "make flats work," but it also silently
+  started resolving non-table sharps (`B#`, `E#`) that the old lookup-table implementation
+  rejected — a correct, even desirable, side effect (the eventual dropdown UI can produce
+  exactly these combinations), but one that a code reviewer caught, not the original design or
+  the first pass of tests. Worth explicitly enumerating "what else changes" whenever a lookup
+  table gets replaced with a formula, not just checking the motivating case.
+- `[note]` A `<select>` doesn't carry the same "mid-keystroke, clobber-able" risk a text input
+  does — its value only changes through an explicit, already-committing choice — so the Pitch
+  dropdowns' sync function needed none of Start/End's `fieldsShownFor`/focus-guard machinery,
+  even though it's solving a superficially similar "keep the field in step with the note"
+  problem right next to it.
+
+**Process learnings:**
+
+- `[insight]` **Subagent review caught what self-review wouldn't have.** This session's first
+  half (Tasks 1's review) ran through the full spec-compliance + code-quality subagent review
+  cycle and caught a stale `docs/behaviour.md` claim and a missing-test-coverage gap that the
+  implementer's own self-review missed. The second half (Tasks 2-9) switched to inline
+  execution for speed on the remaining mechanical DOM/CSS/docs work, with one consolidated
+  manual-verification pass instead of a review cycle per task — a reasonable trade for
+  well-specified, lower-risk changes, but worth remembering that the fresh-eyes review is what
+  catches the subtle stuff, not raw effort spent looking at your own work again.
+
+---
+
+## v1.16.3 — Inline note-detail fields (2026-09-01 09:56)
+
+**Review:** not yet
+
+**Design docs:**
+- Inline note-detail fields: [Spec](superpowers/specs/2026-09-01-note-inline-fields-design.md) [Plan](superpowers/plans/2026-09-01-note-inline-fields.md)
+
+**What was built:**
+
+- Three inline fields — Start, End, Pitch — beside the note editor's toolbar, populated from
+  the selected note and directly editable; Enter (in any field) or a shared Apply button
+  commits.
+- `parseNoteName()` in `lib/pitch.js`, the exact inverse of `noteName()` — sharps only,
+  rejects flats and garbage — round-trips every value `noteName()` can produce.
+- A combined Start+End change commits as one `timeAdjust`, matching a two-edge drag; a Pitch
+  change commits as one `pitchNudge`; both can land from a single Apply/Enter as two edits in
+  one `dispatchEdit` call, the same pattern `editSplit()` already used.
+- Invalid input in either the time pair or the pitch field reverts silently (no edit
+  dispatched for that field) without blocking a valid edit sitting right next to it; Escape
+  reverts all three without committing.
+- A `fieldsShownFor` identity guard stops the per-frame `draw()` → `syncEditToolbar()` tick
+  from overwriting an in-progress keystroke, while still refreshing immediately on a
+  genuinely new selection or a forced post-commit refresh — and a `document.activeElement`
+  check was added as local defense-in-depth alongside the identity guard, so a future
+  hotkey or drag-handle change elsewhere in the file can't silently reintroduce clobbering.
+
+**Key technical learnings:**
+
+- `[gotcha]` **A classic script can't `import` an ES module, and a design spec's pseudocode
+  can assume it can anyway.** `app.js` is intentionally a classic script (`CLAUDE.md`'s hard
+  constraints), but `lib/pitch.js` is ESM-only, imported until now only by
+  `notes.js`/`notes.worker.js`/`sonify.js`. `commitFields()`'s call to `parseNoteName()`
+  needed a bridge — `window.SansPitch`, set by `lib/pitch.js` itself at module load — the
+  same shape as the existing `window.sansBass` bridge, just running app.js → notes.js's
+  direction in reverse. Caught by tracing the DOM/module boundary before writing any code,
+  since there's no test that would have caught it after the fact.
+- `[gotcha]` **A field that round-trips through a rounded display format is not the same
+  float it started as, and an exact-equality "did this change?" check will notice.**
+  `fmtPrecise()` displays time to the millisecond; reparsing that string via
+  `parseTimeMmSs()` for a field the user never touched can differ from the note's actual
+  value by up to ~0.5ms of rounding noise. `commitFields()`'s original zero-delta check
+  (`dStart !== 0 || dEnd !== 0`) treated that noise as a real edit, silently bundling a
+  junk near-zero `timeAdjust` alongside an intended `pitchNudge` on every pitch-only commit
+  — invisible in the UI (the field still displayed the same rounded text) but polluting the
+  edit-history list and export. Caught only by real end-to-end browser testing with an
+  actual note (Task 9), not by code review or the unit suite, since nothing exercised the
+  round-trip with real floats until then. Fixed by comparing `dStart`/`dEnd` at the same
+  millisecond granularity the field itself displays, rather than at exact float precision —
+  the dispatched edit still carries full-precision deltas when a real change is detected.
+- `[gotcha]` **A design assumption never checked against the behaviour doc's own existing
+  rows shipped as a documented "spec" for something that doesn't exist.** The original E27
+  behaviour-doc row claimed "clicking empty space deselects" a note — but two pre-existing
+  rows in the same file (E2, E3, both predating this feature) already establish that a blank
+  click has only ever seeked the playhead, never deselected anything; the toolbar buttons
+  stay enabled indefinitely once a note is selected, exactly like the new fields correctly
+  (if inadvertently) mirror. The plan's Task 8 wrote a doc row describing behaviour that had
+  never existed for the feature it was modeled on, and it went unnoticed through a spec
+  review, a code-quality review, AND an initial doc-quality review — only real interactive
+  testing surfaced it. Fixed by correcting the row's claim rather than the code, since the
+  code correctly matches (by accident of following the toolbar's existing pattern) the
+  project's real, established selection semantics.
+- `[insight]` **"Only rewrite when different" already implies the focus guard a design can
+  describe as a separate check — but only if you trace every path that could break the
+  invariant it depends on.** The design spec describes two conditions for the fields'
+  refresh guard — rewrite only on a different note, and never while a field has focus — as if
+  both need testing in code. Code review confirmed the identity check alone was sufficient
+  under every CURRENT call path (nothing changes `selectedNote` while a field holds focus,
+  because of an unrelated `keydown` handler's input-tag exclusion), but flagged that this
+  safety was an undocumented, cross-cutting invariant rather than a local guarantee — a
+  future hotkey or drag-handle added elsewhere could silently break it with no signal
+  anything had. Resolved by adding the `document.activeElement` check back as cheap,
+  local, defense-in-depth (nested so it doesn't regress the deliberate forced-refresh-after-
+  commit snap-back), plus a cross-reference comment at the invariant's actual location.
+- `[note]` The Pitch field reads `sel.name` — already computed by `segmentNotes`/`applyEdits`
+  and stored on every note object — rather than calling `noteName()` from `app.js`. That
+  meant `app.js` never needed to reach `noteName()` at all, only its inverse; only
+  `parseNoteName` needed the `window.SansPitch` bridge.
+
+**Process learnings:**
+
+- `[gotcha]` **Two subagents fixing different bugs in the same git worktree concurrently can
+  corrupt each other's commits.** Both fixes used `git commit --amend --no-edit` against
+  "the commit I'm fixing" — but in a shared working directory, `HEAD` can move out from under
+  a subagent between when it stages its change and when it commits, so an amend silently
+  amends whatever the CURRENT tip is, not the commit the subagent thinks it's targeting. One
+  fix's `app.js` change ended up folded into the other's `docs/behaviour.md` commit, with
+  the amending agent's original commit message winning via `--no-edit`. Recovered by
+  reconstructing the commit history from diffs (verified the final tree was byte-identical
+  to the tangled state before rebuilding, so nothing was lost) rather than by trusting either
+  agent's commit boundary claims. Two independent fixes in the same worktree should be
+  serialized, not parallelized, whenever both intend to amend an existing commit.
 
 ---
 

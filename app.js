@@ -59,6 +59,12 @@ let addArmed = false;      // "+ Add note" pressed — the next drag places a no
 let addDrag = null;        // { startT, midi, curT }
 let rangeDrag = null;        // { startT, curT } — actively dragging
 let rangeSelection = null;   // { from, to } — committed, awaiting the delete button
+let tempoRangeDrag = null;      // { startT, curT } — actively dragging on the drums lane
+let tempoRange = null;          // { from, to } committed selection, or null = whole song
+let tempoRangeArmed = false;    // mirrors notes.js's "Select BPM range" toggle
+let tempoHintEl = null;         // caption text node under the drums lane
+let tempoClearBtn = null;       // the Clear button beside it
+let tempoDrumsCanvas = null;    // the drums stem's own waveform canvas — the drag surface
 const RULER_BAND_PX = 16;    // bottom band of the zoomed canvas reserved for range-select
 const WHEEL_SEEK_FRACTION = 0.05;  // fraction of the zoom span a single wheel tick seeks
 const ARROW_SEEK_FRACTION = 0.15;  // fraction of the zoom span a single Arrow Left/Right seeks
@@ -501,6 +507,12 @@ function buildUI(title) {
    * duration they would be silently wrong. Drop them before the lanes are rebuilt. */
   ribbon = null;
   zoomPeaks = null;
+  tempoRangeDrag = null;
+  tempoRange = null;
+  tempoRangeArmed = false;
+  tempoHintEl = null;
+  tempoClearBtn = null;
+  tempoDrumsCanvas = null;
   el.lanes.innerHTML = '';
   tracks.forEach((t, i) => {
     const lane = document.createElement('div');
@@ -537,12 +549,34 @@ function buildUI(title) {
     vol.appendChild(slider);
 
     lane.append(name, canvas, vol);
+    if (t.stem === 'drums') {
+      const hint = document.createElement('div');
+      hint.className = 'tempo-range-hint';
+      const hintTxt = document.createElement('span');
+      hintTxt.className = 'txt';
+      const hintClear = document.createElement('button');
+      hintClear.className = 'mini';
+      hintClear.type = 'button';
+      hintClear.textContent = tr('notes.tempoRangeClear');
+      hintClear.addEventListener('click', () => {
+        tempoRange = null;
+        syncTempoRangeHint();
+        window.dispatchEvent(new CustomEvent('sansbass:temporange', { detail: null }));
+        draw();
+      });
+      hint.append(hintTxt, hintClear);
+      lane.appendChild(hint);
+      tempoHintEl = hintTxt;
+      tempoClearBtn = hintClear;
+      tempoDrumsCanvas = canvas;
+      syncTempoRangeHint();
+    }
     el.lanes.appendChild(lane);
 
     t.canvas = canvas;
     t.nameEl = name;
     t.laneEl = lane;
-    attachSeek(canvas);
+    attachSeek(canvas, { tempoLane: t.stem === 'drums' });
   });
 
   /* Built here rather than parked in index.html: el.lanes.innerHTML = '' above destroys
@@ -1635,6 +1669,15 @@ function applyRibbonVisibility() {
   if (zoomEl) zoomEl.lane.hidden = !on;
 }
 
+/** The caption under the drums lane: the current selection, or "whole song". */
+function syncTempoRangeHint() {
+  if (!tempoHintEl) return;
+  tempoHintEl.textContent = tempoRange
+    ? tr('notes.tempoRangeSel', { from: fmt(tempoRange.from), to: fmt(tempoRange.to) })
+    : tr('notes.tempoRangeWhole');
+  if (tempoClearBtn) tempoClearBtn.disabled = !tempoRange;
+}
+
 function toggleRibbon() {
   ribbonMuted = !ribbonMuted;
   applyRibbonGain();
@@ -1695,6 +1738,7 @@ function retranslate() {
   // Lane labels translate; the note NAMES drawn inside the ribbon never do.
   if (ribbonEl) ribbonEl.txt.textContent = tr('notes.lane');
   if (zoomEl) zoomEl.lane.querySelector('.txt').textContent = tr('notes.zoom');
+  syncTempoRangeHint();
   renderLoopBadge();
   // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
   // its text — clobbering "Restore previous". This runs after, and must keep doing so:
@@ -2269,6 +2313,9 @@ window.addEventListener('sansbass:editmode', (e) => {
   if (ribbonRangeHint) ribbonRangeHint.hidden = !editMode;
   if (zoomEl) { zoomEl.canvas.classList.toggle('editing', editMode); draw(); }
 });
+window.addEventListener('sansbass:temporangemode', (e) => {
+  tempoRangeArmed = e.detail.on;
+});
 renderLangToggle();
 gcOnce(`lang-${window.SansI18n.getLocale()}`);
 on(el.masterVol, 'input', () => {
@@ -2404,6 +2451,12 @@ window.sansBass = {
   },
   /** Hand detected notes to the player, or null to clear the lane. */
   setNotes,
+  /** Restores a tempoRange imported from an edits JSON, updating the drums-lane caption. */
+  setTempoRange: (range) => {
+    tempoRange = range;
+    syncTempoRangeHint();
+    draw();
+  },
   /** Where notes.js connects its oscillators, and the clock they must use. */
   notesAudio: () => (audio && ribbonGain ? { ctx: audio, destination: ribbonGain } : null),
   /** Current transport, for scheduling a synth that starts mid-playback. */

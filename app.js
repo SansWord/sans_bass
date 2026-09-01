@@ -1151,7 +1151,7 @@ function draw() {
  *  into setNotes(), which calls draw(). Also clears a selection whose note is gone. */
 function syncEditToolbar() {
   if (!zoomToolbar) return;
-  const sel = ribbon && selectedNote ? noteAt(ribbon.notes, selectedNote.at) : null;
+  const sel = ribbon && selectedNote ? noteAt(ribbon.notes, selectedNote.at, selectedNote.midi) : null;
   if (selectedNote && !sel) selectedNote = null;
   for (const b of [zoomToolbar.octUp, zoomToolbar.octDown, zoomToolbar.pitchUp,
                     zoomToolbar.pitchDown, zoomToolbar.timeBack, zoomToolbar.timeFwd,

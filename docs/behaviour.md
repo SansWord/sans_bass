@@ -8,7 +8,7 @@ description of the code, which would just rot alongside it.
 If you find an item here that no longer matches the app, one of the two is a bug; decide
 which before moving on.
 
-Last exercised end-to-end: **v1.2.2**; the Loading and Loading-the-page-itself rows were re-run in **v1.4.0**, and the Loading / Lanes / Unmute-all / Play-dropdown rows touched by v1.6.0 were re-run in **v1.6.0**. E19, E24 and E25 were re-run in **v1.16.2**. E27-E32 were run in **v1.16.3**. Items marked ⚠ were reasoned from the code rather
+Last exercised end-to-end: **v1.2.2**; the Loading and Loading-the-page-itself rows were re-run in **v1.4.0**, and the Loading / Lanes / Unmute-all / Play-dropdown rows touched by v1.6.0 were re-run in **v1.6.0**. E19, E24 and E25 were re-run in **v1.16.2**. E27-E32 were run in **v1.16.3**; E27, E28 and E33 were run in **v1.16.4**. Items marked ⚠ were reasoned from the code rather
 than run in that session, so treat them as the least trustworthy rows here.
 
 ---

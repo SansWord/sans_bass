@@ -177,8 +177,9 @@ automatically, through ordinary arithmetic — not a special case. `parseNoteNam
 This still round-trips every value `noteName()` can produce (sharps only), still rejects
 garbage (`"H4"`, `"C"`, `"4C"`) and double accidentals (`"C##4"`, `"Cb#4"` — the regex allows
 only one of `#`/`b`), and is still case-insensitive with negative-octave support, exactly as
-v1.16.3's version was. The only behaviour change is that a flat spelling now resolves instead
-of returning `null`.
+v1.16.3's version was. The behaviour change is that a flat spelling, or a non-table sharp like
+`B#`/`E#`, now resolves instead of returning `null` — both are musically well-defined, just
+spellings `noteName()` itself never produces.
 
 ### Labels
 

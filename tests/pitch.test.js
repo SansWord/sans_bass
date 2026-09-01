@@ -32,9 +32,17 @@ test('pitch: parseNoteName inverts noteName for every output it can produce', ()
   }
 });
 
-test('pitch: parseNoteName rejects flats', () => {
-  assertEq(parseNoteName('Db4'), null, 'flat spelling rejected, not silently reinterpreted');
-  assertEq(parseNoteName('Eb3'), null, 'flat spelling rejected');
+test('pitch: parseNoteName resolves flats to the correct enharmonic MIDI number', () => {
+  assertEq(parseNoteName('Db4'), parseNoteName('C#4'), 'Db4 is the same pitch as C#4');
+  assertEq(parseNoteName('Eb3'), parseNoteName('D#3'), 'Eb3 is the same pitch as D#3');
+  assertEq(parseNoteName('Cb4'), parseNoteName('B3'), 'Cb crosses an octave boundary: Cb4 is B3, not B4');
+  assertEq(parseNoteName('Fb4'), parseNoteName('E4'), 'Fb stays within the same octave: Fb4 is E4');
+  assertEq(parseNoteName('bb2'), parseNoteName('A#2'), 'lowercase flat letter accepted, same as sharps already were');
+});
+
+test('pitch: parseNoteName also resolves non-table sharps like B# and E#', () => {
+  assertEq(parseNoteName('B#4'), parseNoteName('C5'), 'B#4 crosses into the next octave, same as C5');
+  assertEq(parseNoteName('E#4'), parseNoteName('F4'), 'E#4 stays in the same octave, same as F4');
 });
 
 test('pitch: parseNoteName rejects garbage', () => {

@@ -509,6 +509,22 @@ input[type=range] { width: 110px; }
 .note-tbtn-danger { border-color: color-mix(in srgb, #ff6b81 45%, var(--line)); color: #ff9aa8; }
 .note-tbtn-armed { border-color: var(--loop); color: var(--loop); }
 
+.note-fields {
+  grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  margin-top: 4px;
+}
+.note-field {
+  font: 11px var(--mono);
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  border-radius: 4px;
+  padding: 2px 6px;
+  width: 6.5em;
+}
+.note-field:disabled { opacity: .4; cursor: default; }
+
 /* position: relative so the floating panel below anchors to THIS element, not the page —
    and so opening it never changes .notes-edit-list's own box height, since the panel is
    taken out of flow entirely rather than pushing the zoomed pane down. */

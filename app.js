@@ -47,6 +47,10 @@ let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
 let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:editmode'
 let selectedNote = null;    // { at, midi } — at is a time point inside the note, midi is its
                              // pitch at selection time; both identify one specific note
+let fieldsShownFor = null;  // { at, midi } of the note last written into the inline fields,
+                             // or null — lets syncNoteFields skip a rewrite that would
+                             // clobber an in-progress keystroke (see the design spec's
+                             // "Refresh vs. typing")
 let zoomToolbar = null;     // built in Task 4; guarded with `if (zoomToolbar)` until then
 let zoomRangeHint = null;   // the "drag along the bottom" caption under the zoomed canvas
 let ribbonRangeHint = null; // the same caption under the full-song notes lane
@@ -677,10 +681,52 @@ function buildUI(title) {
     rangeDel.classList.add('note-tbtn-danger');
 
     zToolbar.append(addBtn, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, split, del, rangeDel);
-    zoomToolbar = { root: zToolbar, add: addBtn, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd,
-                     split, del, rangeDel };
 
-    zLane.append(zName, zCanvas, zRangeHint, zToolbar, zSpacer, zGrip);
+    /* Inline Start/End/Pitch fields, next to the toolbar. Same hidden-until-edit-mode and
+     * disabled-until-selected rules as the toolbar buttons above — see docs/superpowers/
+     * specs/2026-09-01-note-inline-fields-design.md. */
+    const zFields = document.createElement('div');
+    zFields.className = 'note-fields';
+    zFields.hidden = !editMode;
+
+    const mkFieldInput = (titleKey) => {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'note-field';
+      inp.title = tr(titleKey);
+      inp.setAttribute('aria-label', tr(titleKey));
+      inp.disabled = true;
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitFields();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          inp.blur();
+          fieldsShownFor = null;
+          syncEditToolbar();
+        }
+      });
+      return inp;
+    };
+
+    const fieldStart = mkFieldInput('notes.editFieldStart');
+    const fieldEnd = mkFieldInput('notes.editFieldEnd');
+    const fieldPitch = mkFieldInput('notes.editFieldPitch');
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'mini note-tbtn';
+    applyBtn.type = 'button';
+    applyBtn.textContent = tr('notes.editFieldApply');
+    applyBtn.disabled = true;
+    applyBtn.addEventListener('click', commitFields);
+
+    zFields.append(fieldStart, fieldEnd, fieldPitch, applyBtn);
+
+    zoomToolbar = { root: zToolbar, fields: zFields, add: addBtn, octUp, octDown, pitchUp,
+                     pitchDown, timeBack, timeFwd, split, del, rangeDel,
+                     fieldStart, fieldEnd, fieldPitch, applyBtn };
+
+    zLane.append(zName, zCanvas, zRangeHint, zToolbar, zFields, zSpacer, zGrip);
     el.lanes.insertBefore(zLane, lane);
     attachZoom(zCanvas);
     zoomEl = { lane: zLane, canvas: zCanvas, out: zOut };
@@ -2044,7 +2090,7 @@ window.addEventListener('sansbass:editmode', (e) => {
   addDrag = null;
   rangeDrag = null;
   rangeSelection = null;
-  if (zoomToolbar) zoomToolbar.root.hidden = !editMode;
+  if (zoomToolbar) { zoomToolbar.root.hidden = !editMode; zoomToolbar.fields.hidden = !editMode; }
   if (zoomRangeHint) zoomRangeHint.hidden = !editMode;
   if (ribbonRangeHint) ribbonRangeHint.hidden = !editMode;
   if (zoomEl) { zoomEl.canvas.classList.toggle('editing', editMode); draw(); }

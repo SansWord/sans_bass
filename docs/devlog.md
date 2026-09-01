@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.17.0](#v1170--tempo-grid-2026-09-01-1650) | Detects BPM/phase from the drums stem (onset envelope + autocorrelation, bundled into the existing vocals analysis pass) and draws a correctable beat/bar grid over the notes lane, the zoomed pane, and now — faintly, bars only — each stem lane's own waveform. Drag-to-select on the drums lane narrows the audio the detector looks at; tempo round-trips through the edits export/import JSON. Purely visual: a direct regression test guards that it never touches `interpret()` or the note list. |
 | [v1.16.5](#v1165--簡譜-note-list-markdown-export-2026-09-01-1258) | A second, human-readable export from the Notes panel: **Export list** downloads the current 簡譜 reading as a Markdown file, chunked into fixed-length timecoded blocks by note start time — separate from the JSON edits round-trip. |
 | [v1.16.4](#v1164--inline-field-labels-and-flat-pitch-entry-2026-09-01-1209) | Visible labels above the Start/End/Pitch fields, and Pitch becomes three dropdowns (letter/accidental/octave) so a flat spelling can be entered directly. `parseNoteName()` moves from a sharps-only lookup to a semitone formula that resolves flats correctly, including the two letters (`Cb`, `Fb`) whose flat crosses an octave boundary. Picking a pitch dropdown auto-commits, splitting Pitch away from Start/End's Enter/Apply-staged path. |
 | [v1.16.3](#v1163--inline-note-detail-fields-2026-09-01-0956) | Three inline fields — Start, End, Pitch — beside the note editor's toolbar, directly editable and committing via Enter or Apply through the existing `timeAdjust`/`pitchNudge` edit types. Invalid input reverts silently without blocking a valid sibling edit, Escape reverts everything uncommitted, and typing is never clobbered by a redraw. `lib/pitch.js` gains `parseNoteName()`, the inverse of `noteName()`, bridged to `app.js` via a new `window.SansPitch`. |
@@ -39,6 +40,85 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.17.0 — Tempo grid (2026-09-01 16:50)
+
+**Review:** not yet
+
+**Design docs:**
+- Tempo grid: [Spec](superpowers/specs/2026-09-01-tempo-grid-design.md) [Plan](superpowers/plans/2026-09-01-tempo-grid.md)
+
+**What was built:**
+
+- `lib/tempo.js` (new, pure DSP, no DOM/AudioContext/Worker): `onsetEnvelope()` — broadband
+  energy flux from a stem's audio in ~10ms hops — and `estimateTempo()` — autocorrelation over
+  the 40-240 BPM lag range plus a phase search within the winning period. Always returns a
+  value; `confidence` is a "how sure" signal, not a gate.
+- `notes.worker.js`: the existing `analyse` message grows an optional `drums` field and returns
+  `tempo` alongside `frames` in the same round trip, so detecting tempo costs one worker
+  spin-up, not two. A new standalone `'tempo'` message type re-detects from a narrowed range
+  without re-running the ~7s vocals pass.
+- `beatTimes(tempo, duration)` in `lib/ribbon.js`: pure beat/bar time generation from a tempo
+  config, same shape as `pitchRange`/`contourColumns` — cheap enough to re-run on every
+  keystroke, which is what makes the grid re-space live.
+- A new "tempo grid" controls row in the Notes panel: **Show tempo grid**, BPM, ×½/×2, phase
+  nudge buttons, beats-per-bar, **Select BPM range**, **Re-detect tempo**, and a status line.
+  All but the panel-level checkbox go inert until a drums stem is loaded.
+- Drag-to-select on the drums stem's **own waveform lane** (`app.js`) — a separate armed state
+  and drag surface from the note-editor's range-select, since there's no competing gesture on
+  that lane — with a caption ("whole song" / `mm:ss–mm:ss`) and a Clear button underneath it.
+- The grid itself: drawn (baked into the cached idle/active layers, same as the semitone grid)
+  on the full-song notes lane and the zoomed pane, and — added in a follow-up pass after
+  shipping, per user request — drawn live, much fainter, bars only, across each **stem lane's
+  own waveform** too, so a hit visually lines up with the grid without the overview wave
+  getting cluttered.
+- `tempo`/`tempoRange` round-trip through the existing edits export/import JSON, additive and
+  backward-compatible.
+- A direct regression test (`interpret.length === 2`, byte-identical output across repeated
+  calls) guarding the design's central non-goal: the grid never quantizes or otherwise touches
+  `interpret()` or the note list.
+
+**Key technical learnings:**
+
+- `[gotcha]` **An onset envelope's frame-to-frame diff misses a click that starts at sample
+  0**, because there is no prior frame to rise out of — `env[0]` defaulted to 0 and the very
+  first beat of a song with no lead-in silence was invisible to `onsetEnvelope`, not just
+  off-by-a-hop. Every later click (with silence before it) detected fine, which is what made
+  this a boundary bug rather than a systematic one. Fixed by diffing frame 0 against implicit
+  silence (0) instead of leaving it unset — caught by the very first unit test run, not by
+  manual testing.
+- `[insight]` **Baking a live-editable overlay into cached render layers is the wrong default
+  when the underlying layers are expensive to rebuild.** The notes lane's grid rebuilds fine on
+  every tempo edit because it's one canvas's cached layers; doing the same for the per-lane
+  grid would have meant rebuilding up to 7 lanes' 1400-bucket waveform layers on every BPM
+  keystroke. It draws live in `paint()` instead, which costs nothing extra: `draw()` already
+  repaints every lane on every tempo edit via `setNotes()`, the same path that already redraws
+  them on every rAF tick while playing.
+- `[note]` **"Goes live once X exists" UI state needs a poll hook, not just the state-changing
+  entry points.** `syncTempoControls()` was only reachable from `reinterpret()` (gated on
+  `frames` existing) and `reset()` (before a song's stems are attached), so the tempo row
+  stayed disabled until **Find notes** ran even though the design spec says it should enable
+  the moment a drums stem loads — a drums stem existing and vocals having been analysed are two
+  different facts. Found during the manual verification pass, not by a unit test (nothing in
+  the suite exercises the DOM's disabled state); fixed by folding the check into the existing
+  400ms `refresh()` poll, the same mechanism that already keeps the panel's own `hidden` state
+  honest.
+- `[note]` **Synthesizing a tiny known-BPM stems zip made full end-to-end manual verification
+  possible without touching the repo's real stems.** A one-off Node script writing a raw
+  120 BPM click-train WAV directly (ffmpeg's `aevalsrc` expression syntax fought bash quoting)
+  plus a plain sine-wave vocals WAV, zipped together at 81KB, let every control — BPM/phase
+  edits, ×½/×2, range-select drag, Re-detect, export/import — be exercised through browser
+  automation. The real stems in `stems/` are 27-223MB, far over the file-upload tool's 10MB
+  cap, and would have made T15 (a non-metrical-intro track) the only row reachable at all.
+
+**Process learnings:**
+
+- `[note]` **A design question asked mid-session ("would this be hard to see?") doubled as the
+  brainstorm for the follow-up feature** (the per-lane grid) — no separate brainstorming-skill
+  pass was needed once the user confirmed the recommendation, since intent and the main design
+  tradeoff (opacity vs. clutter) were already settled in conversation.
 
 ---
 

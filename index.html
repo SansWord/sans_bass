@@ -8,17 +8,17 @@
      a leading slash. apple-touch-icon must be a PNG — iOS ignores an SVG here — and it is
      180x180 full bleed because iOS applies its own corner mask. theme-color stops Safari
      painting default light chrome above a near-black page. -->
-<link rel="icon" href="icons/icon.svg?v=1.16.4" type="image/svg+xml">
-<link rel="icon" href="icons/favicon-32.png?v=1.16.4" sizes="32x32">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.16.4">
+<link rel="icon" href="icons/icon.svg?v=1.16.5" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png?v=1.16.5" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.16.5">
 <meta name="theme-color" content="#0d0d10">
-<link rel="stylesheet" href="styles.css?v=1.16.4">
+<link rel="stylesheet" href="styles.css?v=1.16.5">
 <!-- i18n loads in <head>, before anything paints, so `lang` and the tab title are already
      right and the DOM walk can run the moment the body exists. init() is called explicitly
      rather than on load, so tests/test.html can read the dictionary without having its own
      title rewritten. The literal English in the markup below is the no-JS fallback and the
      readable source of truth; it matches DICT.en exactly. -->
-<script src="lib/i18n.js?v=1.16.4"></script>
+<script src="lib/i18n.js?v=1.16.5"></script>
 <script>window.SansI18n.init();</script>
 <!-- Anonymous, cookieless usage counts. External, so no ?v= -- and https:// rather than
      the protocol-relative //gc.zgo.at from GoatCounter's docs, because versions.test.js
@@ -34,7 +34,7 @@
        URL the <link rel="icon"> above already fetched, so it costs no extra request.
        alt="" because the <h1> beside it already says the name — the mark is decorative. -->
   <div class="brand">
-    <img class="brand-mark" src="icons/icon.svg?v=1.16.4" alt="" width="26" height="26">
+    <img class="brand-mark" src="icons/icon.svg?v=1.16.5" alt="" width="26" height="26">
     <h1>sans<span>_</span>bass</h1>
   </div>
   <div class="bar-right">
@@ -252,14 +252,14 @@
      Bump the version in ALL of these on release: index.html (15), separate.js (3),
      separate.worker.js (1), notes.js (3), notes.worker.js (1) — 23 in all.
      tests/versions.test.js fails if they drift apart. -->
-<script src="lib/stems.js?v=1.16.4"></script>
-<script src="lib/unzip.js?v=1.16.4"></script>
-<script src="lib/analytics.js?v=1.16.4"></script>
-<script src="lib/platform.js?v=1.16.4"></script>
-<script src="lib/ribbon.js?v=1.16.4"></script>
-<script src="lib/jianpu.js?v=1.16.4"></script>
-<script src="app.js?v=1.16.4"></script>
-<script type="module" src="separate.js?v=1.16.4"></script>
-<script type="module" src="notes.js?v=1.16.4"></script>
+<script src="lib/stems.js?v=1.16.5"></script>
+<script src="lib/unzip.js?v=1.16.5"></script>
+<script src="lib/analytics.js?v=1.16.5"></script>
+<script src="lib/platform.js?v=1.16.5"></script>
+<script src="lib/ribbon.js?v=1.16.5"></script>
+<script src="lib/jianpu.js?v=1.16.5"></script>
+<script src="app.js?v=1.16.5"></script>
+<script type="module" src="separate.js?v=1.16.5"></script>
+<script type="module" src="notes.js?v=1.16.5"></script>
 </body>
 </html>

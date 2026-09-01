@@ -6,7 +6,7 @@
  *
  * See docs/transcription.md for the layer model this implements. */
 
-import { decimate, f0Track } from './lib/pitch.js?v=1.16.4';
+import { decimate, f0Track } from './lib/pitch.js?v=1.16.5';
 
 self.onmessage = (e) => {
   const m = e.data;

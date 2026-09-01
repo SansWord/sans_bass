@@ -55,8 +55,8 @@ Running log of what was built and what was learned building it.
   printable 簡譜 token — accidental plus digit, wrapped with an apostrophe per octave above the
   reference octave or a comma per octave below.
 - A new `#notes-list-io` row in the Notes panel: a "seconds per line" number input (default 10)
-  and an **Export list** button, gated together with the key selectors — disabled unless 簡譜 is
-  on AND at least one note exists.
+  and an **Export list** button, disabled only while there are zero notes — it does not need
+  簡譜 itself on; see the gotcha below.
 - The export click handler in `notes.js`: buckets the in-memory `notes` array into fixed-width
   windows by start time, then writes a Markdown file — an `## ` header line naming the song
   (when known) and the detected key, then one `### MM:SS - MM:SS` heading per window followed by
@@ -95,6 +95,15 @@ Running log of what was built and what was learned building it.
   (and the file's own top line to `##`) fixes it for free, since a heading is a block element by
   definition and can never merge with the paragraph after it — no manual line-break workaround
   needed.
+- `[insight]` **The Export list button's original gate (`!jianpu.on || !notes.length`) was
+  stricter than the data actually required.** `jianpu.tonic`/`jianpu.mode` are set from the
+  moment `notes.js` loads (`{ on: false, tonic: 0, mode: 'major', auto: true }`) and
+  `reinterpret()` runs `detectKey()` into them on every re-interpretation regardless of whether
+  the 簡譜 checkbox is ticked — `on` only controls whether the ON-SCREEN ribbon *displays*
+  degrees, not whether a key exists to compute them from. Gating the export on `on` conflated
+  "is there a key" with "is the checkbox ticked," disabling a fully-functional export for no
+  functional reason. Caught by the user after the first ship: the fix is one clause deleted
+  (`!notes.length` alone), not new state — the key was already there the whole time.
 
 ## v1.16.4 — Inline field labels and flat-pitch entry (2026-09-01 12:09)
 

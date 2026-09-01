@@ -34,17 +34,27 @@ export function noteName(midi) {
   return NOTE_NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
 }
 
-/** Scientific pitch name -> MIDI note number, the exact inverse of noteName(). Sharps only —
- *  "Db4" is rejected (null), not silently reinterpreted as "C#4" — so a value read from a
- *  note and never touched round-trips unchanged, and a flat entry visibly reverts instead of
- *  landing on a pitch the user didn't type. */
+/** Natural-letter -> semitone within an octave, C=0. Used by parseNoteName() to compute a
+ *  flat or sharp spelling as one continuous offset rather than a table lookup, which is what
+ *  makes Cb (whose flat crosses down into the previous octave) and Fb (which doesn't) both
+ *  come out correct without a special case: the octave term is added AFTER the
+ *  letter+accidental offset, so a flat that goes negative (only Cb, giving -1) naturally
+ *  folds into the octave below. */
+const NATURAL_SEMITONE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+
+/** Scientific pitch name -> MIDI note number, the exact inverse of noteName() for every sharp
+ *  spelling noteName() can produce, and ALSO accepts flats (e.g. "Db4"), resolving to the same
+ *  MIDI number as the equivalent sharp spelling. Flats aren't ambiguous — "Db4" and "C#4" are,
+ *  by definition, the identical physical pitch — so accepting them isn't a weaker version of
+ *  the original round-trip guarantee, just extending it to a second, equally well-defined
+ *  spelling. Garbage (bad letter, missing octave, double accidental) still returns null. */
 export function parseNoteName(str) {
-  const m = /^([A-Ga-g])(#?)(-?\d+)$/.exec(str.trim());
+  const m = /^([A-Ga-g])([#b]?)(-?\d+)$/.exec(str.trim());
   if (!m) return null;
   const letter = m[1].toUpperCase();
-  const idx = NOTE_NAMES.indexOf(letter + (m[2] ? '#' : ''));
-  if (idx < 0) return null;
-  return idx + (+m[3] + 1) * 12;
+  const offset = m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0;
+  const octave = +m[3];
+  return NATURAL_SEMITONE[letter] + offset + (octave + 1) * 12;
 }
 
 /* app.js is a classic script and can't `import` this ES module the way notes.js does, so it

@@ -25,6 +25,7 @@ const el = {
   foldTolOut: document.getElementById('notes-fold-tol-out'),
   foldStats: document.getElementById('notes-fold-stats'),
   show: document.getElementById('notes-show'),
+  edit: document.getElementById('notes-edit'),
   jianpu: document.getElementById('notes-jianpu'),
   keyTonic: document.getElementById('notes-key-tonic'),
   keyMode: document.getElementById('notes-key-mode'),
@@ -51,6 +52,7 @@ const syncTips = () => {
   el.fold.parentElement.title = tr('notes.foldTip');
   el.foldTol.parentElement.title = tr('notes.foldTolTip');
   el.jianpu.parentElement.title = tr('notes.jianpuTip');
+  el.edit.parentElement.title = tr('notes.editTip');
   el.keyRel.title = tr('notes.relativeTip');
 };
 syncTips();
@@ -205,6 +207,8 @@ function reset() {
   jianpu.auto = true;
   editGroups = [];
   orphaned = [];
+  el.edit.disabled = true;
+  el.edit.checked = false;
   syncJianpuControls();
 }
 
@@ -237,6 +241,7 @@ function analyse() {
     el.tune.hidden = false;
     el.go.hidden = true;      // its job is done; the toggle takes its place
     el.show.hidden = false;
+    el.edit.disabled = false;
     syncShowLabel();
     reinterpret();
   };
@@ -274,6 +279,9 @@ el.jianpu.addEventListener('change', () => {
   jianpu.on = el.jianpu.checked;
   syncJianpuControls();
   reinterpret();
+});
+el.edit.addEventListener('change', () => {
+  window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: el.edit.checked } }));
 });
 /* Touching either selector ends the automatic tracking: a detected key is a suggestion, and
  * once it has been overruled a later re-interpretation must not quietly undo that. */

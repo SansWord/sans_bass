@@ -44,6 +44,9 @@ let zoomEl = null;         // { lane, canvas, out }
 let zoomPeaks = null;      // hi-res vocals envelope, computed once per song
 let zoomCenter = 0;        // seconds; follows the playhead while playing
 let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
+let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:editmode'
+let selectedNote = null;    // { at } — a time point inside the selected note, or null
+let zoomToolbar = null;     // built in Task 4; guarded with `if (zoomToolbar)` until then
 let ribbonVisible = readStoredFlag(RIBBON_SHOW_KEY, true);
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
@@ -995,6 +998,13 @@ function renderZoom(canvas) {
       c.textBaseline = 'middle';
       c.fillText(noteLabel(n, ribbon.jianpu), x(n.start) + 3, by + bh / 2 + 0.5);
     }
+    /* The selected note gets a white outline in addition to its fill — "outline plus fill"
+     * is the same language buttons and inputs use for focus elsewhere in this app. */
+    if (editMode && selectedNote && n.start <= selectedNote.at && selectedNote.at < n.end) {
+      c.strokeStyle = '#ffffff';
+      c.lineWidth = 1.5;
+      c.strokeRect(x(n.start) + 0.75, by + 0.75, Math.max(0.5, bw - 1.5), Math.max(0.5, bh - 1.5));
+    }
   }
 
   // Time ruler, one label per second while there is room for it.
@@ -1520,6 +1530,15 @@ function attachZoom(canvas) {
   let travelled = 0;
 
   canvas.addEventListener('pointerdown', (e) => {
+    if (editMode && ribbon) {
+      const t = zoomTimeAt(canvas, e.clientX);
+      const hit = noteAt(ribbon.notes, t);
+      if (hit) {
+        selectedNote = { at: (hit.start + hit.end) / 2 };
+        draw();
+        return;   // selecting a note is the gesture; it does not also start a pan/seek
+      }
+    }
     panning = true;
     travelled = 0;
     lastX = e.clientX;
@@ -1546,6 +1565,13 @@ function zoomBy(factor) {
   zoomSeconds = clampZoomSec(zoomSeconds * factor);
   writeStored(ZOOM_SEC_KEY, zoomSeconds);
   draw();
+}
+
+/** The note in `list` whose span contains `at`, or null. Half-open — a note's END excludes
+ *  it, matching lib/pitch.js's applyEdits, so a click at a shared boundary picks the note
+ *  that starts there rather than the one that just finished. */
+function noteAt(list, at) {
+  return list.find((n) => n.start <= at && at < n.end) || null;
 }
 
 /** Song time under a client x position in the zoomed pane. */
@@ -1588,6 +1614,12 @@ on(el.langToggle, 'click', (e) => {
   if (btn) window.SansI18n.setLocale(btn.dataset.lang);   // an explicit choice persists
 });
 window.addEventListener('sansbass:langchange', retranslate);
+window.addEventListener('sansbass:editmode', (e) => {
+  editMode = e.detail.on;
+  selectedNote = null;
+  if (zoomToolbar) zoomToolbar.root.hidden = !editMode;
+  if (zoomEl) { zoomEl.canvas.classList.toggle('editing', editMode); draw(); }
+});
 renderLangToggle();
 gcOnce(`lang-${window.SansI18n.getLocale()}`);
 on(el.masterVol, 'input', () => {

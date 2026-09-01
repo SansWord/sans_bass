@@ -456,6 +456,8 @@ input[type=range] { width: 110px; }
 /* grab, not ns-resize: this pane pans horizontally and zooms on the wheel. */
 .zoomwave { cursor: grab; touch-action: none; }
 .zoomwave:active { cursor: grabbing; }
+.zoomwave.editing { cursor: pointer; }
+.zoomwave.editing:active { cursor: pointer; }
 .zoom-secs { color: var(--dim); font-weight: 400; font-variant-numeric: tabular-nums; }
 .zoom-btns { display: inline-flex; gap: 4px; margin-left: 8px; }
 .zoom-btn {

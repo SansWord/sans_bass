@@ -54,6 +54,9 @@ let addDrag = null;        // { startT, midi, curT }
 let rangeDrag = null;        // { startT, curT } — actively dragging
 let rangeSelection = null;   // { from, to } — committed, awaiting the delete button
 const RULER_BAND_PX = 16;    // bottom band of the zoomed canvas reserved for range-select
+const WHEEL_SEEK_FRACTION = 0.05;  // fraction of the zoom span a single wheel tick seeks
+const SEEK_STEP = 5;               // seconds — Arrow Left/Right, unchanged from before this task
+const FINE_SEEK_STEP = 0.05;       // seconds — Shift+Arrow Left/Right
 let ribbonVisible = readStoredFlag(RIBBON_SHOW_KEY, true);
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
@@ -1622,12 +1625,18 @@ function attachZoom(canvas) {
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const before = zoomTimeAt(canvas, e.clientX);
-    zoomBy(e.deltaY > 0 ? 1.15 : 1 / 1.15);
-    // Keep the instant under the cursor pinned, so zooming feels like a lens rather
-    // than a jump.
-    zoomCenter += before - zoomTimeAt(canvas, e.clientX);
-    draw();
+    if (e.shiftKey) {
+      const before = zoomTimeAt(canvas, e.clientX);
+      zoomBy(e.deltaY > 0 ? 1.15 : 1 / 1.15);
+      // Keep the instant under the cursor pinned, so zooming feels like a lens rather
+      // than a jump.
+      zoomCenter += before - zoomTimeAt(canvas, e.clientX);
+      draw();
+      return;
+    }
+    // Proportional to the current zoom span, so a tick feels similarly sized whether
+    // zoomed to a 2s window or a 60s one — the same principle zoomBy's factor already uses.
+    seek(currentTime() + (e.deltaY > 0 ? 1 : -1) * zoomSeconds * WHEEL_SEEK_FRACTION);
   }, { passive: false });
 
   /* A click seeks, a drag pans. Distinguished by distance travelled rather than by a
@@ -1957,13 +1966,11 @@ document.addEventListener('keydown', (e) => {
   if (editMode && selectedNote) {
     if (e.key === 'ArrowUp') { e.preventDefault(); e.shiftKey ? editOctave(1) : editPitchNudge(1); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); e.shiftKey ? editOctave(-1) : editPitchNudge(-1); return; }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); editTimeNudge(-1); return; }
-    if (e.key === 'ArrowRight') { e.preventDefault(); editTimeNudge(1); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); editDeleteNote(); return; }
   }
   if (e.key === ' ') { e.preventDefault(); toggle(); }
-  else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - 5); }
-  else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + 5); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : SEEK_STEP)); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + (e.shiftKey ? FINE_SEEK_STEP : SEEK_STEP)); }
   else if (e.key === '0') toggleAllTracks();
   else if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setLoopPoint('a'); }
   else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setLoopPoint('b'); }

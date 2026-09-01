@@ -8,8 +8,8 @@
  * A module, so it cannot share scope with app.js. It talks to the player only through
  * window.sansBass, exactly as separate.js does. */
 
-import { interpret, applyEdits, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.16.4';
-import { scheduleNotes } from './lib/sonify.js?v=1.16.4';
+import { interpret, applyEdits, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.16.5';
+import { scheduleNotes } from './lib/sonify.js?v=1.16.5';
 
 const el = {
   panel: document.getElementById('notes'),
@@ -33,6 +33,8 @@ const el = {
   exportBtn: document.getElementById('notes-export'),
   importBtn: document.getElementById('notes-import'),
   importFile: document.getElementById('notes-import-file'),
+  listSecs: document.getElementById('notes-list-secs'),
+  listExport: document.getElementById('notes-list-export'),
   jianpu: document.getElementById('notes-jianpu'),
   keyTonic: document.getElementById('notes-key-tonic'),
   keyMode: document.getElementById('notes-key-mode'),
@@ -203,6 +205,11 @@ function syncJianpuControls() {
   el.keyTonic.value = String(jianpu.tonic);
   el.keyMode.value = jianpu.mode;
   for (const c of [el.keyTonic, el.keyMode, el.keyRel]) c.disabled = !jianpu.on;
+  /* Only meaningless without any notes — unlike the key selectors, this doesn't need 簡譜
+   * itself to be on. `jianpu.tonic`/`jianpu.mode` are always a real value even with the
+   * checkbox off: the auto-detected key once notes exist, or the C-major default before
+   * that — so the export always has a key to read degrees against. */
+  el.listExport.disabled = !notes.length;
 }
 
 /** Re-derive notes from the existing frames. No worker, no re-analysis. */
@@ -220,8 +227,8 @@ function reinterpret() {
     const k = detectKey(notesToChroma(notes));
     jianpu.tonic = k.tonic;
     jianpu.mode = k.mode;
-    syncJianpuControls();
   }
+  syncJianpuControls();
   window.sansBass.setNotes({
     notes, frames, params: p, clip: el.clip.checked,
     jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
@@ -295,7 +302,7 @@ function analyse() {
    * detaches its backing store and the stem goes silent with no error anywhere. */
   for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i).slice());
 
-  worker = new Worker('./notes.worker.js?v=1.16.4', { type: 'module' });
+  worker = new Worker('./notes.worker.js?v=1.16.5', { type: 'module' });
   worker.onmessage = (e) => {
     const m = e.data;
     worker.terminate();
@@ -437,6 +444,49 @@ el.exportBtn.addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = url;
   a.download = `${mix ? mix.name : 'song'}-edits.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+});
+
+/* A human-readable export, independent of the JSON edits round-trip above: the current
+ * 簡譜 reading, chunked into fixed-length timecoded lines, for reading (e.g. while singing)
+ * without the player open. See docs/superpowers/specs/2026-09-01-notes-jianpu-export-design.md. */
+function mmss(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.floor(totalSeconds % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+el.listExport.addEventListener('click', () => {
+  const secs = Number(el.listSecs.value) || 10;
+  const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
+  const refOct = window.SansJianpu.referenceOctave(notes, jianpu.tonic);
+
+  const windows = new Map();
+  for (const n of notes) {
+    const idx = Math.floor(n.start / secs);
+    if (!windows.has(idx)) windows.set(idx, []);
+    windows.get(idx).push(n);
+  }
+
+  // English only, regardless of UI language — this file is read outside the app.
+  const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
+  const lines = [`## ${mix ? mix.name + ' — ' : ''}1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`, ''];
+  for (const idx of [...windows.keys()].sort((a, b) => a - b)) {
+    const from = idx * secs;
+    const to = from + secs;
+    lines.push(`### ${mmss(from)} - ${mmss(to)}`);
+    lines.push(windows.get(idx)
+      .map((n) => window.SansJianpu.degreeToken(n.midi, jianpu.tonic, jianpu.mode, refOct))
+      .join(' '));
+    lines.push('');
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${mix ? mix.name : 'song'}-notes.md`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 });

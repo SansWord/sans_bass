@@ -511,7 +511,7 @@ input[type=range] { width: 110px; }
 
 .note-fields {
   grid-column: 1 / -1;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px;
   margin-top: 4px;
 }
 .note-field {
@@ -524,6 +524,26 @@ input[type=range] { width: 110px; }
   width: 6.5em;
 }
 .note-field:disabled { opacity: .4; cursor: default; }
+
+.note-field-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  cursor: default;
+}
+.note-field-label {
+  font: 10px var(--mono);
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+}
+.note-field-pitch-group {
+  display: flex;
+  gap: 2px;
+}
+.note-field-select {
+  width: 3.2em;
+  padding: 2px 2px;
+}
 
 /* position: relative so the floating panel below anchors to THIS element, not the page —
    and so opening it never changes .notes-edit-list's own box height, since the panel is

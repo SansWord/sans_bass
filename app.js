@@ -47,6 +47,7 @@ let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
 let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:editmode'
 let selectedNote = null;    // { at } — a time point inside the selected note, or null
 let zoomToolbar = null;     // built in Task 4; guarded with `if (zoomToolbar)` until then
+let noteDrag = null;   // { mode: 'move'|'resize-start'|'resize-end', note, startT, origStart, origEnd, previewStart, previewEnd }
 let ribbonVisible = readStoredFlag(RIBBON_SHOW_KEY, true);
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
@@ -1015,26 +1016,33 @@ function renderZoom(canvas) {
   c.stroke();
 
   for (const n of notes) {
-    if (n.end < win.from || n.start > win.to) continue;
+    const live = noteDrag && noteDrag.note === n
+      ? { start: noteDrag.previewStart, end: noteDrag.previewEnd } : n;
+    if (live.end < win.from || live.start > win.to) continue;
     const out = n.midi < loM || n.midi > hiM;
     const by = out ? (n.midi < loM ? h - 3 : 0) : y(n.midi + 0.5);
     const bh = out ? 3 : Math.max(3, semi * 0.8);
-    const bw = Math.max(2, x(n.end) - x(n.start));
+    const bw = Math.max(2, x(live.end) - x(live.start));
     c.fillStyle = out ? '#ff9f1c' : NOTE_FILL[noteFillKey(n)].zoom;
-    c.fillRect(x(n.start), by, bw, bh);
+    c.fillRect(x(live.start), by, bw, bh);
     const minLabelPx = (ribbon.jianpu && ribbon.jianpu.on) ? 14 : 26;
     if (!out && bw > minLabelPx && bh > 9) {
       c.fillStyle = '#0d0d10';
       c.font = '600 10px ui-monospace, Menlo, monospace';
       c.textBaseline = 'middle';
-      c.fillText(noteLabel(n, ribbon.jianpu), x(n.start) + 3, by + bh / 2 + 0.5);
+      c.fillText(noteLabel(n, ribbon.jianpu), x(live.start) + 3, by + bh / 2 + 0.5);
     }
     /* The selected note gets a white outline in addition to its fill — "outline plus fill"
      * is the same language buttons and inputs use for focus elsewhere in this app. */
-    if (editMode && selectedNote && n.start <= selectedNote.at && selectedNote.at < n.end) {
+    if (editMode && selectedNote && live.start <= selectedNote.at && selectedNote.at < live.end) {
       c.strokeStyle = '#ffffff';
       c.lineWidth = 1.5;
-      c.strokeRect(x(n.start) + 0.75, by + 0.75, Math.max(0.5, bw - 1.5), Math.max(0.5, bh - 1.5));
+      c.strokeRect(x(live.start) + 0.75, by + 0.75, Math.max(0.5, bw - 1.5), Math.max(0.5, bh - 1.5));
+      // Small edge tabs — the visual affordance for the drag target pointerdown tests above.
+      c.fillStyle = '#ffffff';
+      const hw = 3;
+      c.fillRect(x(live.start) - hw / 2, by, hw, bh);
+      c.fillRect(x(live.end) - hw / 2, by, hw, bh);
     }
   }
 
@@ -1578,6 +1586,20 @@ function attachZoom(canvas) {
   canvas.addEventListener('pointerdown', (e) => {
     if (editMode && ribbon) {
       const t = zoomTimeAt(canvas, e.clientX);
+      const sel = selectedNote ? noteAt(ribbon.notes, selectedNote.at) : null;
+      if (sel) {
+        const tol = zoomEdgeToleranceSeconds(canvas);
+        let mode = null;
+        if (Math.abs(t - sel.start) <= tol) mode = 'resize-start';
+        else if (Math.abs(t - sel.end) <= tol) mode = 'resize-end';
+        else if (sel.start <= t && t < sel.end) mode = 'move';
+        if (mode) {
+          noteDrag = { mode, note: sel, startT: t, origStart: sel.start, origEnd: sel.end,
+                       previewStart: sel.start, previewEnd: sel.end };
+          canvas.setPointerCapture(e.pointerId);
+          return;
+        }
+      }
       const hit = noteAt(ribbon.notes, t);
       if (hit) {
         selectedNote = { at: (hit.start + hit.end) / 2 };
@@ -1591,6 +1613,20 @@ function attachZoom(canvas) {
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (noteDrag) {
+      const dt = zoomTimeAt(canvas, e.clientX) - noteDrag.startT;
+      let newStart = noteDrag.origStart + (noteDrag.mode === 'resize-end' ? 0 : dt);
+      let newEnd = noteDrag.origEnd + (noteDrag.mode === 'resize-start' ? 0 : dt);
+      const MIN_DUR = 0.02;   // the analysis frame hop floor — see docs/transcription.md
+      if (newEnd - newStart < MIN_DUR) {
+        if (noteDrag.mode === 'resize-start') newStart = newEnd - MIN_DUR;
+        else if (noteDrag.mode === 'resize-end') newEnd = newStart + MIN_DUR;
+      }
+      noteDrag.previewStart = newStart;
+      noteDrag.previewEnd = newEnd;
+      draw();
+      return;
+    }
     if (!panning) return;
     const r = canvas.getBoundingClientRect();
     travelled += Math.abs(e.clientX - lastX);
@@ -1599,11 +1635,23 @@ function attachZoom(canvas) {
     draw();
   });
   canvas.addEventListener('pointerup', (e) => {
+    if (noteDrag) {
+      const { note, previewStart, previewEnd } = noteDrag;
+      const dStart = previewStart - note.start;
+      const dEnd = previewEnd - note.end;
+      noteDrag = null;
+      if (dStart !== 0 || dEnd !== 0) {
+        dispatchEdit([{ type: 'timeAdjust', at: (note.start + note.end) / 2, dStart, dEnd }]);
+        selectedNote = { at: (previewStart + previewEnd) / 2 };
+      }
+      draw();
+      return;
+    }
     if (!panning) return;
     panning = false;
     if (travelled <= DRAG_SLOP) seek(zoomTimeAt(canvas, e.clientX));
   });
-  canvas.addEventListener('pointercancel', () => { panning = false; });
+  canvas.addEventListener('pointercancel', () => { noteDrag = null; panning = false; });
 }
 
 /** Change the zoom window width about its centre, and persist it. */
@@ -1687,6 +1735,15 @@ function zoomTimeAt(canvas, clientX) {
   return win.from + ((clientX - r.left) / r.width) * (win.to - win.from);
 }
 
+const EDGE_PX = 8;   // how close a pointer must be to a note's edge to grab it for resize
+
+/** How many seconds correspond to EDGE_PX at the zoomed pane's current width and window. */
+function zoomEdgeToleranceSeconds(canvas) {
+  const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration || 1);
+  const r = canvas.getBoundingClientRect();
+  return (EDGE_PX / (r.width || 1)) * (win.to - win.from);
+}
+
 function attachSeek(canvas) {
   const posToTime = (e) => {
     const r = canvas.getBoundingClientRect();
@@ -1723,6 +1780,7 @@ window.addEventListener('sansbass:langchange', retranslate);
 window.addEventListener('sansbass:editmode', (e) => {
   editMode = e.detail.on;
   selectedNote = null;
+  noteDrag = null;
   if (zoomToolbar) zoomToolbar.root.hidden = !editMode;
   if (zoomEl) { zoomEl.canvas.classList.toggle('editing', editMode); draw(); }
 });

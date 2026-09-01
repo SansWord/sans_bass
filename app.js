@@ -684,7 +684,7 @@ function buildUI(title) {
 
     /* Inline Start/End/Pitch fields, next to the toolbar. Same hidden-until-edit-mode and
      * disabled-until-selected rules as the toolbar buttons above — see docs/superpowers/
-     * specs/2026-09-01-note-inline-fields-design.md. */
+     * specs/2026-09-01-note-inline-fields-design.md and its labels/flat-pitch follow-up. */
     const zFields = document.createElement('div');
     zFields.className = 'note-fields';
     zFields.hidden = !editMode;
@@ -710,9 +710,66 @@ function buildUI(title) {
       return inp;
     };
 
+    /* Wraps a field in a <label> so the visible caption also focuses the control on click —
+     * no id/for plumbing needed, this project doesn't put ids on dynamically-built elements. */
+    const mkFieldGroup = (titleKey, control) => {
+      const label = document.createElement('label');
+      label.className = 'note-field-group';
+      const span = document.createElement('span');
+      span.className = 'note-field-label';
+      span.textContent = tr(titleKey);
+      label.append(span, control);
+      return label;
+    };
+
     const fieldStart = mkFieldInput('notes.editFieldStart');
     const fieldEnd = mkFieldInput('notes.editFieldEnd');
-    const fieldPitch = mkFieldInput('notes.editFieldPitch');
+    const startGroup = mkFieldGroup('notes.editFieldStart', fieldStart);
+    const endGroup = mkFieldGroup('notes.editFieldEnd', fieldEnd);
+
+    /* Pitch is three selects, not a text field — a flat accidental is an explicit choice here,
+     * not a guess a free-text parser would have to interpret. Auto-commits on change (see
+     * commitPitchDropdown), so it never joins Start/End's Enter/Apply-staged path. */
+    const mkFieldSelect = (options, titleKey) => {
+      const sel = document.createElement('select');
+      sel.className = 'note-field note-field-select';
+      sel.title = tr(titleKey);
+      sel.setAttribute('aria-label', tr(titleKey));
+      sel.disabled = true;
+      for (const opt of options) {
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.label;
+        sel.append(o);
+      }
+      sel.addEventListener('change', commitPitchDropdown);
+      return sel;
+    };
+
+    const PITCH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    const PITCH_ACCIDENTALS = [
+      { value: '#', label: '♯' },
+      { value: '', label: '♮' },
+      { value: 'b', label: '♭' },
+    ];
+    const PITCH_OCTAVES = Array.from({ length: 11 }, (_, i) => String(i - 1));   // "-1".."9"
+
+    const fieldPitchLetter = mkFieldSelect(PITCH_LETTERS.map((l) => ({ value: l, label: l })), 'notes.editFieldPitch');
+    const fieldPitchAccidental = mkFieldSelect(PITCH_ACCIDENTALS, 'notes.editFieldPitch');
+    const fieldPitchOctave = mkFieldSelect(PITCH_OCTAVES.map((o) => ({ value: o, label: o })), 'notes.editFieldPitch');
+
+    const pitchGroupInner = document.createElement('div');
+    pitchGroupInner.className = 'note-field-pitch-group';
+    pitchGroupInner.append(fieldPitchLetter, fieldPitchAccidental, fieldPitchOctave);
+
+    const pitchLabel = document.createElement('span');
+    pitchLabel.className = 'note-field-label';
+    pitchLabel.textContent = tr('notes.editFieldPitch');
+
+    const pitchGroup = document.createElement('div');
+    pitchGroup.className = 'note-field-group';
+    pitchGroup.append(pitchLabel, pitchGroupInner);
+
     const applyBtn = document.createElement('button');
     applyBtn.className = 'mini note-tbtn';
     applyBtn.type = 'button';
@@ -720,11 +777,12 @@ function buildUI(title) {
     applyBtn.disabled = true;
     applyBtn.addEventListener('click', commitFields);
 
-    zFields.append(fieldStart, fieldEnd, fieldPitch, applyBtn);
+    zFields.append(startGroup, endGroup, pitchGroup, applyBtn);
 
     zoomToolbar = { root: zToolbar, fields: zFields, add: addBtn, octUp, octDown, pitchUp,
                      pitchDown, timeBack, timeFwd, split, del, rangeDel,
-                     fieldStart, fieldEnd, fieldPitch, applyBtn };
+                     fieldStart, fieldEnd, fieldPitchLetter, fieldPitchAccidental,
+                     fieldPitchOctave, applyBtn };
 
     zLane.append(zName, zCanvas, zRangeHint, zToolbar, zFields, zSpacer, zGrip);
     el.lanes.insertBefore(zLane, lane);
@@ -1224,50 +1282,68 @@ function syncEditToolbar() {
   for (const b of [zoomToolbar.octUp, zoomToolbar.octDown, zoomToolbar.pitchUp,
                     zoomToolbar.pitchDown, zoomToolbar.timeBack, zoomToolbar.timeFwd,
                     zoomToolbar.split, zoomToolbar.del, zoomToolbar.fieldStart,
-                    zoomToolbar.fieldEnd, zoomToolbar.fieldPitch, zoomToolbar.applyBtn]) {
+                    zoomToolbar.fieldEnd, zoomToolbar.fieldPitchLetter,
+                    zoomToolbar.fieldPitchAccidental, zoomToolbar.fieldPitchOctave,
+                    zoomToolbar.applyBtn]) {
     b.disabled = !sel;
   }
   zoomToolbar.rangeDel.disabled = !rangeSelection;
   syncNoteFields(sel);
 }
 
-/** Keeps the three inline fields in step with the selected note without clobbering an
- *  in-progress keystroke. A rewrite only happens when the selection's identity ({at, midi})
- *  differs from fieldsShownFor — the same note staying selected is a no-op here, which is
- *  what actually protects a mid-type value from draw()'s per-frame calls today (the input
- *  exclusion in the top-level `keydown` handler, see app.js ~2144, keeps a hotkey from
- *  changing `selectedNote` while a field has focus). The `document.activeElement` check below
- *  is defense-in-depth on top of that: it only applies in the *routine* per-frame path
- *  (fieldsShownFor already set), so a future call site that changes `selectedNote` while a
- *  field is focused — without going through that keydown guard — still can't clobber it. It
- *  does NOT apply to the *forced* refresh path: commitFields (Task 6) resets
- *  fieldsShownFor = null right after a commit specifically so the rewrite goes through even
- *  though the field the user just pressed Enter in is still focused at that exact moment —
- *  that's what makes a reverted/updated value visibly snap back. Gating the focus check on
- *  fieldsShownFor being non-null is what keeps those two paths apart. See
- *  docs/superpowers/specs/2026-09-01-note-inline-fields-design.md ("Refresh vs. typing"). */
+/** Keeps Start/End in step with the selected note without clobbering an in-progress keystroke
+ *  — same guard as before, just with Pitch removed from the focus-check array, since Pitch is
+ *  no longer a text field a user can be mid-typing into (see syncPitchDropdowns' own comment
+ *  for why it doesn't need this guard at all). A rewrite only happens when the selection's
+ *  identity ({at, midi}) differs from fieldsShownFor — the same note staying selected is a
+ *  no-op here, which is what actually protects a mid-type value from draw()'s per-frame calls
+ *  today (the input exclusion in the top-level `keydown` handler, see app.js ~2144, keeps a
+ *  hotkey from changing `selectedNote` while a field has focus). The `document.activeElement`
+ *  check below is defense-in-depth on top of that: it only applies in the *routine* per-frame
+ *  path (fieldsShownFor already set), so a future call site that changes `selectedNote` while
+ *  a field is focused — without going through that keydown guard — still can't clobber it. It
+ *  does NOT apply to the *forced* refresh path: commitFields resets fieldsShownFor = null
+ *  right after a commit specifically so the rewrite goes through even though the field the
+ *  user just pressed Enter in is still focused at that exact moment — that's what makes a
+ *  reverted/updated value visibly snap back. Gating the focus check on fieldsShownFor being
+ *  non-null is what keeps those two paths apart. See docs/superpowers/specs/
+ *  2026-09-01-note-inline-fields-design.md ("Refresh vs. typing"). */
 function syncNoteFields(sel) {
   if (!sel) {
     if (fieldsShownFor !== null) {
       zoomToolbar.fieldStart.value = '';
       zoomToolbar.fieldEnd.value = '';
-      zoomToolbar.fieldPitch.value = '';
       fieldsShownFor = null;
     }
     return;
   }
+  syncPitchDropdowns(sel);
   const key = { at: selectedNote.at, midi: selectedNote.midi };
   if (fieldsShownFor) {
     const sameNote = fieldsShownFor.at === key.at && fieldsShownFor.midi === key.midi;
     const focused = document.activeElement;
-    const fieldFocused = focused === zoomToolbar.fieldStart || focused === zoomToolbar.fieldEnd ||
-                          focused === zoomToolbar.fieldPitch;
+    const fieldFocused = focused === zoomToolbar.fieldStart || focused === zoomToolbar.fieldEnd;
     if (sameNote || fieldFocused) return;
   }
   zoomToolbar.fieldStart.value = fmtPrecise(sel.start);
   zoomToolbar.fieldEnd.value = fmtPrecise(sel.end);
-  zoomToolbar.fieldPitch.value = sel.name;
   fieldsShownFor = key;
+}
+
+/** Keeps the three Pitch dropdowns in step with the selected note on EVERY sync tick, with no
+ *  identity or focus guard — unlike Start/End, a <select>'s displayed value only ever changes
+ *  through an explicit choice, and the moment that choice fires its change event it's already
+ *  being committed (see commitPitchDropdown). There's no "mid-keystroke" state to protect, so
+ *  re-syncing to the about-to-be-identical current note's values on the very next tick is a
+ *  harmless no-op, not a clobber. sel.name is always a sharp-or-natural spelling (same as
+ *  noteName() produces), never a flat — the accidental dropdown's "b" option is for typing a
+ *  NEW value, not something an unedited note's spelling ever shows. */
+function syncPitchDropdowns(sel) {
+  const m = /^([A-G])(#?)(-?\d+)$/.exec(sel.name);
+  if (!m) return;
+  zoomToolbar.fieldPitchLetter.value = m[1];
+  zoomToolbar.fieldPitchAccidental.value = m[2];
+  zoomToolbar.fieldPitchOctave.value = m[3];
 }
 
 function paint(canvas, frac) {
@@ -1981,12 +2057,12 @@ function editTimeNudge(dir) {
   dispatchEdit([{ type: 'timeAdjust', at, dStart: d, dEnd: d, midi }]);
 }
 
-/** Commits the three inline fields: Enter in any of them, or a click on Apply, calls this.
- *  A field that fails to parse is treated as "unchanged" here, not as blocking the OTHER
- *  field — a garbage Start shouldn't swallow a valid End edit sitting right next to it. The
- *  forced refresh at the end (fieldsShownFor = null) is what makes the garbage field visibly
- *  snap back, which is the actual "revert silently" the user sees. See docs/superpowers/
- *  specs/2026-09-01-note-inline-fields-design.md ("Commit"). */
+/** Commits the Start/End fields: Enter in either of them, or a click on Apply, calls this.
+ *  Pitch no longer goes through here — see commitPitchDropdown, which auto-commits on every
+ *  dropdown change instead. A field that fails to parse is treated as "unchanged", not as
+ *  blocking anything else. The forced refresh at the end (fieldsShownFor = null) is what makes
+ *  a garbage field visibly snap back, which is the actual "revert silently" the user sees. See
+ *  docs/superpowers/specs/2026-09-01-note-inline-fields-design.md ("Commit"). */
 function commitFields() {
   if (!selectedNote || !ribbon) return;
   const n = noteAt(ribbon.notes, selectedNote.at, selectedNote.midi);
@@ -2005,24 +2081,36 @@ function commitFields() {
   // edits apart from that round-trip noise; the values dispatched below stay full-precision.
   const changedTime = Math.round(dStart * 1000) !== 0 || Math.round(dEnd * 1000) !== 0;
 
-  const newMidi = window.SansPitch.parseNoteName(zoomToolbar.fieldPitch.value);
-
-  const edits = [];
   if (timeValid && changedTime) {
-    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart, dEnd, midi: n.midi });
-  }
-  if (newMidi !== null && newMidi !== n.midi) {
-    edits.push({ type: 'pitchNudge', at: selectedNote.at, semitones: newMidi - n.midi, midi: n.midi });
-  }
-
-  if (edits.length) {
-    selectedNote = {
-      at: selectedNote.at + (timeValid ? dStart : 0),   // keep the anchor inside the note
-      midi: newMidi !== null ? newMidi : n.midi,
-    };
-    dispatchEdit(edits);
+    const at = selectedNote.at;
+    selectedNote = { at: at + dStart, midi: n.midi };
+    dispatchEdit([{ type: 'timeAdjust', at, dStart, dEnd, midi: n.midi }]);
   }
   fieldsShownFor = null;   // force a refresh from the (possibly just-updated) note
+  syncEditToolbar();
+}
+
+/** Fires on every change of any of the three Pitch dropdowns — no Enter or Apply, matching how
+ *  the toolbar's existing ♯/♭/↑8ve/↓8ve buttons already auto-commit. Unlike those buttons
+ *  (which nudge by a fixed relative amount and so always represent a real change), the
+ *  dropdowns pick an ABSOLUTE note, so a genuine no-op is possible (e.g. re-picking an
+ *  equivalent spelling of the current pitch) — hence the noteAt lookup and the equality check,
+ *  the same shape commitFields used before Pitch was split out of it. */
+function commitPitchDropdown() {
+  if (!selectedNote || !ribbon) return;
+  const n = noteAt(ribbon.notes, selectedNote.at, selectedNote.midi);
+  if (!n) return;
+
+  const pitchStr = zoomToolbar.fieldPitchLetter.value
+                 + zoomToolbar.fieldPitchAccidental.value
+                 + zoomToolbar.fieldPitchOctave.value;
+  const newMidi = window.SansPitch.parseNoteName(pitchStr);
+  if (newMidi === null || newMidi === n.midi) return;
+
+  const at = selectedNote.at;
+  selectedNote = { at, midi: newMidi };
+  dispatchEdit([{ type: 'pitchNudge', at, semitones: newMidi - n.midi, midi: n.midi }]);
+  fieldsShownFor = null;   // force Start/End's guard to refresh too, in case anchor moved
   syncEditToolbar();
 }
 

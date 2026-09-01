@@ -216,6 +216,16 @@
         <button id="notes-import" class="mini" type="button" disabled data-i18n="notes.import">Import edits</button>
         <input id="notes-import-file" type="file" accept="application/json,.json" hidden>
       </div>
+      <!-- A separate export from the JSON edits row above: this one is a human-readable
+           簡譜 note list, not a round-trippable edit history. Disabled together with the key
+           selectors in syncJianpuControls() — a number list means nothing without a key. -->
+      <div id="notes-list-io" class="notes-row">
+        <label class="notes-ctl">
+          <span data-i18n="notes.listSecs">Seconds per line</span>
+          <input id="notes-list-secs" type="number" min="3" max="60" step="1" value="10">
+        </label>
+        <button id="notes-list-export" class="mini" type="button" disabled data-i18n="notes.exportList">Export list</button>
+      </div>
     </section>
 
     <div id="lanes" class="lanes"></div>

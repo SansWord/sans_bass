@@ -493,6 +493,12 @@ input[type=range] { width: 110px; }
 .notes-adv[open] summary { margin-bottom: 6px; }
 
 /* ---- note editing (layer 4) ---- */
+.note-range-hint {
+  grid-column: 1 / -1;
+  font: 11px var(--mono);
+  color: var(--dim);
+  margin-top: 2px;
+}
 .note-toolbar {
   grid-column: 1 / -1;
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px;

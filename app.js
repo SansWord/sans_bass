@@ -47,6 +47,7 @@ let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
 let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:editmode'
 let selectedNote = null;    // { at } — a time point inside the selected note, or null
 let zoomToolbar = null;     // built in Task 4; guarded with `if (zoomToolbar)` until then
+let zoomRangeHint = null;   // the "drag along the bottom" caption under the zoomed canvas
 let noteDrag = null;   // { mode: 'move'|'resize-start'|'resize-end', note, startT, origStart, origEnd, previewStart, previewEnd }
 let addArmed = false;      // "+ Add note" pressed — the next drag places a note
 let addDrag = null;        // { startT, midi, curT }
@@ -591,6 +592,16 @@ function buildUI(title) {
     zCanvas.className = 'wave zoomwave';
     zCanvas.title = tr('notes.zoomTip');
 
+    /* Names the bottom range-select band for anyone who hasn't found it by trial and error —
+     * the band itself is hinted on-canvas (see renderZoom's idle strip), but a highlighted
+     * strip alone doesn't say what it's FOR. Hidden while edit mode is off, alongside the
+     * toolbar (see the 'sansbass:editmode' listener). */
+    const zRangeHint = document.createElement('div');
+    zRangeHint.className = 'note-range-hint';
+    zRangeHint.textContent = tr('notes.rangeTip');
+    zRangeHint.hidden = !editMode;
+    zoomRangeHint = zRangeHint;
+
     const zSpacer = document.createElement('div');
     const zGrip = document.createElement('div');
     zGrip.className = 'ribbon-grip';
@@ -633,7 +644,7 @@ function buildUI(title) {
     zoomToolbar = { root: zToolbar, add: addBtn, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd,
                      split, del, rangeDel };
 
-    zLane.append(zName, zCanvas, zToolbar, zSpacer, zGrip);
+    zLane.append(zName, zCanvas, zRangeHint, zToolbar, zSpacer, zGrip);
     el.lanes.insertBefore(zLane, lane);
     attachZoom(zCanvas);
     zoomEl = { lane: zLane, canvas: zCanvas, out: zOut };
@@ -940,6 +951,20 @@ function renderZoom(canvas) {
 
   c.fillStyle = '#141419';
   c.fillRect(0, 0, w, h);
+
+  /* A resting-state hint for the range-select band, drawn even with nothing dragged or
+   * selected — otherwise the strip is only visible once you already know to look for it.
+   * Faint enough not to compete with the brighter, more saturated rsel highlight below. */
+  if (editMode) {
+    c.fillStyle = 'rgba(255,209,102,.07)';
+    c.fillRect(0, h - RULER_BAND_PX, w, RULER_BAND_PX);
+    c.strokeStyle = 'rgba(255,209,102,.4)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(0, h - RULER_BAND_PX + 0.5);
+    c.lineTo(w, h - RULER_BAND_PX + 0.5);
+    c.stroke();
+  }
 
   const rsel = rangeDrag || rangeSelection;
   if (rsel) {
@@ -1892,6 +1917,7 @@ window.addEventListener('sansbass:editmode', (e) => {
   rangeDrag = null;
   rangeSelection = null;
   if (zoomToolbar) zoomToolbar.root.hidden = !editMode;
+  if (zoomRangeHint) zoomRangeHint.hidden = !editMode;
   if (zoomEl) { zoomEl.canvas.classList.toggle('editing', editMode); draw(); }
 });
 renderLangToggle();

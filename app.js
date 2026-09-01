@@ -190,6 +190,27 @@ function fmt(t) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** Like fmt(), but to the millisecond — fmt()'s whole-second precision is too coarse for a
+ *  note boundary, which is meaningful down to the 20ms floor (MIN_DUR). */
+function fmtPrecise(t) {
+  if (!isFinite(t) || t < 0) t = 0;
+  const totalMs = Math.round(t * 1000);
+  const m = Math.floor(totalMs / 60000);
+  const s = ((totalMs % 60000) / 1000).toFixed(3).padStart(6, '0');
+  return `${m}:${s}`;
+}
+
+/** Inverse of fmtPrecise() — returns null on anything else, including bare seconds with no
+ *  ':'. The field always displays and expects m:ss.mmm, so round-tripping that one format is
+ *  what matters, not accepting everything a user might type. */
+function parseTimeMmSs(str) {
+  const m = /^(\d+):(\d+(?:\.\d+)?)$/.exec(str.trim());
+  if (!m) return null;
+  const mins = +m[1], secs = +m[2];
+  if (secs >= 60) return null;
+  return mins * 60 + secs;
+}
+
 /* What is on the status line right now, as a key rather than rendered text, so a language
  * switch can re-render it. Without this a visible error would freeze in the old language. */
 let lastSay = null;

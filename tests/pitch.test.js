@@ -890,11 +890,11 @@ test('pitch: applyEdits with midi resolves to the pitch-matching note despite an
 test('pitch: applyEdits without midi keeps first-match behaviour, unaffected by an overlapping note at another pitch', () => {
   const notes = [
     { start: 0, end: 1, midi: 50, cents: 5000, name: noteName(50), confidence: 0.9 },
-    { start: 0, end: 1, midi: 62, cents: 6200, name: noteName(62), confidence: 0.9 },
+    { start: 0, end: 1, midi: 55, cents: 5500, name: noteName(55), confidence: 0.9 },
   ];
-  const out = applyEdits(notes, [{ type: 'octave', at: 0.5, dir: 1 }]).notes;
-  assertEq(out[0].midi, 62, 'first match wins, exactly as before midi qualifiers existed — this is what keeps an old exported edit file applying unchanged');
-  assertEq(out[1].midi, 62, 'the second note is untouched');
+  const out = applyEdits(notes, [{ type: 'pitchNudge', at: 0.5, semitones: 3 }]).notes;
+  assertEq(out[0].midi, 53, 'first match wins, exactly as before midi qualifiers existed — this is what keeps an old exported edit file applying unchanged');
+  assertEq(out[1].midi, 55, 'the second, overlapping note at a different pitch is untouched');
 });
 
 test('pitch: applyEdits with midi still resolves an exact duplicate to the topmost (last) match', () => {

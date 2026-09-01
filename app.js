@@ -1399,6 +1399,7 @@ function paint(canvas, frac) {
   }
   paintLoopRegion(c, canvas, dpr, canvas === el.mainWave);
   if (ribbonEl && canvas === ribbonEl.canvas) paintRangeBand(c, canvas, dpr);
+  if (tempoDrumsCanvas && canvas === tempoDrumsCanvas) paintTempoRangeBand(c, canvas, dpr);
 
   c.fillStyle = 'rgba(255,255,255,.85)';
   c.fillRect(px, 0, Math.max(1, dpr), canvas.height);
@@ -1453,6 +1454,27 @@ function paintRangeBand(c, canvas, dpr) {
     c.stroke();
   }
   const rsel = rangeDrag || rangeSelection;
+  if (rsel && duration) {
+    const s = Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
+    const eT = Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
+    c.fillStyle = 'rgba(255,209,102,.18)';
+    c.fillRect((s / duration) * w, 0, Math.max(1, ((eT - s) / duration) * w), h);
+  }
+}
+
+/** The whole-lane drag surface on the drums stem: a faint resting-state tint while armed
+ *  (unlike paintRangeBand's bottom-strip-only hint — there is no competing gesture on this
+ *  lane, so the whole thing is fair game), plus a brighter highlight while dragging or
+ *  committed. Same drawn-on-the-live-canvas reasoning as paintRangeBand: a drag must not
+ *  force renderWave to rebuild this lane's cached idle/active layers every pointermove. */
+function paintTempoRangeBand(c, canvas, dpr) {
+  const w = canvas.width;
+  const h = canvas.height;
+  if (tempoRangeArmed) {
+    c.fillStyle = 'rgba(255,209,102,.07)';
+    c.fillRect(0, 0, w, h);
+  }
+  const rsel = tempoRangeDrag || tempoRange;
   if (rsel && duration) {
     const s = Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
     const eT = Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
@@ -2249,11 +2271,18 @@ function addMidiAt(canvas, clientY) {
 
 function attachSeek(canvas, opts) {
   const rangeBand = !!(opts && opts.rangeBand);
+  const tempoLane = !!(opts && opts.tempoLane);
   const posToTime = (e) => {
     const r = canvas.getBoundingClientRect();
     return ((e.clientX - r.left) / r.width) * duration;
   };
   canvas.addEventListener('pointerdown', (e) => {
+    if (tempoLane && tempoRangeArmed) {
+      const t = posToTime(e);
+      tempoRangeDrag = { startT: t, curT: t };
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     if (rangeBand && editMode) {
       const r = canvas.getBoundingClientRect();
       if (e.clientY - r.top > r.height - RULER_BAND_PX) {
@@ -2268,10 +2297,21 @@ function attachSeek(canvas, opts) {
     seek(posToTime(e));
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (tempoRangeDrag) { tempoRangeDrag.curT = posToTime(e); draw(); return; }
     if (rangeDrag) { rangeDrag.curT = posToTime(e); draw(); return; }
     if (scrubbing) { offset = Math.max(0, Math.min(duration, posToTime(e))); draw(); }
   });
   canvas.addEventListener('pointerup', (e) => {
+    if (tempoRangeDrag) {
+      const from = Math.min(tempoRangeDrag.startT, tempoRangeDrag.curT);
+      const to = Math.max(tempoRangeDrag.startT, tempoRangeDrag.curT);
+      tempoRangeDrag = null;
+      tempoRange = (to - from > 0.01) ? { from, to } : null;
+      syncTempoRangeHint();
+      window.dispatchEvent(new CustomEvent('sansbass:temporange', { detail: tempoRange }));
+      draw();
+      return;
+    }
     if (rangeDrag) {
       const from = Math.min(rangeDrag.startT, rangeDrag.curT);
       const to = Math.max(rangeDrag.startT, rangeDrag.curT);
@@ -2284,7 +2324,7 @@ function attachSeek(canvas, opts) {
     scrubbing = false;
     seek(posToTime(e));
   });
-  canvas.addEventListener('pointercancel', () => { rangeDrag = null; scrubbing = false; });
+  canvas.addEventListener('pointercancel', () => { tempoRangeDrag = null; rangeDrag = null; scrubbing = false; });
 }
 
 on(el.play, 'click', toggle);

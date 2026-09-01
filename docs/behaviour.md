@@ -297,6 +297,7 @@ pointer/keyboard interactions, and talks to `notes.js` through `sansbass:noteedi
 | E16 | With a note selected, ↑/↓ nudge pitch, Shift+↑/↓ shift octave, ←/→ nudge time, Delete/Backspace deletes — and these take priority over the transport's own arrow-key seek. | Select a note, press →: it moves in time, `#t-cur` does NOT jump by 5s. Deselect, press →: now it does. |
 | E17 | **Export edits** downloads a JSON file with `version`, `params`, `clip`, `jianpu`, and `edits` (one array per list entry, two elements for a split); **Import edits** restores every control and the edit list from it, re-deriving the same note list. | Export, reload, re-load the same zip, re-run detection, import: `#notes-count` and the edit-list rows match. |
 | E18 | Loading a new song clears the edit list and both toolbar/list panels, exactly as parameters and the 簡譜 key already reset. | Make an edit, load a second zip: `#notes-edits` is `hidden` again and empty. |
+| E19 | An `add`ed or split-off note sounds through the notes lane's reference tone (with the lane unmuted), even though it sits appended at the end of the note list regardless of its own chronological position. | Split a note early in a long song, play from before the cut with the notes lane unmuted: both halves are audible, not just the one that kept its original array position. |
 
 ## Saving stems
 

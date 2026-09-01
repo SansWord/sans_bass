@@ -400,6 +400,18 @@ input[type=range] { width: 110px; }
 .lane-vol { display: flex; align-items: center; }
 .lane-vol input { width: 100%; }
 
+/* The caption + Clear button under the drums lane, naming the current BPM-detection range.
+   grid-column: 1 / -1 spans the .lane grid the same way .note-range-hint already does. */
+.tempo-range-hint {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 11px var(--mono);
+  color: var(--dim);
+  margin-top: 2px;
+}
+
 .status {
   margin-top: 20px;
   font: 12px var(--mono);

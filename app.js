@@ -48,6 +48,8 @@ let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:edi
 let selectedNote = null;    // { at } — a time point inside the selected note, or null
 let zoomToolbar = null;     // built in Task 4; guarded with `if (zoomToolbar)` until then
 let noteDrag = null;   // { mode: 'move'|'resize-start'|'resize-end', note, startT, origStart, origEnd, previewStart, previewEnd }
+let addArmed = false;      // "+ Add note" pressed — the next drag places a note
+let addDrag = null;        // { startT, midi, curT }
 let ribbonVisible = readStoredFlag(RIBBON_SHOW_KEY, true);
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
@@ -618,9 +620,11 @@ function buildUI(title) {
     const split = mkEditBtn('✂', 'notes.editSplitTip', editSplit);
     const del = mkEditBtn('✕', 'notes.editDeleteTip', editDeleteNote);
     del.classList.add('note-tbtn-danger');
+    const addBtn = mkEditBtn('+ ' + tr('notes.editAdd'), 'notes.editAddTip', toggleAddArmed);
+    addBtn.disabled = false;   // always available while edit mode is on, selection or not
 
-    zToolbar.append(octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, split, del);
-    zoomToolbar = { root: zToolbar, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, split, del };
+    zToolbar.append(addBtn, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, split, del);
+    zoomToolbar = { root: zToolbar, add: addBtn, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, split, del };
 
     zLane.append(zName, zCanvas, zToolbar, zSpacer, zGrip);
     el.lanes.insertBefore(zLane, lane);
@@ -1044,6 +1048,14 @@ function renderZoom(canvas) {
       c.fillRect(x(live.start) - hw / 2, by, hw, bh);
       c.fillRect(x(live.end) - hw / 2, by, hw, bh);
     }
+  }
+
+  if (addDrag) {
+    const s = Math.min(addDrag.startT, addDrag.curT);
+    const eT = Math.max(addDrag.startT, addDrag.curT);
+    const by2 = y(addDrag.midi + 0.5);
+    c.fillStyle = 'rgba(201,155,240,.5)';
+    c.fillRect(x(s), by2, Math.max(2, x(eT) - x(s)), Math.max(3, semi * 0.8));
   }
 
   // Time ruler, one label per second while there is room for it.
@@ -1585,6 +1597,12 @@ function attachZoom(canvas) {
 
   canvas.addEventListener('pointerdown', (e) => {
     if (editMode && ribbon) {
+      if (addArmed) {
+        const t = zoomTimeAt(canvas, e.clientX);
+        addDrag = { startT: t, curT: t, midi: addMidiAt(canvas, e.clientY) };
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
       const t = zoomTimeAt(canvas, e.clientX);
       const sel = selectedNote ? noteAt(ribbon.notes, selectedNote.at) : null;
       if (sel) {
@@ -1613,6 +1631,7 @@ function attachZoom(canvas) {
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (addDrag) { addDrag.curT = zoomTimeAt(canvas, e.clientX); draw(); return; }
     if (noteDrag) {
       const dt = zoomTimeAt(canvas, e.clientX) - noteDrag.startT;
       let newStart = noteDrag.origStart + (noteDrag.mode === 'resize-end' ? 0 : dt);
@@ -1635,6 +1654,20 @@ function attachZoom(canvas) {
     draw();
   });
   canvas.addEventListener('pointerup', (e) => {
+    if (addDrag) {
+      const start = Math.min(addDrag.startT, addDrag.curT);
+      const end = Math.max(addDrag.startT, addDrag.curT);
+      const MIN_DUR = 0.02;
+      const finalEnd = end - start < MIN_DUR ? start + MIN_DUR : end;
+      const midi = addDrag.midi;
+      addDrag = null;
+      addArmed = false;
+      syncAddButton();
+      dispatchEdit([{ type: 'add', start: +start.toFixed(4), end: +finalEnd.toFixed(4), midi }]);
+      selectedNote = { at: (start + finalEnd) / 2 };
+      draw();
+      return;
+    }
     if (noteDrag) {
       const { note, previewStart, previewEnd } = noteDrag;
       const dStart = previewStart - note.start;
@@ -1651,7 +1684,7 @@ function attachZoom(canvas) {
     panning = false;
     if (travelled <= DRAG_SLOP) seek(zoomTimeAt(canvas, e.clientX));
   });
-  canvas.addEventListener('pointercancel', () => { noteDrag = null; panning = false; });
+  canvas.addEventListener('pointercancel', () => { addDrag = null; noteDrag = null; panning = false; });
 }
 
 /** Change the zoom window width about its centre, and persist it. */
@@ -1728,6 +1761,17 @@ function editSplit() {
   dispatchEdit(edits);
 }
 
+function toggleAddArmed() {
+  addArmed = !addArmed;
+  syncAddButton();
+}
+
+function syncAddButton() {
+  if (!zoomToolbar) return;
+  zoomToolbar.add.textContent = addArmed ? tr('notes.editAddArmed') : ('+ ' + tr('notes.editAdd'));
+  zoomToolbar.add.classList.toggle('note-tbtn-armed', addArmed);
+}
+
 /** Song time under a client x position in the zoomed pane. */
 function zoomTimeAt(canvas, clientX) {
   const r = canvas.getBoundingClientRect();
@@ -1742,6 +1786,21 @@ function zoomEdgeToleranceSeconds(canvas) {
   const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration || 1);
   const r = canvas.getBoundingClientRect();
   return (EDGE_PX / (r.width || 1)) * (win.to - win.from);
+}
+
+/** The zoomed pane's current pitch range, the same call renderZoom uses. */
+function zoomPitchRangeNow() {
+  if (!ribbon) return [48, 72];
+  return window.SansRibbon.pitchRange(ribbon.notes, { clip: ribbon.clip !== false });
+}
+
+/** Client Y -> MIDI in the zoomed pane, the inverse of renderZoom's y(midi). */
+function addMidiAt(canvas, clientY) {
+  const [loM, hiM] = zoomPitchRangeNow();
+  const r = canvas.getBoundingClientRect();
+  const frac = (clientY - r.top) / (r.height || 1);
+  const midi = Math.round(hiM - frac * (hiM - loM));
+  return Math.max(loM, Math.min(hiM, midi));
 }
 
 function attachSeek(canvas) {
@@ -1781,6 +1840,8 @@ window.addEventListener('sansbass:editmode', (e) => {
   editMode = e.detail.on;
   selectedNote = null;
   noteDrag = null;
+  addArmed = false;
+  addDrag = null;
   if (zoomToolbar) zoomToolbar.root.hidden = !editMode;
   if (zoomEl) { zoomEl.canvas.classList.toggle('editing', editMode); draw(); }
 });

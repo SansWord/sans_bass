@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.16.4](#v1164--inline-field-labels-and-flat-pitch-entry-2026-09-01-1209) | Visible labels above the Start/End/Pitch fields, and Pitch becomes three dropdowns (letter/accidental/octave) so a flat spelling can be entered directly. `parseNoteName()` moves from a sharps-only lookup to a semitone formula that resolves flats correctly, including the two letters (`Cb`, `Fb`) whose flat crosses an octave boundary. Picking a pitch dropdown auto-commits, splitting Pitch away from Start/End's Enter/Apply-staged path. |
 | [v1.16.3](#v1163--inline-note-detail-fields-2026-09-01-0956) | Three inline fields — Start, End, Pitch — beside the note editor's toolbar, directly editable and committing via Enter or Apply through the existing `timeAdjust`/`pitchNudge` edit types. Invalid input reverts silently without blocking a valid sibling edit, Escape reverts everything uncommitted, and typing is never clobbered by a redraw. `lib/pitch.js` gains `parseNoteName()`, the inverse of `noteName()`, bridged to `app.js` via a new `window.SansPitch`. |
 | [v1.16.2](#v1162--note-selection-identity-2026-09-01-0209) | Overlapping notes are disambiguated by pitch, not just time: `selectedNote` now carries `midi`, `noteAt` and `applyEdits` both accept an optional pitch qualifier, and the selection outline and every toolbar/keyboard edit resolve to the exact note under the pointer instead of an arbitrary same-time match. Old exported edit-history files (no `midi` field) still apply exactly as before. |
 | [v1.16.1](#v1161--note-editing-ergonomics-batch-1-2026-08-31-2322) | Four ergonomics fixes to v1.16.0's note editor: overlapping notes resolve clicks to whichever is drawn on top, the zoomed pane's scroll wheel seeks by default (Shift zooms) and arrows always seek (Shift for a fine step), range-select-and-delete now works in the full-song notes lane too, and clicking or tapping a note parks the playhead exactly there. |
@@ -37,6 +38,73 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.16.4 — Inline field labels and flat-pitch entry (2026-09-01 12:09)
+
+**Review:** not yet
+
+**Design docs:**
+- Inline field labels and flat-pitch entry: [Spec](superpowers/specs/2026-09-01-note-inline-fields-followups-design.md) [Plan](superpowers/plans/2026-09-01-note-inline-fields-followups.md)
+
+**What was built:**
+
+- Visible labels above Start, End, and Pitch — reusing the existing translated tooltip
+  strings, no new i18n keys.
+- Pitch's single text field replaced with three dropdowns (letter, accidental, octave), so a
+  flat spelling (`Db`, `Eb`, ...) is an explicit, unambiguous choice instead of something a
+  free-text parser would have to guess at.
+- `parseNoteName()` moved from a sharps-only lookup table to a semitone-offset formula, so it
+  now resolves flats to the correct MIDI number — including `Cb` (the same pitch as the B
+  *below* it) and `Fb` (the same pitch as E in the same octave), the two letters whose flat
+  crosses an octave boundary and where a naive "flat = sharp minus one, same octave" approach
+  gets the wrong answer. The formula also resolves non-table sharps like `B#`/`E#`, previously
+  rejected the same as flats were — a real, permanent behavior widening beyond just flats.
+- Picking any pitch dropdown value auto-commits a `pitchNudge` immediately, the same way the
+  toolbar's existing ♯/♭/↑8ve/↓8ve buttons already do — splitting Pitch away from Start/End's
+  Enter/Apply-staged commit path entirely. `commitFields()` is now Start/End only.
+
+**Key technical learnings:**
+
+- `[insight]` **Accepting a second, unambiguous spelling isn't the same risk as accepting an
+  ambiguous guess.** v1.16.3's `parseNoteName()` rejected flats specifically to avoid silently
+  *reinterpreting* an ambiguous-looking free-text entry. That risk doesn't exist once flat
+  becomes an explicit dropdown choice — `Db4` and `C#4` are, by definition, the identical
+  physical pitch, not two different guesses about what the user meant. Recognizing that the
+  original safety property was about ambiguity, not about flats specifically, is what made
+  extending the function safe rather than a regression of the original design intent.
+- `[gotcha]` **A flat's semitone offset can't be computed as a lookup-plus-wrap without getting
+  two letters wrong.** Naively mapping a flat letter to "one semitone below its sharp-table
+  index, wrapped within the same octave number" gets `Cb`/`Fb` wrong, because `Cb4` is not
+  `B4` — it's `B3`, one octave down. The fix is a single continuous formula
+  (`NATURAL_SEMITONE[letter] + offset + (octave+1)*12`) computed before any wrapping, so the
+  octave boundary falls out of ordinary arithmetic instead of needing a special case. Verified
+  live in the running app (not just the unit test): setting a note's Pitch to C/♭ actually
+  landed it on the B one octave down, not the same octave.
+- `[gotcha]` **A formula change's blast radius can be wider than the one case you set out to
+  fix.** The semitone-formula rewrite was scoped as "make flats work," but it also silently
+  started resolving non-table sharps (`B#`, `E#`) that the old lookup-table implementation
+  rejected — a correct, even desirable, side effect (the eventual dropdown UI can produce
+  exactly these combinations), but one that a code reviewer caught, not the original design or
+  the first pass of tests. Worth explicitly enumerating "what else changes" whenever a lookup
+  table gets replaced with a formula, not just checking the motivating case.
+- `[note]` A `<select>` doesn't carry the same "mid-keystroke, clobber-able" risk a text input
+  does — its value only changes through an explicit, already-committing choice — so the Pitch
+  dropdowns' sync function needed none of Start/End's `fieldsShownFor`/focus-guard machinery,
+  even though it's solving a superficially similar "keep the field in step with the note"
+  problem right next to it.
+
+**Process learnings:**
+
+- `[insight]` **Subagent review caught what self-review wouldn't have.** This session's first
+  half (Tasks 1's review) ran through the full spec-compliance + code-quality subagent review
+  cycle and caught a stale `docs/behaviour.md` claim and a missing-test-coverage gap that the
+  implementer's own self-review missed. The second half (Tasks 2-9) switched to inline
+  execution for speed on the remaining mechanical DOM/CSS/docs work, with one consolidated
+  manual-verification pass instead of a review cycle per task — a reasonable trade for
+  well-specified, lower-risk changes, but worth remembering that the fresh-eyes review is what
+  catches the subtle stuff, not raw effort spent looking at your own work again.
 
 ---
 

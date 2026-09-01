@@ -177,6 +177,25 @@ test('sonify: a doubtful note is never scheduled', async () => {
          'the doubtful note leaves silence where it would have been');
 });
 
+test('sonify: a note out of chronological order in the array still sounds', async () => {
+  /* lib/pitch.js's applyEdits() appends an `add`ed note to the END of the list regardless
+   * of its own start time — a hand-added or split-off note is very often chronologically
+   * EARLIER than notes already in the array. pump()'s scheduling loop walks its event queue
+   * once and stops the moment it sees something past the horizon, on the assumption that
+   * everything after it is later still — true for a chronologically sorted array, false
+   * here. Without sorting first, the out-of-place late note at the front of this array
+   * would make pump() give up before ever reaching the very playable early note behind it. */
+  const ctx = new OfflineAudioContext(1, SR * 2, SR);   // 2s render window
+  const notes = [
+    { start: 5.0, end: 5.5, midi: 69, cents: 6900, name: 'A4', confidence: 1 },   // out of range of this render entirely
+    { start: 0.5, end: 1.0, midi: 69, cents: 6900, name: 'A4', confidence: 1 },   // well within range, but LATER in the array
+  ];
+  scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset: 0, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  assert(rms(out, Math.round(0.55 * SR), Math.round(0.9 * SR)) > 0.01,
+         'the chronologically-early note sounds despite sitting after a later note in the array');
+});
+
 /* The envelope, pinned as arithmetic. Entering a note partway needs its amplitude at an
  * arbitrary point, so the curve the ramps describe is written once as a function and these
  * check the function against the three points the ramps themselves fix. */

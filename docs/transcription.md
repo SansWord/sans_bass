@@ -251,7 +251,7 @@ errors rather than removing them.
 | 簡譜 | built — `lib/jianpu.js`, drawn by `app.js` | a display mode over the same notes; changes nothing in the data |
 | octave folding | built — `pitchBand()` + `foldOctaves()` over the note list | the **Fix octave outliers** checkbox; corrects what it can justify, marks the rest |
 | zoomed reading pane | built | above the lane; ~10 s window, 2–60 s |
-| edits | not built; the six intended actions are listed under Layer 4 | — |
+| edits | built — `applyEdits()` over the note list | edit mode toggle + zoomed-pane toolbar; the six actions resolved to six edit types (`split` composes from two) — see the design spec |
 | beat / tempo | not built | — |
 
 Two views exist because one cannot do both jobs. At whole-song width a pixel spans ~0.3 s,

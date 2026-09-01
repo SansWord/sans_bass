@@ -456,6 +456,8 @@ input[type=range] { width: 110px; }
 /* grab, not ns-resize: this pane pans horizontally and zooms on the wheel. */
 .zoomwave { cursor: grab; touch-action: none; }
 .zoomwave:active { cursor: grabbing; }
+.zoomwave.editing { cursor: pointer; }
+.zoomwave.editing:active { cursor: pointer; }
 .zoom-secs { color: var(--dim); font-weight: 400; font-variant-numeric: tabular-nums; }
 .zoom-btns { display: inline-flex; gap: 4px; margin-left: 8px; }
 .zoom-btn {
@@ -489,3 +491,30 @@ input[type=range] { width: 110px; }
 .notes-sub:has(input:disabled) { opacity: .45; }
 .notes-adv summary { font: 12px var(--mono); color: var(--dim); cursor: pointer; }
 .notes-adv[open] summary { margin-bottom: 6px; }
+
+/* ---- note editing (layer 4) ---- */
+.note-range-hint {
+  grid-column: 1 / -1;
+  font: 11px var(--mono);
+  color: var(--dim);
+  margin-top: 2px;
+}
+.note-toolbar {
+  grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  margin-top: 6px;
+}
+.note-tbtn { font: 11px var(--mono); }
+.note-tbtn:disabled { opacity: .4; cursor: default; }
+.note-tbtn-danger { border-color: color-mix(in srgb, #ff6b81 45%, var(--line)); color: #ff9aa8; }
+.note-tbtn-armed { border-color: var(--loop); color: var(--loop); }
+
+.notes-edit-list { align-items: flex-start; gap: 8px; }
+.edit-rows {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 3px;
+  font: 11px var(--mono); color: var(--dim);
+}
+.edit-row { display: flex; align-items: center; gap: 6px; }
+.edit-warn { color: var(--loop); }
+.edit-remove { font-size: 9px; padding: 1px 5px; }

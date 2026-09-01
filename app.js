@@ -1012,6 +1012,19 @@ function renderRibbon(canvas, payload, cssWidth) {
       c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
     }
 
+    /* The beat/bar grid, purely visual — see docs/transcription.md on why this never
+     * touches interpret() or the note list. Bars draw taller/stronger than plain beats. */
+    if (payload.tempo && payload.tempo.on) {
+      const beats = window.SansRibbon.beatTimes(payload.tempo, duration);
+      for (const b of beats) {
+        const bx = Math.round(x(b.t));
+        c.fillStyle = b.bar
+          ? (dim ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.28)')
+          : (dim ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.10)');
+        c.fillRect(bx, 0, b.bar ? 2 : 1, h);
+      }
+    }
+
     /* Labels overlay the left edge rather than sitting in a gutter. A gutter would move
      * x = 0 away from t = 0 and the ribbon would stop lining up with the waveform lanes,
      * which is the one property every other decision here protects. */
@@ -1182,6 +1195,16 @@ function renderZoom(canvas) {
   for (let m = lo; m <= hi + 1; m++) {
     c.fillStyle = isHome(m) ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.075)';
     c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
+  }
+
+  if (ribbon.tempo && ribbon.tempo.on) {
+    const beats = window.SansRibbon.beatTimes(ribbon.tempo, duration);
+    for (const b of beats) {
+      if (b.t < win.from || b.t > win.to) continue;
+      const bx = x(b.t);
+      c.fillStyle = b.bar ? 'rgba(255,255,255,.30)' : 'rgba(255,255,255,.12)';
+      c.fillRect(bx, 0, b.bar ? 2 : 1, h);
+    }
   }
 
   /* Names, overlaid at the left rather than in a gutter — same reason as the lane: a

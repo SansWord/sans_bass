@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.16.1](#v1161--note-editing-ergonomics-batch-1-2026-08-31-2322) | Four ergonomics fixes to v1.16.0's note editor: overlapping notes resolve clicks to whichever is drawn on top, the zoomed pane's scroll wheel seeks by default (Shift zooms) and arrows always seek (Shift for a fine step), range-select-and-delete now works in the full-song notes lane too, and clicking or tapping a note parks the playhead exactly there. |
 | [v1.16.0](#v1160--note-editing-layer-4-2026-08-31-2201) | Hand-correct the detected note list from the zoomed pane — octave/semitone nudge, drag-move/resize, split, add, delete, range-delete — anchored to a time point so corrections survive every later re-interpretation (a slider drag, the HMM toggle, octave folding). Orphaned edits surface a warning instead of vanishing. The whole editing session exports/imports as one JSON file. |
 | [v1.15.0](#v1150--resuming-the-note-at-a-2026-08-31-1549) | A note still sounding when playback enters — at loop point A, on every lap, or at a seek target — now plays its remainder instead of being skipped, entering the envelope at the amplitude it had already reached rather than re-attacking. It is cut at B rather than ringing across the restart. One symptom, three separate causes. |
 | [v1.14.0](#v1140--簡譜-notes-as-scale-degrees-2026-08-31-1421) | 簡譜: a display mode drawing each note as a scale degree instead of an absolute name, in a key detected automatically and overridable by three controls. Off by default; the note data is untouched. The octave moves off the blocks and onto the pitch axis as dots. First time `detectKey()` reaches the player. Also flips `hmm-v1` on by default and drops its "experimental" label. |
@@ -34,6 +35,62 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.16.1 — Note editing ergonomics (batch 1) (2026-08-31 23:22)
+
+**Review:** not yet
+
+**Design docs:**
+- Note editing ergonomics (batch 1): [Spec](superpowers/specs/2026-08-31-note-editing-ergonomics-design.md) [Plan](superpowers/plans/2026-08-31-note-editing-ergonomics.md)
+
+**What was built:**
+
+- `noteAt` now searches the note list from the end rather than the start, so a click on two
+  overlapping notes resolves to whichever is drawn on top (the later array entry) instead of
+  always the first-detected one. `add` already pushes new notes to the end, so a manually
+  placed note dropped onto an existing one is both drawn on top and the one a click selects,
+  with no special-casing.
+- The zoomed pane's scroll wheel now seeks the playhead by default, proportional to the
+  current zoom span; Shift+wheel keeps the old zoom behavior. Arrow Left/Right always seek —
+  also proportional to the zoom span (`zoomSeconds × 0.15`: 0.3s at a 2s zoom, 9s at a 60s
+  zoom) — regardless of whether a note is selected; Shift is a fixed 1ms step for placing a cut
+  inside a word, which is about absolute precision rather than view navigation, so it does not
+  scale with zoom. Nudging a selected note's time from the keyboard is gone for now (the
+  toolbar's ◀t/▶t buttons and dragging still work), a deliberate interim trade-off until inline
+  value fields (a later batch) give it a new home.
+- Range-select-and-delete (v1.16.0) now works in the full-song notes lane, not just the zoomed
+  pane: the same bottom-band drag gesture, the same resting-state strip and caption, and the
+  same shared **Delete range** button, since both panes feed one `rangeSelection`.
+- Clicking a note now seeks the playhead to the exact clicked point (not the note's midpoint,
+  which stays the selection anchor for a separate reason). Tapping — pressing and releasing an
+  already-selected note without a real drag — now seeks too, instead of silently doing nothing;
+  an actual drag still moves/resizes exactly as before.
+
+**Key technical learnings:**
+
+- `[insight]` **A cached-layer canvas needs its transient UI drawn OUTSIDE the cache.**
+  `renderRibbon` pre-renders idle/active layers specifically so a frame is a cheap blit —
+  drawing the range-select band inside that cache would mean rebuilding both layers, plus the
+  full grid/notes/labels pass, on every pointermove of a drag. `paintLoopRegion` had already
+  solved this exact problem for the A-B loop shading; the new `paintRangeBand` reuses the same
+  live-canvas-after-blit pattern rather than inventing a new one.
+- `[gotcha]` **A shared helper needs an opt-in flag, not a global behavior change.**
+  `attachSeek` is wired to every track lane, the main waveform, and the notes ribbon lane alike
+  — adding the range-band check unconditionally would have turned on range-select dragging
+  everywhere. The `{ rangeBand: true }` option keeps the other two dozen call sites untouched,
+  and adding a `pointercancel` handler while there (there wasn't one before) closes a real gap:
+  without it, a cancelled gesture on the ribbon lane would leave `rangeDrag` stuck.
+- `[note]` Range-select's `rangeDrag`/`rangeSelection` state is genuinely canvas-agnostic — it
+  was already shared across the zoomed pane and (as of this batch) the notes lane with zero
+  changes to the state shape itself, only to which canvases feed it.
+- `[gotcha]` **"Which note is selected" and "where is the playhead" are different anchors that
+  happen to share a gesture.** `selectedNote.at` has to stay the note's midpoint to survive
+  future edits reliably; the seek target is wherever the user actually clicked. Conflating them
+  — seeking to the midpoint instead of the click — would have been a smaller diff but a worse
+  feature, since it defeats the actual point (parking the playhead exactly where you meant to
+  cut).
 
 ---
 

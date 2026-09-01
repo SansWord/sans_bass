@@ -199,10 +199,13 @@
       <!-- Collapsed by default (no `open` attribute) so a long editing session doesn't push
            the zoomed pane further down the page on every new edit; the browser keeps whatever
            open/closed state the user leaves it in across re-renders, since renderEditList()
-           only replaces #notes-edit-rows' children, never this element's `open`. -->
+           only replaces #notes-edit-rows' children, never this element's `open`. When open,
+           the row below floats (position: absolute — see styles.css) so it overlays the page
+           instead of displacing it, and a pointerdown outside #notes-edits closes it again
+           (see the listener in notes.js). -->
       <details id="notes-edits" class="notes-edit-list" hidden>
         <summary id="notes-edits-summary"></summary>
-        <div class="notes-row">
+        <div class="notes-row notes-edit-panel">
           <button id="notes-edit-undo" class="mini" type="button" disabled
                   data-i18n-attr="title:notes.editUndoTip">&#8630;</button>
           <ol id="notes-edit-rows" class="edit-rows"></ol>

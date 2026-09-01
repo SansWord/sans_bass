@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.16.2](#v1162--note-selection-identity-2026-09-01-0209) | Overlapping notes are disambiguated by pitch, not just time: `selectedNote` now carries `midi`, `noteAt` and `applyEdits` both accept an optional pitch qualifier, and the selection outline and every toolbar/keyboard edit resolve to the exact note under the pointer instead of an arbitrary same-time match. Old exported edit-history files (no `midi` field) still apply exactly as before. |
 | [v1.16.1](#v1161--note-editing-ergonomics-batch-1-2026-08-31-2322) | Four ergonomics fixes to v1.16.0's note editor: overlapping notes resolve clicks to whichever is drawn on top, the zoomed pane's scroll wheel seeks by default (Shift zooms) and arrows always seek (Shift for a fine step), range-select-and-delete now works in the full-song notes lane too, and clicking or tapping a note parks the playhead exactly there. |
 | [v1.16.0](#v1160--note-editing-layer-4-2026-08-31-2201) | Hand-correct the detected note list from the zoomed pane — octave/semitone nudge, drag-move/resize, split, add, delete, range-delete — anchored to a time point so corrections survive every later re-interpretation (a slider drag, the HMM toggle, octave folding). Orphaned edits surface a warning instead of vanishing. The whole editing session exports/imports as one JSON file. |
 | [v1.15.0](#v1150--resuming-the-note-at-a-2026-08-31-1549) | A note still sounding when playback enters — at loop point A, on every lap, or at a seek target — now plays its remainder instead of being skipped, entering the envelope at the amplitude it had already reached rather than re-attacking. It is cut at B rather than ringing across the restart. One symptom, three separate causes. |
@@ -35,6 +36,73 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.16.2 — Note selection identity (2026-09-01 02:09)
+
+**Review:** not yet
+
+**Design docs:**
+- Note selection identity: [Spec](superpowers/specs/2026-09-01-note-selection-identity-design.md) [Plan](superpowers/plans/2026-09-01-note-selection-identity.md)
+
+**What was built:**
+
+- `selectedNote` now carries `{ at, midi }` instead of just `{ at }` — every assignment site
+  (click-select, drag commit, add-note commit, octave/semitone/time nudge, split) keeps it
+  current, including two functions (`editOctave`, `editPitchNudge`) that previously left it
+  stale after a pitch-changing edit.
+- `noteAt(list, at, midi)` gained an optional third parameter: with it, only a note at that
+  exact pitch counts, which is what actually disambiguates two notes overlapping in time —
+  time alone never could, no matter which tie-break rule wound up on top of it. Every call
+  site that already has a `selectedNote` passes its `midi` through; the one fresh-click call
+  site reuses `addMidiAt` (the same Y→pitch rounding `+ Add note` placement already uses) to
+  get a pitch value from the click itself. The drag-detection branch in `attachZoom`'s
+  `pointerdown` handler — deciding whether a click grabs the already-selected note to
+  move/resize it — is now gated on the click's pitch matching the selection too, not just
+  its time; without that it kept hijacking clicks meant for a different, time-overlapping
+  note underneath.
+- The selection outline (`renderZoom`) and `lib/pitch.js`'s `applyEdits` anchor lookup both
+  gained the same pitch check, so the toolbar/keyboard can no longer visibly select one note
+  while silently acting on a different, time-overlapping one underneath it.
+- `applyEdits`'s `midi` qualifier is optional and additive: an edit object with no `midi`
+  (every edit in a file exported before this change) resolves exactly as it always did —
+  first match, no pitch filtering — so old exported edit-history JSON keeps applying
+  unmodified.
+
+**Key technical learnings:**
+
+- `[insight]` **Tie-breaking and disambiguation are different problems that look like the
+  same one.** v1.16.1 fixed *which* overlapping note a click resolves to when multiple
+  candidates are already known (array-order tie-break: last/topmost wins). It could not fix
+  the deeper issue, because tie-breaking only matters once you already know your candidate
+  set — and time alone was never enough to build that set correctly when two notes overlap
+  in time but sit at different pitches. Pitch is what narrows "notes containing this time
+  point" down to "the one thing actually under the pointer."
+- `[gotcha]` **Reassigning shared state after a synchronous event dispatch can read it back
+  null.** `editOctave`/`editPitchNudge` used to call `dispatchEdit` (a synchronous
+  `window.dispatchEvent`) and only afterward set `selectedNote` to the new pitch.
+  `dispatchEdit`'s event round-trips through `notes.js` and back into `syncEditToolbar`
+  *before that line runs* — and `syncEditToolbar` re-resolves the selection using whatever
+  `selectedNote` holds at that exact moment. Since the note had already moved to its new
+  pitch in `ribbon.notes`, looking it up by the stale old `midi` failed, `syncEditToolbar`
+  nulled `selectedNote` as its own self-healing behavior, and the post-dispatch line crashed
+  reading `.at` off `null` — 100% reproducible on every octave/semitone edit. Caught only by
+  manually exercising the pitch-aware outline in a real browser; the unit suite has no
+  coverage of `app.js` at all. Fixed by updating `selectedNote` *before* dispatching
+  (matching `editSplit`'s existing order), which also has the side benefit of keeping the
+  outline correctly tracking the note through the pitch change instead of losing selection.
+- `[gotcha]` **A selection anchor's shape has to track every field an edit can change, not
+  just the ones the original design happened to touch.** `selectedNote.at` already survived
+  every edit type by design (v1.16.0); adding `midi` surfaced two functions
+  (`editOctave`, `editPitchNudge`) that changed a note's pitch without updating the
+  selection's own record of it — harmless while `selectedNote` was time-only, but silently
+  wrong (a stale-pitch outline vanishing right after the very edit that just ran, before the
+  crash above was even fixed) the moment pitch became part of the identity.
+- `[note]` Reusing `addMidiAt` for click-to-select's pitch value, rather than writing a
+  second Y→pitch rounding function, keeps "what pitch is under this pointer" answered one
+  way everywhere it's asked — the same reasoning that keeps `noteAt`'s half-open interval
+  shared between `app.js` and `lib/pitch.js`.
 
 ---
 

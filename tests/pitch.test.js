@@ -877,6 +877,36 @@ test("pitch: applyEdits anchor lookup is half-open — a note's own end excludes
   assertEq(atStart.notes[0].midi, 52);
 });
 
+test('pitch: applyEdits with midi resolves to the pitch-matching note despite an earlier time-overlapping match', () => {
+  const notes = [
+    { start: 0, end: 1, midi: 50, cents: 5000, name: noteName(50), confidence: 0.9 },
+    { start: 0, end: 1, midi: 62, cents: 6200, name: noteName(62), confidence: 0.9 },
+  ];
+  const out = applyEdits(notes, [{ type: 'octave', at: 0.5, dir: 1, midi: 62 }]).notes;
+  assertEq(out[0].midi, 50, 'the first note (different pitch) is untouched');
+  assertEq(out[1].midi, 74, 'the pitch-qualified edit hit the second note, not the first');
+});
+
+test('pitch: applyEdits without midi keeps first-match behaviour, unaffected by an overlapping note at another pitch', () => {
+  const notes = [
+    { start: 0, end: 1, midi: 50, cents: 5000, name: noteName(50), confidence: 0.9 },
+    { start: 0, end: 1, midi: 55, cents: 5500, name: noteName(55), confidence: 0.9 },
+  ];
+  const out = applyEdits(notes, [{ type: 'pitchNudge', at: 0.5, semitones: 3 }]).notes;
+  assertEq(out[0].midi, 53, 'first match wins, exactly as before midi qualifiers existed — this is what keeps an old exported edit file applying unchanged');
+  assertEq(out[1].midi, 55, 'the second, overlapping note at a different pitch is untouched');
+});
+
+test('pitch: applyEdits with midi still resolves an exact duplicate to the topmost (last) match', () => {
+  const notes = [
+    { start: 0, end: 1, midi: 50, cents: 5000, name: noteName(50), confidence: 0.11 },  // bottom
+    { start: 0, end: 1, midi: 50, cents: 5000, name: noteName(50), confidence: 0.99 },  // topmost
+  ];
+  const out = applyEdits(notes, [{ type: 'delete', at: 0.5, midi: 50 }]).notes;
+  assertEq(out.length, 1, 'exactly one of the duplicates is removed');
+  assertClose(out[0].confidence, 0.11, 1e-6, 'the topmost (last) duplicate was deleted, the bottom one survives');
+});
+
 test('pitch: applyEdits does not mutate the notes or edits it was given', () => {
   const notes = notesAt([50]);
   const edits = [{ type: 'octave', at: 0.25, dir: 1 }];

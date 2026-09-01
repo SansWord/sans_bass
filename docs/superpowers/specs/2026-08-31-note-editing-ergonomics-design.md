@@ -41,8 +41,9 @@ handling and rendering:
 - Overlapping notes are tolerated (not clamped/forbidden), but whichever note is visually on
   top is always the one a click selects.
 - In the zoomed pane: unmodified scroll wheel seeks the playhead; Shift+wheel does today's
-  zoom. Arrow Left/Right always seek (5s normally, a fine step with Shift), regardless of
-  whether a note is selected.
+  zoom. Arrow Left/Right always seek — proportional to the current zoom span, so the step
+  feels right whether zoomed to 2s or 60s — with a fixed, very fine step under Shift for
+  placing a cut inside a word, regardless of whether a note is selected.
 - Range-select-and-delete works the same way in the full-song notes lane as it already does in
   the zoomed pane, sharing the same selection state and the same **Delete range** button.
 - Clicking or tapping a note — whether selecting it for the first time, or tapping an
@@ -71,9 +72,9 @@ handling and rendering:
   click on the overlapping region selects.
 - In the zoomed pane, an unmodified scroll gesture moves the playhead; the same gesture with
   Shift held zooms, exactly as scrolling alone did before this change.
-- Arrow Left/Right move the playhead by 5s (Shift: a fine step) whether or not a note is
-  currently selected. A selected note's pitch shortcuts (Up/Down, Shift+Up/Down) and
-  Delete/Backspace are unaffected.
+- Arrow Left/Right move the playhead by a fraction of the current zoom span (Shift: a fixed
+  1ms step) whether or not a note is currently selected. A selected note's pitch shortcuts
+  (Up/Down, Shift+Up/Down) and Delete/Backspace are unaffected.
 - Dragging the bottom band of the full-song notes lane selects a range and enables **Delete
   range**, identically to the zoomed pane; clicking it removes every overlapping note. Both
   panes' resting-state bands and their captions are visible whenever edit mode is on.
@@ -150,14 +151,18 @@ seek. Both existing pieces change:
 //   if (e.key === 'ArrowRight') { ...editTimeNudge(1)... }
 // (ArrowUp/Down, Shift+ArrowUp/Down, Delete/Backspace all stay exactly as they are)
 
-// the transport fallthrough's seek amount gains a fine-step modifier:
-else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : SEEK_STEP)); }
-else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + (e.shiftKey ? FINE_SEEK_STEP : SEEK_STEP)); }
+// the transport fallthrough's seek amount gains a fine-step modifier, and the plain
+// step scales with the current zoom span instead of a flat 5s:
+else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }
+else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }
 ```
 
-`SEEK_STEP = 5` (unchanged from today's hardcoded value), `FINE_SEEK_STEP` proposed `0.05`
-(50ms) — fine enough to place a split point precisely, coarser than the 20ms note-duration
-floor so it never feels like it's fighting that floor. This branch is no longer gated by
+`ARROW_SEEK_FRACTION = 0.15` — a flat 5s felt wrong at both ends of the zoom range (too coarse
+zoomed in, barely noticeable zoomed out), so it scales the same way `WHEEL_SEEK_FRACTION`
+already does: 0.3s at a 2s zoom, 9s at a 60s zoom. `FINE_SEEK_STEP = 0.001` (1ms) stays an
+absolute value rather than zoom-relative — it exists to place a cut inside a word, which is
+about absolute precision, not view navigation, so scaling it with zoom would work against the
+one thing it's for. This branch is no longer gated by
 `editMode` at all (it wasn't specific to note editing before this feature existed, and isn't
 becoming so now) — Left/Right always seeks, full stop.
 

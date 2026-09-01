@@ -753,3 +753,143 @@ test('pitch: interpret folds for hmm-v1 too', () => {
   assert(folded.length > 0, 'hmm-v1 still returns notes');
   assert(folded.some((n) => n.fix && n.fix.state === 'folded'), 'and folding applies to its output too');
 });
+
+import { applyEdits } from '../lib/pitch.js';
+
+test('pitch: applyEdits shifts a note a whole octave and tags it manual', () => {
+  const notes = notesAt([50, 52, 54]);
+  const { notes: out, orphaned } = applyEdits(notes, [{ type: 'octave', at: 0.25, dir: 1 }]);
+  assertEq(orphaned.length, 0, 'the anchor lands inside the first note');
+  assertEq(out[0].midi, 62, 'shifted up a full octave');
+  assertEq(out[0].name, 'D4', 'the name is rewritten to match');
+  assertEq(out[0].cents, notes[0].cents + 1200, 'and so are the cents');
+  assertEq(out[0].fix.state, 'manual', 'tagged as a hand edit');
+  assertEq(out[0].fix.from, 50, 'provenance records the original pitch');
+  assertEq(out[1].midi, 52, 'the other notes are untouched');
+});
+
+test('pitch: applyEdits pitchNudge shifts by exactly the given semitones', () => {
+  const notes = notesAt([50]);
+  const out = applyEdits(notes, [{ type: 'pitchNudge', at: 0.1, semitones: -1 }]).notes;
+  assertEq(out[0].midi, 49);
+  assertEq(out[0].fix.state, 'manual');
+});
+
+test('pitch: applyEdits delete removes exactly the targeted note', () => {
+  const notes = notesAt([50, 52, 54]);
+  const out = applyEdits(notes, [{ type: 'delete', at: 0.75 }]).notes;
+  assertEq(out.length, 2);
+  assertEq(out.map((n) => n.midi).join(','), '50,54', 'the middle note is gone, order preserved');
+});
+
+test('pitch: applyEdits add inserts a note with no target lookup, tagged manual from birth', () => {
+  const notes = notesAt([50]);
+  const out = applyEdits(notes, [{ type: 'add', start: 10, end: 10.5, midi: 60 }]).notes;
+  assertEq(out.length, 2);
+  assertEq(out[1].midi, 60);
+  assertEq(out[1].name, 'C4');
+  assertEq(out[1].fix.state, 'manual');
+  assert(out[1].fix.from === undefined, 'an added note has no prior pitch to record');
+});
+
+test('pitch: applyEdits timeAdjust with equal deltas moves a note without resizing it', () => {
+  const notes = notesAt([50]);           // [0, 0.5]
+  const out = applyEdits(notes, [{ type: 'timeAdjust', at: 0.25, dStart: 0.2, dEnd: 0.2 }]).notes;
+  assertClose(out[0].start, 0.2, 1e-6);
+  assertClose(out[0].end, 0.7, 1e-6);
+  assertClose(out[0].end - out[0].start, 0.5, 1e-6, 'duration unchanged — a move, not a resize');
+});
+
+test('pitch: applyEdits timeAdjust with one delta resizes just that edge', () => {
+  const notes = notesAt([50]);           // [0, 0.5]
+  const out = applyEdits(notes, [{ type: 'timeAdjust', at: 0.25, dStart: 0, dEnd: 0.3 }]).notes;
+  assertClose(out[0].start, 0, 1e-6, 'start untouched');
+  assertClose(out[0].end, 0.8, 1e-6, 'end extended');
+});
+
+test('pitch: applyEdits rangeDelete removes every note overlapping the range and nothing else', () => {
+  const notes = notesAt([50, 52, 54, 56]);   // [0,.5] [.5,1] [1,1.5] [1.5,2]
+  const out = applyEdits(notes, [{ type: 'rangeDelete', from: 0.4, to: 1.1 }]).notes;
+  assertEq(out.map((n) => n.midi).join(','), '56', 'only the untouched last note survives');
+});
+
+test('pitch: applyEdits rangeDelete is re-evaluated fresh, not a one-time snapshot', () => {
+  const edit = { type: 'rangeDelete', from: 0, to: 1 };
+  const before = notesAt([50, 52]);                       // both inside [0,1)
+  assertEq(applyEdits(before, [edit]).notes.length, 0);
+  // A DIFFERENT note list, later, still inside the same range — the SAME edit object catches it.
+  const after = notesAt([61]);                            // [0, 0.5], inside [0,1)
+  assertEq(applyEdits(after, [edit]).notes.length, 0,
+    'the same edit re-derives against whatever notes exist now, not what existed when it was made');
+});
+
+test('pitch: applyEdits orphans an edit whose anchor matches no current note', () => {
+  const notes = notesAt([50]);   // [0, 0.5]
+  const { notes: out, orphaned } = applyEdits(notes, [{ type: 'octave', at: 5, dir: 1 }]);
+  assertEq(out[0].midi, 50, 'nothing changed');
+  assertEq(orphaned.length, 1, 'the edit is reported, not silently dropped');
+  assertEq(orphaned[0].at, 5);
+});
+
+test('pitch: applyEdits orphans an edit whose target an earlier edit already removed', () => {
+  const notes = notesAt([50]);   // [0, 0.5]
+  const { notes: out, orphaned } = applyEdits(notes, [
+    { type: 'delete', at: 0.25 },
+    { type: 'octave', at: 0.25, dir: 1 },
+  ]);
+  assertEq(out.length, 0);
+  assertEq(orphaned.length, 1, 'the second edit finds nothing where the first one deleted');
+});
+
+test('pitch: applyEdits edits apply in order, against the already-modified list', () => {
+  const notes = notesAt([50]);   // [0, 0.5]
+  const out = applyEdits(notes, [
+    { type: 'octave', at: 0.25, dir: 1 },            // 50 -> 62
+    { type: 'pitchNudge', at: 0.25, semitones: 1 },  // 62 -> 63; same anchor still resolves
+  ]).notes;
+  assertEq(out[0].midi, 63);
+});
+
+test('pitch: applyEdits chains fix.from through multiple pitch edits to the ORIGINAL midi', () => {
+  const notes = notesAt([50]);
+  const out = applyEdits(notes, [
+    { type: 'octave', at: 0.25, dir: 1 },
+    { type: 'pitchNudge', at: 0.25, semitones: 1 },
+  ]).notes;
+  assertEq(out[0].fix.from, 50, 'not 62 — the earliest known pitch survives every hop');
+});
+
+test('pitch: applyEdits preserves fix.from already set by foldOctaves', () => {
+  const folded = [{ start: 0, end: 0.5, midi: 62, cents: 6200, name: noteName(62), confidence: 0.9,
+                     fix: { from: 74, state: 'folded', shift: -1 } }];
+  const out = applyEdits(folded, [{ type: 'pitchNudge', at: 0.25, semitones: 1 }]).notes;
+  assertEq(out[0].fix.from, 74, "the detector's original guess survives the hand edit too");
+  assertEq(out[0].fix.state, 'manual', 'but the state changes — no longer just "folded"');
+});
+
+test("pitch: applyEdits anchor lookup is half-open — a note's own end excludes it", () => {
+  const notes = notesAt([50, 52]);    // [0, 0.5] and [0.5, 1]
+  const atBoundary = applyEdits(notes, [{ type: 'delete', at: 0.5 }]);
+  assertEq(atBoundary.notes.length, 1, 'the boundary belongs to the SECOND note, not the first');
+  assertEq(atBoundary.notes[0].midi, 50, 'so the first note is the one left standing');
+  const atStart = applyEdits(notes, [{ type: 'delete', at: 0 }]);
+  assertEq(atStart.notes.length, 1, "a note's own start IS included");
+  assertEq(atStart.notes[0].midi, 52);
+});
+
+test('pitch: applyEdits does not mutate the notes or edits it was given', () => {
+  const notes = notesAt([50]);
+  const edits = [{ type: 'octave', at: 0.25, dir: 1 }];
+  const frozenNote = { ...notes[0] };
+  const frozenEdit = { ...edits[0] };
+  applyEdits(notes, edits);
+  assertEq(notes[0].midi, frozenNote.midi, 'input notes unchanged');
+  assertEq(edits[0].dir, frozenEdit.dir, 'input edits unchanged');
+});
+
+test('pitch: applyEdits with no edits returns an equivalent but distinct copy', () => {
+  const notes = notesAt([50, 52]);
+  const out = applyEdits(notes, []).notes;
+  assertEq(out.length, notes.length);
+  assert(out !== notes, "a new array, matching foldOctaves' no-mutation convention");
+});

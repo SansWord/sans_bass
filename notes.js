@@ -8,8 +8,8 @@
  * A module, so it cannot share scope with app.js. It talks to the player only through
  * window.sansBass, exactly as separate.js does. */
 
-import { interpret, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.15.0';
-import { scheduleNotes } from './lib/sonify.js?v=1.15.0';
+import { interpret, applyEdits, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.16.1';
+import { scheduleNotes } from './lib/sonify.js?v=1.16.1';
 
 const el = {
   panel: document.getElementById('notes'),
@@ -25,6 +25,13 @@ const el = {
   foldTolOut: document.getElementById('notes-fold-tol-out'),
   foldStats: document.getElementById('notes-fold-stats'),
   show: document.getElementById('notes-show'),
+  edit: document.getElementById('notes-edit'),
+  editsRow: document.getElementById('notes-edits'),
+  editUndo: document.getElementById('notes-edit-undo'),
+  editRows: document.getElementById('notes-edit-rows'),
+  exportBtn: document.getElementById('notes-export'),
+  importBtn: document.getElementById('notes-import'),
+  importFile: document.getElementById('notes-import-file'),
   jianpu: document.getElementById('notes-jianpu'),
   keyTonic: document.getElementById('notes-key-tonic'),
   keyMode: document.getElementById('notes-key-mode'),
@@ -51,6 +58,7 @@ const syncTips = () => {
   el.fold.parentElement.title = tr('notes.foldTip');
   el.foldTol.parentElement.title = tr('notes.foldTolTip');
   el.jianpu.parentElement.title = tr('notes.jianpuTip');
+  el.edit.parentElement.title = tr('notes.editTip');
   el.keyRel.title = tr('notes.relativeTip');
 };
 syncTips();
@@ -64,6 +72,15 @@ let sonifier = null;         // the running note schedule, or null
 /* The 簡譜 reading. `auto` stays true until the user touches a control, so a fresh detection
  * on a newly loaded song adopts its key — but never overrides a choice already made. */
 let jianpu = { on: false, tonic: 0, mode: 'major', auto: true };
+
+/* The edit list, as GROUPS — one undo/list-display entry each. Most actions push a
+ * one-element group; a normal split pushes two primitive edits (a timeAdjust shrink plus an
+ * add) as a single group, so undo and per-row removal act on the whole split at once rather
+ * than half of it. lib/pitch.js's applyEdits() only ever sees the flattened primitives — see
+ * docs/superpowers/specs/2026-08-31-note-editing-design.md. */
+let editGroups = [];
+let orphaned = [];         // primitive edits from the last applyEdits() call with no target
+let nextEditId = 1;
 
 /* Parameters carry the interpreter that understands them: params written by one are
  * meaningless to another, so the name travels with them. The checkbox picks which — both
@@ -122,6 +139,62 @@ function syncFoldControls() {
   );
 }
 
+function editTypeLabel(edit) {
+  const KEYS = {
+    octave: edit.dir > 0 ? 'notes.editOctaveUp' : 'notes.editOctaveDown',
+    pitchNudge: edit.semitones > 0 ? 'notes.editPitchUp' : 'notes.editPitchDown',
+    timeAdjust: 'notes.editTimeAdjustLabel',
+    delete: 'notes.editDeleteLabel',
+    add: 'notes.editAddLabel',
+    rangeDelete: 'notes.editRangeDeleteLabel',
+  };
+  return tr(KEYS[edit.type]);
+}
+
+function groupLabel(group) {
+  return group.edits.length > 1 ? tr('notes.editSplitLabel') : editTypeLabel(group.edits[0]);
+}
+
+function groupTimeLabel(group) {
+  const e = group.edits[0];
+  if (e.type === 'rangeDelete') return `${e.from.toFixed(2)}–${e.to.toFixed(2)}s`;
+  if (e.type === 'add') return `${e.start.toFixed(2)}s`;
+  return `${e.at.toFixed(2)}s`;
+}
+
+/** Rebuilds the edit-list panel from editGroups/orphaned. Called at the end of reinterpret()
+ *  and from reset(). Every node is built and textContent-assigned, never innerHTML — the
+ *  same rule every other dynamic list in this file follows. */
+function renderEditList() {
+  el.editsRow.hidden = editGroups.length === 0;
+  el.editUndo.disabled = editGroups.length === 0;
+  el.editRows.replaceChildren(...editGroups.map((g) => {
+    const li = document.createElement('li');
+    li.className = 'edit-row';
+    if (g.edits.some((e) => orphaned.includes(e))) {
+      const warn = document.createElement('span');
+      warn.className = 'edit-warn';
+      warn.textContent = '⚠';
+      warn.title = tr('notes.editOrphanTip');
+      li.appendChild(warn);
+    }
+    const label = document.createElement('span');
+    label.textContent = `${groupLabel(g)} · ${groupTimeLabel(g)}`;
+    li.appendChild(label);
+    const rm = document.createElement('button');
+    rm.className = 'mini edit-remove';
+    rm.type = 'button';
+    rm.textContent = '✕';
+    rm.title = tr('notes.editRemoveTip');
+    rm.addEventListener('click', () => {
+      editGroups = editGroups.filter((x) => x.id !== g.id);
+      reinterpret();
+    });
+    li.appendChild(rm);
+    return li;
+  }));
+}
+
 /* The key selectors mean nothing while 簡譜 is off, so they go visibly inert rather than
  * silently doing nothing — the same pattern as the fold tolerance slider. */
 function syncJianpuControls() {
@@ -135,6 +208,9 @@ function reinterpret() {
   if (!frames) return;
   const p = currentParams();
   notes = interpret(frames, p);
+  const applied = applyEdits(notes, editGroups.flatMap((g) => g.edits));
+  notes = applied.notes;
+  orphaned = applied.orphaned;
   el.count.textContent = tr('notes.count', { n: notes.length });
   el.minOut.textContent = `${el.min.value} ms`;
   syncFoldControls();
@@ -149,6 +225,7 @@ function reinterpret() {
     jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
   });
   resync();
+  renderEditList();
 }
 
 /* Start (or restart) the synth against the transport's OWN t0 and offset. Scheduling
@@ -191,6 +268,14 @@ function reset() {
    * sit there reading a value nothing chose. The 簡譜 checkbox itself is a reading
    * preference, not a claim about the music, so it deliberately survives the load. */
   jianpu.auto = true;
+  editGroups = [];
+  orphaned = [];
+  el.edit.disabled = true;
+  el.edit.checked = false;
+  el.exportBtn.disabled = true;
+  el.importBtn.disabled = true;
+  window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false } }));
+  renderEditList();
   syncJianpuControls();
 }
 
@@ -208,7 +293,7 @@ function analyse() {
    * detaches its backing store and the stem goes silent with no error anywhere. */
   for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i).slice());
 
-  worker = new Worker('./notes.worker.js?v=1.15.0', { type: 'module' });
+  worker = new Worker('./notes.worker.js?v=1.16.1', { type: 'module' });
   worker.onmessage = (e) => {
     const m = e.data;
     worker.terminate();
@@ -223,6 +308,9 @@ function analyse() {
     el.tune.hidden = false;
     el.go.hidden = true;      // its job is done; the toggle takes its place
     el.show.hidden = false;
+    el.edit.disabled = false;
+    el.exportBtn.disabled = false;
+    el.importBtn.disabled = false;
     syncShowLabel();
     reinterpret();
   };
@@ -260,6 +348,9 @@ el.jianpu.addEventListener('change', () => {
   jianpu.on = el.jianpu.checked;
   syncJianpuControls();
   reinterpret();
+});
+el.edit.addEventListener('change', () => {
+  window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: el.edit.checked } }));
 });
 /* Touching either selector ends the automatic tracking: a detected key is a suggestion, and
  * once it has been overruled a later re-interpretation must not quietly undo that. */
@@ -302,3 +393,82 @@ window.addEventListener('sansbass:transport', (e) => {
   resync();
 });
 window.addEventListener('sansbass:ribbonmute', resync);
+/* app.js owns the zoomed pane and dispatches this once the user finishes an edit action —
+ * one primitive edit for most actions, two for a normal split (shrink + add) — always
+ * grouped as one undo/list entry. See docs/superpowers/specs/2026-08-31-note-editing-design.md. */
+window.addEventListener('sansbass:noteedit', (e) => {
+  editGroups.push({ id: nextEditId++, edits: e.detail.edits });
+  reinterpret();
+});
+el.editUndo.addEventListener('click', () => {
+  editGroups.pop();
+  reinterpret();
+});
+window.addEventListener('sansbass:editundo', () => {
+  editGroups.pop();
+  reinterpret();
+});
+
+el.exportBtn.addEventListener('click', () => {
+  const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
+  const payload = {
+    version: 1,
+    ...(mix ? { song: mix.name } : {}),
+    ...currentParams(),
+    clip: el.clip.checked,
+    jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
+    edits: editGroups.map((g) => g.edits),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${mix ? mix.name : 'song'}-edits.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+});
+
+el.importBtn.addEventListener('click', () => el.importFile.click());
+
+/* Cleared after read, same reason app.js's #file-input does it: picking the same file twice
+ * in a row must still fire change. */
+el.importFile.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch (err) {
+    window.sansBass.say('notes.importFailed', { message: err.message }, true);
+    return;
+  }
+  if (!data || data.version !== 1 || !Array.isArray(data.edits)) {
+    window.sansBass.say('notes.importFailed', { message: 'not a note-edits file' }, true);
+    return;
+  }
+
+  const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
+  if (data.song && mix && data.song !== mix.name) {
+    window.sansBass.say('notes.importMismatch', { song: data.song }, true);
+  }
+
+  if (data.params) {
+    if (data.params.minDurationMs != null) el.min.value = data.params.minDurationMs;
+    el.fold.checked = !!data.params.fold;
+    if (data.params.confidentWithin != null) el.foldTol.value = data.params.confidentWithin;
+  }
+  el.hmm.checked = data.interpreter !== 'threshold-v1';
+  el.clip.checked = data.clip !== false;
+  if (data.jianpu) {
+    jianpu.on = !!data.jianpu.on;
+    jianpu.auto = false;
+    jianpu.tonic = data.jianpu.tonic ?? 0;
+    jianpu.mode = data.jianpu.mode || 'major';
+    el.jianpu.checked = jianpu.on;
+  }
+  editGroups = data.edits.map((edits) => ({ id: nextEditId++, edits }));
+  syncJianpuControls();
+  reinterpret();
+});

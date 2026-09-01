@@ -14,6 +14,8 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.16.1](#v1161--note-editing-ergonomics-batch-1-2026-08-31-2322) | Four ergonomics fixes to v1.16.0's note editor: overlapping notes resolve clicks to whichever is drawn on top, the zoomed pane's scroll wheel seeks by default (Shift zooms) and arrows always seek (Shift for a fine step), range-select-and-delete now works in the full-song notes lane too, and clicking or tapping a note parks the playhead exactly there. |
+| [v1.16.0](#v1160--note-editing-layer-4-2026-08-31-2201) | Hand-correct the detected note list from the zoomed pane — octave/semitone nudge, drag-move/resize, split, add, delete, range-delete — anchored to a time point so corrections survive every later re-interpretation (a slider drag, the HMM toggle, octave folding). Orphaned edits surface a warning instead of vanishing. The whole editing session exports/imports as one JSON file. |
 | [v1.15.0](#v1150--resuming-the-note-at-a-2026-08-31-1549) | A note still sounding when playback enters — at loop point A, on every lap, or at a seek target — now plays its remainder instead of being skipped, entering the envelope at the amplitude it had already reached rather than re-attacking. It is cut at B rather than ringing across the restart. One symptom, three separate causes. |
 | [v1.14.0](#v1140--簡譜-notes-as-scale-degrees-2026-08-31-1421) | 簡譜: a display mode drawing each note as a scale degree instead of an absolute name, in a key detected automatically and overridable by three controls. Off by default; the note data is untouched. The octave moves off the blocks and onto the pitch axis as dots. First time `detectKey()` reaches the player. Also flips `hmm-v1` on by default and drops its "experimental" label. |
 | [v1.13.0](#v1130--octave-folding-2026-08-31-1214) | Octave-outlier notes are folded back into the singer's range using their neighbours, and the ones that cannot be justified are marked rather than guessed. Off by default. Nothing is deleted: every note keeps a `fix` record, folded ones draw blue, untrusted ones gray and silent. |
@@ -33,6 +35,144 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.16.1 — Note editing ergonomics (batch 1) (2026-08-31 23:22)
+
+**Review:** not yet
+
+**Design docs:**
+- Note editing ergonomics (batch 1): [Spec](superpowers/specs/2026-08-31-note-editing-ergonomics-design.md) [Plan](superpowers/plans/2026-08-31-note-editing-ergonomics.md)
+
+**What was built:**
+
+- `noteAt` now searches the note list from the end rather than the start, so a click on two
+  overlapping notes resolves to whichever is drawn on top (the later array entry) instead of
+  always the first-detected one. `add` already pushes new notes to the end, so a manually
+  placed note dropped onto an existing one is both drawn on top and the one a click selects,
+  with no special-casing.
+- The zoomed pane's scroll wheel now seeks the playhead by default, proportional to the
+  current zoom span; Shift+wheel keeps the old zoom behavior. Arrow Left/Right always seek —
+  also proportional to the zoom span (`zoomSeconds × 0.15`: 0.3s at a 2s zoom, 9s at a 60s
+  zoom) — regardless of whether a note is selected; Shift is a fixed 1ms step for placing a cut
+  inside a word, which is about absolute precision rather than view navigation, so it does not
+  scale with zoom. Nudging a selected note's time from the keyboard is gone for now (the
+  toolbar's ◀t/▶t buttons and dragging still work), a deliberate interim trade-off until inline
+  value fields (a later batch) give it a new home.
+- Range-select-and-delete (v1.16.0) now works in the full-song notes lane, not just the zoomed
+  pane: the same bottom-band drag gesture, the same resting-state strip and caption, and the
+  same shared **Delete range** button, since both panes feed one `rangeSelection`.
+- Clicking a note now seeks the playhead to the exact clicked point (not the note's midpoint,
+  which stays the selection anchor for a separate reason). Tapping — pressing and releasing an
+  already-selected note without a real drag — now seeks too, instead of silently doing nothing;
+  an actual drag still moves/resizes exactly as before.
+
+**Key technical learnings:**
+
+- `[insight]` **A cached-layer canvas needs its transient UI drawn OUTSIDE the cache.**
+  `renderRibbon` pre-renders idle/active layers specifically so a frame is a cheap blit —
+  drawing the range-select band inside that cache would mean rebuilding both layers, plus the
+  full grid/notes/labels pass, on every pointermove of a drag. `paintLoopRegion` had already
+  solved this exact problem for the A-B loop shading; the new `paintRangeBand` reuses the same
+  live-canvas-after-blit pattern rather than inventing a new one.
+- `[gotcha]` **A shared helper needs an opt-in flag, not a global behavior change.**
+  `attachSeek` is wired to every track lane, the main waveform, and the notes ribbon lane alike
+  — adding the range-band check unconditionally would have turned on range-select dragging
+  everywhere. The `{ rangeBand: true }` option keeps the other two dozen call sites untouched,
+  and adding a `pointercancel` handler while there (there wasn't one before) closes a real gap:
+  without it, a cancelled gesture on the ribbon lane would leave `rangeDrag` stuck.
+- `[note]` Range-select's `rangeDrag`/`rangeSelection` state is genuinely canvas-agnostic — it
+  was already shared across the zoomed pane and (as of this batch) the notes lane with zero
+  changes to the state shape itself, only to which canvases feed it.
+- `[gotcha]` **"Which note is selected" and "where is the playhead" are different anchors that
+  happen to share a gesture.** `selectedNote.at` has to stay the note's midpoint to survive
+  future edits reliably; the seek target is wherever the user actually clicked. Conflating them
+  — seeking to the midpoint instead of the click — would have been a smaller diff but a worse
+  feature, since it defeats the actual point (parking the playhead exactly where you meant to
+  cut).
+
+---
+
+## v1.16.0 — Note editing (Layer 4) (2026-08-31 22:01)
+
+**Review:** not yet
+
+**Design docs:**
+- Note editing (Layer 4): [Spec](superpowers/specs/2026-08-31-note-editing-design.md) [Plan](superpowers/plans/2026-08-31-note-editing.md)
+
+**What was built:**
+
+- `applyEdits(notes, edits)` in `lib/pitch.js`: a pure post-pass run after `interpret()`/
+  `foldOctaves()`, applying six primitive edit types (`octave`, `pitchNudge`, `timeAdjust`,
+  `delete`, `add`, `rangeDelete`) in sequence against the list as already modified by earlier
+  edits in the same call. Edits are anchored to a time point, never a note index, so they
+  survive `notes` being re-derived on every parameter tweak. A target that can't be found is
+  returned in `orphaned` rather than thrown or silently dropped.
+- Edit mode: an **Edit notes** toggle turns on click-to-select in the zoomed pane (a white
+  outline, half-open hit-testing) and a ten-button toolbar — octave up/down, semitone up/down,
+  time-nudge back/forward, split (composes a shrink plus a new tail note, or just a shrink
+  within 5ms of an edge), delete, **+ Add note** (arm, then drag to place), and **Delete
+  range** (drag the pane's bottom ~16px band to select a time range, independent of note
+  selection).
+- Drag-to-move/resize the selected note: body-drag moves both edges together, edge-drag
+  resizes just that side, both floored at 20ms so a note can't invert or vanish.
+- An edit-list panel: one row per user action (a split is one row, not two), each independently
+  removable; a warning glyph when an edit's target has since disappeared; undo via a ↺ button
+  or Cmd/Ctrl+Z, popping the most recent entry.
+- Keyboard shortcuts for the selected note (↑/↓ pitch, Shift+↑/↓ octave, ←/→ time,
+  Delete/Backspace) that take priority over the transport's own arrow-key-seeks-5-seconds
+  while a note is selected.
+- Export/Import: the whole editing session — detection params, the fold/HMM/pitch-clip
+  toggles, the 簡譜 key settings, and the edit list itself — serializes to one JSON file and
+  restores exactly, mirroring the app's existing manual stems-zip save/load pattern. Importing
+  into a different song warns (filename mismatch) but still applies.
+
+**Key technical learnings:**
+
+- `[insight]` **Split isn't a data-model primitive.** Cutting a note at a point turned out to
+  be exactly a `timeAdjust` (shrink the original) plus an `add` (the new tail note) — never
+  its own edit type. That also absorbed two edge cases for free: cutting within 5ms of either
+  boundary just becomes a shrink, no `add` needed, with no special-casing required to see it.
+- `[insight]` **Anchoring edits to a time point, not a note index, is what makes the layer
+  survive re-interpretation at all.** `notes` is rebuilt from `frames` on every parameter
+  tweak, so an index is meaningless the instant it's re-derived; `applyEdits` re-locates every
+  edit's target fresh, every call, against whichever note currently spans that time — which is
+  also what makes `rangeDelete` naturally re-evaluate against new notes rather than a stale
+  snapshot, with no extra code.
+- `[note]` A classic script and an ES module still cannot share scope, so the same
+  `window.sansBass` + `CustomEvent` seam `separate.js` and the transport already used carried
+  three more events (`sansbass:noteedit`, `sansbass:editundo`, `sansbass:editmode`) without
+  needing a new pattern.
+- `[gotcha]` A split (or any drag) produces one undo/list-display **group** covering one or
+  two primitive edits — `lib/pitch.js`'s `applyEdits` only ever sees the flattened primitives.
+  Popping or removing a group's second half alone would leave the first half's change standing
+  with nothing in the list to explain it; grouping at the `notes.js` layer, above `applyEdits`,
+  is what keeps undo matching what the user thinks they just did.
+- `[gotcha]` **`add` appending to the end of the list broke an assumption `lib/sonify.js`
+  never had to state out loud.** `interpret()`'s output was always chronologically ordered, so
+  `scheduleNotes`'s playback loop could safely stop the moment it saw a note past its
+  scheduling horizon, trusting everything after was later still. A split-off or hand-added
+  note sitting at the very end of the array but early in the song broke that silently — it
+  showed correctly in the lane (purple, right where it should be) but never made a sound,
+  because the loop gave up on a much-later note first and never reached it. Fixed by sorting
+  a copy of the list once inside `scheduleNotes` itself, rather than asking every note-list
+  producer to maintain an order only that one function actually depended on.
+
+**Process learnings:**
+
+- `[insight]` Two-stage subagent review (spec compliance, then code quality) caught two real
+  ordering bugs baked into the plan's own literal code before either shipped, not just
+  implementation slips. `notes.js`'s `reset()` unchecked the **Edit notes** checkbox directly,
+  but a programmatic `.checked = false` never fires `change` — the one channel `app.js` had
+  for learning the toggle changed — so its mirrored `editMode`/`selectedNote` state silently
+  went stale on every song reset until a fix dispatched `sansbass:editmode` explicitly.
+  Separately, `editRangeDelete()`'s dispatch-then-clear order left the amber range highlight
+  and its delete button visibly stuck, because `dispatchEdit` synchronously round-trips
+  through `reinterpret() → draw() → syncEditToolbar()` before returning — clearing
+  `rangeSelection` first was the fix. Both were caught by an independent reviewer re-deriving
+  behaviour from the running app rather than trusting the implementer's report, which is the
+  entire point of not letting self-review be the only gate.
 
 ---
 

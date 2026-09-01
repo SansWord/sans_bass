@@ -411,6 +411,17 @@ window.addEventListener('sansbass:editundo', () => {
   reinterpret();
 });
 
+/* The floating panel (styles.css: .notes-edit-panel, position: absolute) doesn't push
+ * anything down while open, but it also doesn't get the free "click elsewhere closes it"
+ * behaviour a native dropdown would — <details> only toggles on its own summary. pointerdown,
+ * not click, so it closes as soon as a drag starts elsewhere (e.g. into the zoomed pane)
+ * rather than waiting for that gesture's release. Runs on every pointerdown regardless of
+ * `open`, same as syncEditToolbar's per-frame check elsewhere in this feature — cheap enough
+ * not to need gating. */
+document.addEventListener('pointerdown', (e) => {
+  if (el.editsRow.open && !el.editsRow.contains(e.target)) el.editsRow.open = false;
+});
+
 el.exportBtn.addEventListener('click', () => {
   const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
   const payload = {

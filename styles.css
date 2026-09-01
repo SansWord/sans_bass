@@ -509,9 +509,28 @@ input[type=range] { width: 110px; }
 .note-tbtn-danger { border-color: color-mix(in srgb, #ff6b81 45%, var(--line)); color: #ff9aa8; }
 .note-tbtn-armed { border-color: var(--loop); color: var(--loop); }
 
+/* position: relative so the floating panel below anchors to THIS element, not the page —
+   and so opening it never changes .notes-edit-list's own box height, since the panel is
+   taken out of flow entirely rather than pushing the zoomed pane down. */
+.notes-edit-list { position: relative; }
 .notes-edit-list summary { font: 12px var(--mono); color: var(--dim); cursor: pointer; }
-.notes-edit-list[open] summary { margin-bottom: 6px; }
-.notes-edit-list .notes-row { align-items: flex-start; gap: 8px; }
+.notes-edit-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  margin-top: 6px;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+  max-width: min(480px, 90vw);
+  max-height: 320px;
+  overflow-y: auto;
+}
 .edit-rows {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: 3px;

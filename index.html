@@ -196,11 +196,18 @@
           </label>
         </details>
       </div>
-      <div id="notes-edits" class="notes-row notes-edit-list" hidden>
-        <button id="notes-edit-undo" class="mini" type="button" disabled
-                data-i18n-attr="title:notes.editUndoTip">&#8630;</button>
-        <ol id="notes-edit-rows" class="edit-rows"></ol>
-      </div>
+      <!-- Collapsed by default (no `open` attribute) so a long editing session doesn't push
+           the zoomed pane further down the page on every new edit; the browser keeps whatever
+           open/closed state the user leaves it in across re-renders, since renderEditList()
+           only replaces #notes-edit-rows' children, never this element's `open`. -->
+      <details id="notes-edits" class="notes-edit-list" hidden>
+        <summary id="notes-edits-summary"></summary>
+        <div class="notes-row">
+          <button id="notes-edit-undo" class="mini" type="button" disabled
+                  data-i18n-attr="title:notes.editUndoTip">&#8630;</button>
+          <ol id="notes-edit-rows" class="edit-rows"></ol>
+        </div>
+      </details>
       <div id="notes-io" class="notes-row">
         <button id="notes-export" class="mini" type="button" disabled data-i18n="notes.export">Export edits</button>
         <button id="notes-import" class="mini" type="button" disabled data-i18n="notes.import">Import edits</button>

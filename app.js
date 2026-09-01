@@ -1981,6 +1981,51 @@ function editTimeNudge(dir) {
   dispatchEdit([{ type: 'timeAdjust', at, dStart: d, dEnd: d, midi }]);
 }
 
+/** Commits the three inline fields: Enter in any of them, or a click on Apply, calls this.
+ *  A field that fails to parse is treated as "unchanged" here, not as blocking the OTHER
+ *  field — a garbage Start shouldn't swallow a valid End edit sitting right next to it. The
+ *  forced refresh at the end (fieldsShownFor = null) is what makes the garbage field visibly
+ *  snap back, which is the actual "revert silently" the user sees. See docs/superpowers/
+ *  specs/2026-09-01-note-inline-fields-design.md ("Commit"). */
+function commitFields() {
+  if (!selectedNote || !ribbon) return;
+  const n = noteAt(ribbon.notes, selectedNote.at, selectedNote.midi);
+  if (!n) return;
+
+  const parsedStart = parseTimeMmSs(zoomToolbar.fieldStart.value);
+  const parsedEnd   = parseTimeMmSs(zoomToolbar.fieldEnd.value);
+  const newStart = parsedStart !== null ? parsedStart : n.start;
+  const newEnd   = parsedEnd   !== null ? parsedEnd   : n.end;
+  const dStart = newStart - n.start;
+  const dEnd   = newEnd - n.end;
+  const timeValid = newStart >= 0 && (newEnd - newStart) >= 0.02;
+  // The field never holds more precision than fmtPrecise displays (whole milliseconds), so an
+  // untouched field round-trips through parseTimeMmSs as a few tenths of a millisecond of noise,
+  // not exactly 0. Comparing dStart/dEnd at that same millisecond granularity is what tells real
+  // edits apart from that round-trip noise; the values dispatched below stay full-precision.
+  const changedTime = Math.round(dStart * 1000) !== 0 || Math.round(dEnd * 1000) !== 0;
+
+  const newMidi = window.SansPitch.parseNoteName(zoomToolbar.fieldPitch.value);
+
+  const edits = [];
+  if (timeValid && changedTime) {
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart, dEnd, midi: n.midi });
+  }
+  if (newMidi !== null && newMidi !== n.midi) {
+    edits.push({ type: 'pitchNudge', at: selectedNote.at, semitones: newMidi - n.midi, midi: n.midi });
+  }
+
+  if (edits.length) {
+    selectedNote = {
+      at: selectedNote.at + (timeValid ? dStart : 0),   // keep the anchor inside the note
+      midi: newMidi !== null ? newMidi : n.midi,
+    };
+    dispatchEdit(edits);
+  }
+  fieldsShownFor = null;   // force a refresh from the (possibly just-updated) note
+  syncEditToolbar();
+}
+
 function editDeleteNote() {
   if (!selectedNote) return;
   dispatchEdit([{ type: 'delete', at: selectedNote.at, midi: selectedNote.midi }]);

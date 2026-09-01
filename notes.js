@@ -205,9 +205,11 @@ function syncJianpuControls() {
   el.keyTonic.value = String(jianpu.tonic);
   el.keyMode.value = jianpu.mode;
   for (const c of [el.keyTonic, el.keyMode, el.keyRel]) c.disabled = !jianpu.on;
-  /* Meaningless without both a key AND at least one note — unlike the key selectors, which
-   * only need 簡譜 to be on (they still work before any analysis has run). */
-  el.listExport.disabled = !jianpu.on || !notes.length;
+  /* Only meaningless without any notes — unlike the key selectors, this doesn't need 簡譜
+   * itself to be on. `jianpu.tonic`/`jianpu.mode` are always a real value even with the
+   * checkbox off: the auto-detected key once notes exist, or the C-major default before
+   * that — so the export always has a key to read degrees against. */
+  el.listExport.disabled = !notes.length;
 }
 
 /** Re-derive notes from the existing frames. No worker, no re-analysis. */

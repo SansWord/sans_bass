@@ -27,6 +27,7 @@ const el = {
   show: document.getElementById('notes-show'),
   edit: document.getElementById('notes-edit'),
   editsRow: document.getElementById('notes-edits'),
+  editsSummary: document.getElementById('notes-edits-summary'),
   editUndo: document.getElementById('notes-edit-undo'),
   editRows: document.getElementById('notes-edit-rows'),
   exportBtn: document.getElementById('notes-export'),
@@ -167,6 +168,7 @@ function groupTimeLabel(group) {
  *  same rule every other dynamic list in this file follows. */
 function renderEditList() {
   el.editsRow.hidden = editGroups.length === 0;
+  el.editsSummary.textContent = tr('notes.editsSummary', { n: editGroups.length });
   el.editUndo.disabled = editGroups.length === 0;
   el.editRows.replaceChildren(...editGroups.map((g) => {
     const li = document.createElement('li');
@@ -407,6 +409,17 @@ el.editUndo.addEventListener('click', () => {
 window.addEventListener('sansbass:editundo', () => {
   editGroups.pop();
   reinterpret();
+});
+
+/* The floating panel (styles.css: .notes-edit-panel, position: absolute) doesn't push
+ * anything down while open, but it also doesn't get the free "click elsewhere closes it"
+ * behaviour a native dropdown would — <details> only toggles on its own summary. pointerdown,
+ * not click, so it closes as soon as a drag starts elsewhere (e.g. into the zoomed pane)
+ * rather than waiting for that gesture's release. Runs on every pointerdown regardless of
+ * `open`, same as syncEditToolbar's per-frame check elsewhere in this feature — cheap enough
+ * not to need gating. */
+document.addEventListener('pointerdown', (e) => {
+  if (el.editsRow.open && !el.editsRow.contains(e.target)) el.editsRow.open = false;
 });
 
 el.exportBtn.addEventListener('click', () => {

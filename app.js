@@ -45,7 +45,8 @@ let zoomPeaks = null;      // hi-res vocals envelope, computed once per song
 let zoomCenter = 0;        // seconds; follows the playhead while playing
 let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
 let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:editmode'
-let selectedNote = null;    // { at } — a time point inside the selected note, or null
+let selectedNote = null;    // { at, midi } — at is a time point inside the note, midi is its
+                             // pitch at selection time; both identify one specific note
 let zoomToolbar = null;     // built in Task 4; guarded with `if (zoomToolbar)` until then
 let zoomRangeHint = null;   // the "drag along the bottom" caption under the zoomed canvas
 let ribbonRangeHint = null; // the same caption under the full-song notes lane
@@ -1092,7 +1093,8 @@ function renderZoom(canvas) {
     }
     /* The selected note gets a white outline in addition to its fill — "outline plus fill"
      * is the same language buttons and inputs use for focus elsewhere in this app. */
-    if (editMode && selectedNote && live.start <= selectedNote.at && selectedNote.at < live.end) {
+    if (editMode && selectedNote && n.midi === selectedNote.midi &&
+        live.start <= selectedNote.at && selectedNote.at < live.end) {
       c.strokeStyle = '#ffffff';
       c.lineWidth = 1.5;
       c.strokeRect(x(live.start) + 0.75, by + 0.75, Math.max(0.5, bw - 1.5), Math.max(0.5, bh - 1.5));
@@ -1150,7 +1152,7 @@ function draw() {
  *  into setNotes(), which calls draw(). Also clears a selection whose note is gone. */
 function syncEditToolbar() {
   if (!zoomToolbar) return;
-  const sel = ribbon && selectedNote ? noteAt(ribbon.notes, selectedNote.at) : null;
+  const sel = ribbon && selectedNote ? noteAt(ribbon.notes, selectedNote.at, selectedNote.midi) : null;
   if (selectedNote && !sel) selectedNote = null;
   for (const b of [zoomToolbar.octUp, zoomToolbar.octDown, zoomToolbar.pitchUp,
                     zoomToolbar.pitchDown, zoomToolbar.timeBack, zoomToolbar.timeFwd,
@@ -1700,8 +1702,13 @@ function attachZoom(canvas) {
         return;
       }
       const t = zoomTimeAt(canvas, e.clientX);
-      const sel = selectedNote ? noteAt(ribbon.notes, selectedNote.at) : null;
-      if (sel) {
+      const clickMidi = addMidiAt(canvas, e.clientY);
+      const sel = selectedNote ? noteAt(ribbon.notes, selectedNote.at, selectedNote.midi) : null;
+      /* Gated on pitch too, not just time: without this, clicking a DIFFERENT note that
+       * happens to share the selected note's time span (two notes overlapping in time, at
+       * different pitches) would be misread as grabbing the already-selected note to drag,
+       * instead of falling through to the fresh hit-test below and switching selection. */
+      if (sel && sel.midi === clickMidi) {
         const tol = zoomEdgeToleranceSeconds(canvas);
         let mode = null;
         if (Math.abs(t - sel.start) <= tol) mode = 'resize-start';
@@ -1714,9 +1721,9 @@ function attachZoom(canvas) {
           return;
         }
       }
-      const hit = noteAt(ribbon.notes, t);
+      const hit = noteAt(ribbon.notes, t, clickMidi);
       if (hit) {
-        selectedNote = { at: (hit.start + hit.end) / 2 };
+        selectedNote = { at: (hit.start + hit.end) / 2, midi: hit.midi };
         seek(t);
         draw();
         return;   // selecting a note is the gesture; it does not also start a pan/seek
@@ -1764,7 +1771,7 @@ function attachZoom(canvas) {
       addArmed = false;
       syncAddButton();
       dispatchEdit([{ type: 'add', start: +start.toFixed(4), end: +finalEnd.toFixed(4), midi }]);
-      selectedNote = { at: (start + finalEnd) / 2 };
+      selectedNote = { at: (start + finalEnd) / 2, midi };
       draw();
       return;
     }
@@ -1788,8 +1795,8 @@ function attachZoom(canvas) {
       const dEnd = previewEnd - note.end;
       noteDrag = null;
       if (dStart !== 0 || dEnd !== 0) {
-        dispatchEdit([{ type: 'timeAdjust', at: (note.start + note.end) / 2, dStart, dEnd }]);
-        selectedNote = { at: (previewStart + previewEnd) / 2 };
+        dispatchEdit([{ type: 'timeAdjust', at: (note.start + note.end) / 2, dStart, dEnd, midi: note.midi }]);
+        selectedNote = { at: (previewStart + previewEnd) / 2, midi: note.midi };
       }
       draw();
       return;
@@ -1811,18 +1818,19 @@ function zoomBy(factor) {
 }
 
 /** The note in `list` whose span contains `at`, or null. Half-open — a note's END excludes
- *  it, matching lib/pitch.js's applyEdits, so a click at a shared boundary picks the note
- *  that starts there rather than the one that just finished.
+ *  it, matching lib/pitch.js's applyEdits.
  *
- *  Searches from the END of the list, not the start. `renderZoom`/`renderRibbon` draw notes
- *  in array order, so with two notes overlapping at a time point, the one drawn LAST is
- *  visually on top — this makes it the one a click resolves to as well. `add` already pushes
- *  new notes to the end, so a manually placed note dropped onto an existing one is both drawn
- *  on top and the one selected, with no special-casing needed here. */
-function noteAt(list, at) {
+ *  With `midi` given, only a note at that exact pitch counts — this is what actually
+ *  disambiguates two notes overlapping in time, which time alone never could. Without it
+ *  (the one legitimate case: nothing is selected yet), falls back to time-only.
+ *
+ *  Searches from the END of the list either way, so if pitch still leaves more than one match
+ *  (an exact duplicate — same span, same pitch) the one drawn last (topmost) wins, matching
+ *  renderZoom/renderRibbon's draw order. */
+function noteAt(list, at, midi) {
   for (let i = list.length - 1; i >= 0; i--) {
     const n = list[i];
-    if (n.start <= at && at < n.end) return n;
+    if (n.start <= at && at < n.end && (midi === undefined || n.midi === midi)) return n;
   }
   return null;
 }
@@ -1831,31 +1839,43 @@ function dispatchEdit(edits) {
   window.dispatchEvent(new CustomEvent('sansbass:noteedit', { detail: { edits } }));
 }
 
+/* Reassigning selectedNote BEFORE dispatching, here and below: dispatchEdit's event round-trips
+ * SYNCHRONOUSLY through notes.js and back into syncEditToolbar, which re-resolves the selection
+ * by the CURRENT selectedNote.midi. If that still held the pre-edit pitch, the note — already
+ * updated to its new pitch in ribbon.notes by the time syncEditToolbar runs — wouldn't be found,
+ * nulling selectedNote out from under this function before it could read it back afterward. */
 function editOctave(dir) {
   if (!selectedNote) return;
-  dispatchEdit([{ type: 'octave', at: selectedNote.at, dir }]);
-  // start/end unchanged by an octave move — the anchor stays valid as-is.
+  const at = selectedNote.at;
+  const oldMidi = selectedNote.midi;
+  selectedNote = { at, midi: oldMidi + 12 * dir };
+  dispatchEdit([{ type: 'octave', at, dir, midi: oldMidi }]);
 }
 
 function editPitchNudge(semitones) {
   if (!selectedNote) return;
-  dispatchEdit([{ type: 'pitchNudge', at: selectedNote.at, semitones }]);
+  const at = selectedNote.at;
+  const oldMidi = selectedNote.midi;
+  selectedNote = { at, midi: oldMidi + semitones };
+  dispatchEdit([{ type: 'pitchNudge', at, semitones, midi: oldMidi }]);
 }
 
 const TIME_NUDGE_STEP = 0.1;   // seconds
 
 function editTimeNudge(dir) {
   if (!selectedNote || !ribbon) return;
-  const n = noteAt(ribbon.notes, selectedNote.at);
+  const n = noteAt(ribbon.notes, selectedNote.at, selectedNote.midi);
   if (!n) return;
   const d = TIME_NUDGE_STEP * dir;
-  dispatchEdit([{ type: 'timeAdjust', at: selectedNote.at, dStart: d, dEnd: d }]);
-  selectedNote = { at: selectedNote.at + d };
+  const at = selectedNote.at;
+  const midi = selectedNote.midi;
+  selectedNote = { at: at + d, midi };
+  dispatchEdit([{ type: 'timeAdjust', at, dStart: d, dEnd: d, midi }]);
 }
 
 function editDeleteNote() {
   if (!selectedNote) return;
-  dispatchEdit([{ type: 'delete', at: selectedNote.at }]);
+  dispatchEdit([{ type: 'delete', at: selectedNote.at, midi: selectedNote.midi }]);
   selectedNote = null;
 }
 
@@ -1880,22 +1900,22 @@ const SPLIT_GAP = 0.005;
 
 function editSplit() {
   if (!selectedNote || !ribbon) return;
-  const n = noteAt(ribbon.notes, selectedNote.at);
+  const n = noteAt(ribbon.notes, selectedNote.at, selectedNote.midi);
   if (!n) return;
   const cutAt = currentTime();
   if (cutAt <= n.start || cutAt >= n.end) return;   // playhead must be inside the note
 
   const edits = [];
   if (n.end - cutAt < SPLIT_GAP) {
-    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end });
-    selectedNote = { at: (n.start + cutAt) / 2 };
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end, midi: n.midi });
+    selectedNote = { at: (n.start + cutAt) / 2, midi: n.midi };
   } else if (cutAt - n.start < SPLIT_GAP) {
-    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: cutAt - n.start, dEnd: 0 });
-    selectedNote = { at: (cutAt + n.end) / 2 };
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: cutAt - n.start, dEnd: 0, midi: n.midi });
+    selectedNote = { at: (cutAt + n.end) / 2, midi: n.midi };
   } else {
-    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end });
+    edits.push({ type: 'timeAdjust', at: selectedNote.at, dStart: 0, dEnd: cutAt - n.end, midi: n.midi });
     edits.push({ type: 'add', start: cutAt + SPLIT_GAP, end: n.end, midi: n.midi });
-    selectedNote = { at: (n.start + cutAt) / 2 };
+    selectedNote = { at: (n.start + cutAt) / 2, midi: n.midi };
   }
   dispatchEdit(edits);
 }

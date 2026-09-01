@@ -798,6 +798,7 @@ test('pitch: applyEdits timeAdjust with equal deltas moves a note without resizi
   assertClose(out[0].start, 0.2, 1e-6);
   assertClose(out[0].end, 0.7, 1e-6);
   assertClose(out[0].end - out[0].start, 0.5, 1e-6, 'duration unchanged — a move, not a resize');
+  assertEq(out[0].fix.state, 'manual', 'a time-adjust is a hand edit too, same as a pitch change');
 });
 
 test('pitch: applyEdits timeAdjust with one delta resizes just that edge', () => {
@@ -805,6 +806,15 @@ test('pitch: applyEdits timeAdjust with one delta resizes just that edge', () =>
   const out = applyEdits(notes, [{ type: 'timeAdjust', at: 0.25, dStart: 0, dEnd: 0.3 }]).notes;
   assertClose(out[0].start, 0, 1e-6, 'start untouched');
   assertClose(out[0].end, 0.8, 1e-6, 'end extended');
+  assertEq(out[0].fix.state, 'manual');
+});
+
+test('pitch: applyEdits timeAdjust promotes a doubt note to manual, same as a pitch edit would', () => {
+  const doubt = [{ start: 0, end: 0.5, midi: 50, cents: 5000, name: noteName(50), confidence: 0.9,
+                   fix: { from: 62, state: 'doubt', shift: -1 } }];
+  const out = applyEdits(doubt, [{ type: 'timeAdjust', at: 0.25, dStart: 0, dEnd: 0.1 }]).notes;
+  assertEq(out[0].fix.state, 'manual', 'no longer doubt, even though the pitch itself was never touched');
+  assertEq(out[0].fix.from, 62, "the detector's original guess still survives");
 });
 
 test('pitch: applyEdits rangeDelete removes every note overlapping the range and nothing else', () => {

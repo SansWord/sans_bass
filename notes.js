@@ -27,6 +27,7 @@ const el = {
   show: document.getElementById('notes-show'),
   edit: document.getElementById('notes-edit'),
   editsRow: document.getElementById('notes-edits'),
+  editsSummary: document.getElementById('notes-edits-summary'),
   editUndo: document.getElementById('notes-edit-undo'),
   editRows: document.getElementById('notes-edit-rows'),
   exportBtn: document.getElementById('notes-export'),
@@ -167,6 +168,7 @@ function groupTimeLabel(group) {
  *  same rule every other dynamic list in this file follows. */
 function renderEditList() {
   el.editsRow.hidden = editGroups.length === 0;
+  el.editsSummary.textContent = tr('notes.editsSummary', { n: editGroups.length });
   el.editUndo.disabled = editGroups.length === 0;
   el.editRows.replaceChildren(...editGroups.map((g) => {
     const li = document.createElement('li');

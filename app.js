@@ -1707,7 +1707,7 @@ function attachZoom(canvas) {
         else if (sel.start <= t && t < sel.end) mode = 'move';
         if (mode) {
           noteDrag = { mode, note: sel, startT: t, origStart: sel.start, origEnd: sel.end,
-                       previewStart: sel.start, previewEnd: sel.end };
+                       previewStart: sel.start, previewEnd: sel.end, travelled: 0, lastX: e.clientX };
           canvas.setPointerCapture(e.pointerId);
           return;
         }
@@ -1715,6 +1715,7 @@ function attachZoom(canvas) {
       const hit = noteAt(ribbon.notes, t);
       if (hit) {
         selectedNote = { at: (hit.start + hit.end) / 2 };
+        seek(t);
         draw();
         return;   // selecting a note is the gesture; it does not also start a pan/seek
       }
@@ -1728,6 +1729,8 @@ function attachZoom(canvas) {
     if (addDrag) { addDrag.curT = zoomTimeAt(canvas, e.clientX); draw(); return; }
     if (rangeDrag) { rangeDrag.curT = zoomTimeAt(canvas, e.clientX); draw(); return; }
     if (noteDrag) {
+      noteDrag.travelled += Math.abs(e.clientX - noteDrag.lastX);
+      noteDrag.lastX = e.clientX;
       const dt = zoomTimeAt(canvas, e.clientX) - noteDrag.startT;
       let newStart = noteDrag.origStart + (noteDrag.mode === 'resize-end' ? 0 : dt);
       let newEnd = noteDrag.origEnd + (noteDrag.mode === 'resize-start' ? 0 : dt);
@@ -1772,6 +1775,12 @@ function attachZoom(canvas) {
       return;
     }
     if (noteDrag) {
+      if (noteDrag.travelled <= DRAG_SLOP) {
+        seek(zoomTimeAt(canvas, e.clientX));
+        noteDrag = null;
+        draw();
+        return;
+      }
       const { note, previewStart, previewEnd } = noteDrag;
       const dStart = previewStart - note.start;
       const dEnd = previewEnd - note.end;

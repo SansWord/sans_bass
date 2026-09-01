@@ -59,6 +59,12 @@ let addArmed = false;      // "+ Add note" pressed — the next drag places a no
 let addDrag = null;        // { startT, midi, curT }
 let rangeDrag = null;        // { startT, curT } — actively dragging
 let rangeSelection = null;   // { from, to } — committed, awaiting the delete button
+let tempoRangeDrag = null;      // { startT, curT } — actively dragging on the drums lane
+let tempoRange = null;          // { from, to } committed selection, or null = whole song
+let tempoRangeArmed = false;    // mirrors notes.js's "Select BPM range" toggle
+let tempoHintEl = null;         // caption text node under the drums lane
+let tempoClearBtn = null;       // the Clear button beside it
+let tempoDrumsCanvas = null;    // the drums stem's own waveform canvas — the drag surface
 const RULER_BAND_PX = 16;    // bottom band of the zoomed canvas reserved for range-select
 const WHEEL_SEEK_FRACTION = 0.05;  // fraction of the zoom span a single wheel tick seeks
 const ARROW_SEEK_FRACTION = 0.15;  // fraction of the zoom span a single Arrow Left/Right seeks
@@ -501,6 +507,12 @@ function buildUI(title) {
    * duration they would be silently wrong. Drop them before the lanes are rebuilt. */
   ribbon = null;
   zoomPeaks = null;
+  tempoRangeDrag = null;
+  tempoRange = null;
+  tempoRangeArmed = false;
+  tempoHintEl = null;
+  tempoClearBtn = null;
+  tempoDrumsCanvas = null;
   el.lanes.innerHTML = '';
   tracks.forEach((t, i) => {
     const lane = document.createElement('div');
@@ -537,12 +549,34 @@ function buildUI(title) {
     vol.appendChild(slider);
 
     lane.append(name, canvas, vol);
+    if (t.stem === 'drums') {
+      const hint = document.createElement('div');
+      hint.className = 'tempo-range-hint';
+      const hintTxt = document.createElement('span');
+      hintTxt.className = 'txt';
+      const hintClear = document.createElement('button');
+      hintClear.className = 'mini';
+      hintClear.type = 'button';
+      hintClear.textContent = tr('notes.tempoRangeClear');
+      hintClear.addEventListener('click', () => {
+        tempoRange = null;
+        syncTempoRangeHint();
+        window.dispatchEvent(new CustomEvent('sansbass:temporange', { detail: null }));
+        draw();
+      });
+      hint.append(hintTxt, hintClear);
+      lane.appendChild(hint);
+      tempoHintEl = hintTxt;
+      tempoClearBtn = hintClear;
+      tempoDrumsCanvas = canvas;
+      syncTempoRangeHint();
+    }
     el.lanes.appendChild(lane);
 
     t.canvas = canvas;
     t.nameEl = name;
     t.laneEl = lane;
-    attachSeek(canvas);
+    attachSeek(canvas, { tempoLane: t.stem === 'drums' });
   });
 
   /* Built here rather than parked in index.html: el.lanes.innerHTML = '' above destroys
@@ -978,6 +1012,19 @@ function renderRibbon(canvas, payload, cssWidth) {
       c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
     }
 
+    /* The beat/bar grid, purely visual — see docs/transcription.md on why this never
+     * touches interpret() or the note list. Bars draw taller/stronger than plain beats. */
+    if (payload.tempo && payload.tempo.on) {
+      const beats = window.SansRibbon.beatTimes(payload.tempo, duration);
+      for (const b of beats) {
+        const bx = Math.round(x(b.t));
+        c.fillStyle = b.bar
+          ? (dim ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.28)')
+          : (dim ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.10)');
+        c.fillRect(bx, 0, b.bar ? 2 : 1, h);
+      }
+    }
+
     /* Labels overlay the left edge rather than sitting in a gutter. A gutter would move
      * x = 0 away from t = 0 and the ribbon would stop lining up with the waveform lanes,
      * which is the one property every other decision here protects. */
@@ -1148,6 +1195,16 @@ function renderZoom(canvas) {
   for (let m = lo; m <= hi + 1; m++) {
     c.fillStyle = isHome(m) ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.075)';
     c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
+  }
+
+  if (ribbon.tempo && ribbon.tempo.on) {
+    const beats = window.SansRibbon.beatTimes(ribbon.tempo, duration);
+    for (const b of beats) {
+      if (b.t < win.from || b.t > win.to) continue;
+      const bx = x(b.t);
+      c.fillStyle = b.bar ? 'rgba(255,255,255,.30)' : 'rgba(255,255,255,.12)';
+      c.fillRect(bx, 0, b.bar ? 2 : 1, h);
+    }
   }
 
   /* Names, overlaid at the left rather than in a gutter — same reason as the lane: a
@@ -1363,11 +1420,35 @@ function paint(canvas, frac) {
     c.drawImage(L.active, 0, 0);
     c.restore();
   }
+  if (tracks.some((t) => t.canvas === canvas)) paintLaneGrid(c, canvas, dpr);
   paintLoopRegion(c, canvas, dpr, canvas === el.mainWave);
   if (ribbonEl && canvas === ribbonEl.canvas) paintRangeBand(c, canvas, dpr);
+  if (tempoDrumsCanvas && canvas === tempoDrumsCanvas) paintTempoRangeBand(c, canvas, dpr);
 
   c.fillStyle = 'rgba(255,255,255,.85)';
   c.fillRect(px, 0, Math.max(1, dpr), canvas.height);
+}
+
+/** Faint bar lines across a stem lane's own waveform, so a hit lines up with the same grid
+ *  drawn on the notes lane above. Bars only — beat ticks at lane width are often only a few
+ *  pixels apart and would be pure clutter on top of an already-busy waveform — and much
+ *  fainter than the ribbon's version, since a lane has no dim/active distinction to fall back
+ *  on. Drawn live here rather than baked into renderWave's cached idle/active layers: those
+ *  are shared across every lane and expensive to rebuild (1400 buckets each), so redrawing
+ *  them on every BPM/phase keystroke would undercut the "live, no re-analysis" property the
+ *  notes-lane grid already has. Live redraw costs nothing extra — draw() already repaints
+ *  every lane on every tempo edit via setNotes(), same as it does every rAF tick. */
+function paintLaneGrid(c, canvas, dpr) {
+  if (!ribbon || !ribbon.tempo || !ribbon.tempo.on || !duration) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  const beats = window.SansRibbon.beatTimes(ribbon.tempo, duration);
+  c.fillStyle = 'rgba(255,255,255,.06)';
+  for (const b of beats) {
+    if (!b.bar) continue;
+    const bx = Math.round((b.t / duration) * w);
+    c.fillRect(bx, 0, Math.max(1, dpr), h);
+  }
 }
 
 /** Shade everything outside A-B and mark the boundaries. */
@@ -1419,6 +1500,27 @@ function paintRangeBand(c, canvas, dpr) {
     c.stroke();
   }
   const rsel = rangeDrag || rangeSelection;
+  if (rsel && duration) {
+    const s = Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
+    const eT = Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
+    c.fillStyle = 'rgba(255,209,102,.18)';
+    c.fillRect((s / duration) * w, 0, Math.max(1, ((eT - s) / duration) * w), h);
+  }
+}
+
+/** The whole-lane drag surface on the drums stem: a faint resting-state tint while armed
+ *  (unlike paintRangeBand's bottom-strip-only hint — there is no competing gesture on this
+ *  lane, so the whole thing is fair game), plus a brighter highlight while dragging or
+ *  committed. Same drawn-on-the-live-canvas reasoning as paintRangeBand: a drag must not
+ *  force renderWave to rebuild this lane's cached idle/active layers every pointermove. */
+function paintTempoRangeBand(c, canvas, dpr) {
+  const w = canvas.width;
+  const h = canvas.height;
+  if (tempoRangeArmed) {
+    c.fillStyle = 'rgba(255,209,102,.07)';
+    c.fillRect(0, 0, w, h);
+  }
+  const rsel = tempoRangeDrag || tempoRange;
   if (rsel && duration) {
     const s = Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
     const eT = Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
@@ -1635,6 +1737,15 @@ function applyRibbonVisibility() {
   if (zoomEl) zoomEl.lane.hidden = !on;
 }
 
+/** The caption under the drums lane: the current selection, or "whole song". */
+function syncTempoRangeHint() {
+  if (!tempoHintEl) return;
+  tempoHintEl.textContent = tempoRange
+    ? tr('notes.tempoRangeSel', { from: fmt(tempoRange.from), to: fmt(tempoRange.to) })
+    : tr('notes.tempoRangeWhole');
+  if (tempoClearBtn) tempoClearBtn.disabled = !tempoRange;
+}
+
 function toggleRibbon() {
   ribbonMuted = !ribbonMuted;
   applyRibbonGain();
@@ -1695,6 +1806,7 @@ function retranslate() {
   // Lane labels translate; the note NAMES drawn inside the ribbon never do.
   if (ribbonEl) ribbonEl.txt.textContent = tr('notes.lane');
   if (zoomEl) zoomEl.lane.querySelector('.txt').textContent = tr('notes.zoom');
+  syncTempoRangeHint();
   renderLoopBadge();
   // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
   // its text — clobbering "Restore previous". This runs after, and must keep doing so:
@@ -2205,11 +2317,18 @@ function addMidiAt(canvas, clientY) {
 
 function attachSeek(canvas, opts) {
   const rangeBand = !!(opts && opts.rangeBand);
+  const tempoLane = !!(opts && opts.tempoLane);
   const posToTime = (e) => {
     const r = canvas.getBoundingClientRect();
     return ((e.clientX - r.left) / r.width) * duration;
   };
   canvas.addEventListener('pointerdown', (e) => {
+    if (tempoLane && tempoRangeArmed) {
+      const t = posToTime(e);
+      tempoRangeDrag = { startT: t, curT: t };
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     if (rangeBand && editMode) {
       const r = canvas.getBoundingClientRect();
       if (e.clientY - r.top > r.height - RULER_BAND_PX) {
@@ -2224,10 +2343,21 @@ function attachSeek(canvas, opts) {
     seek(posToTime(e));
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (tempoRangeDrag) { tempoRangeDrag.curT = posToTime(e); draw(); return; }
     if (rangeDrag) { rangeDrag.curT = posToTime(e); draw(); return; }
     if (scrubbing) { offset = Math.max(0, Math.min(duration, posToTime(e))); draw(); }
   });
   canvas.addEventListener('pointerup', (e) => {
+    if (tempoRangeDrag) {
+      const from = Math.min(tempoRangeDrag.startT, tempoRangeDrag.curT);
+      const to = Math.max(tempoRangeDrag.startT, tempoRangeDrag.curT);
+      tempoRangeDrag = null;
+      tempoRange = (to - from > 0.01) ? { from, to } : null;
+      syncTempoRangeHint();
+      window.dispatchEvent(new CustomEvent('sansbass:temporange', { detail: tempoRange }));
+      draw();
+      return;
+    }
     if (rangeDrag) {
       const from = Math.min(rangeDrag.startT, rangeDrag.curT);
       const to = Math.max(rangeDrag.startT, rangeDrag.curT);
@@ -2240,7 +2370,7 @@ function attachSeek(canvas, opts) {
     scrubbing = false;
     seek(posToTime(e));
   });
-  canvas.addEventListener('pointercancel', () => { rangeDrag = null; scrubbing = false; });
+  canvas.addEventListener('pointercancel', () => { tempoRangeDrag = null; rangeDrag = null; scrubbing = false; });
 }
 
 on(el.play, 'click', toggle);
@@ -2268,6 +2398,9 @@ window.addEventListener('sansbass:editmode', (e) => {
   if (zoomRangeHint) zoomRangeHint.hidden = !editMode;
   if (ribbonRangeHint) ribbonRangeHint.hidden = !editMode;
   if (zoomEl) { zoomEl.canvas.classList.toggle('editing', editMode); draw(); }
+});
+window.addEventListener('sansbass:temporangemode', (e) => {
+  tempoRangeArmed = e.detail.on;
 });
 renderLangToggle();
 gcOnce(`lang-${window.SansI18n.getLocale()}`);
@@ -2404,6 +2537,12 @@ window.sansBass = {
   },
   /** Hand detected notes to the player, or null to clear the lane. */
   setNotes,
+  /** Restores a tempoRange imported from an edits JSON, updating the drums-lane caption. */
+  setTempoRange: (range) => {
+    tempoRange = range;
+    syncTempoRangeHint();
+    draw();
+  },
   /** Where notes.js connects its oscillators, and the clock they must use. */
   notesAudio: () => (audio && ribbonGain ? { ctx: audio, destination: ribbonGain } : null),
   /** Current transport, for scheduling a synth that starts mid-playback. */

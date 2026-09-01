@@ -9,12 +9,15 @@ in [`behaviour.md`](behaviour.md).
 
 ## Note editing — layer 4
 
-Six actions, listed with their consequences in
-[`transcription.md` → Layer 4 → The actions to support](transcription.md#the-actions-to-support):
-高/低 8 度, 刪除, 分割, 新增, 平移, and range-select-and-delete.
+**Design done** — [spec](superpowers/specs/2026-08-31-note-editing-design.md). Not yet built.
 
-**Open question before design:** 平移 is ambiguous — a nudge in time, in pitch, or both. A
-pitch move and a time move want different anchors, so this decides the override format.
+The six actions listed in
+[`transcription.md` → Layer 4 → The actions to support](transcription.md#the-actions-to-support)
+(高/低 8 度, 刪除, 分割, 新增, 平移, range-select-and-delete) resolved to **six edit types**
+in the spec — not a 1:1 mapping. 平移 split into two actions (pitch-nudge and time-adjust,
+the latter also covering resize) because a pitch move and a time move want different anchors.
+分割 turned out not to need its own type at all: a split is just a time-adjust (shrink) plus
+an add (the new tail note), authored together as one edit-list entry.
 
 ## Automatic octave folding
 

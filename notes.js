@@ -427,6 +427,11 @@ function refresh() {
    * vocals — and the lane would then draw the old melody against the new duration. Buffer
    * identity is the reliable signal; a name can repeat across albums. */
   if (frames && (!stem || stem.buffer !== analysedBuffer)) reset();
+  /* Tempo controls answer to "does a drums stem exist", not "has Find notes run" — per the
+   * design spec they go live the moment a drums stem is loaded. reinterpret() only syncs
+   * them after frames exist, so this poll is what catches a drums stem appearing (or
+   * disappearing, on a song swap) before that. */
+  syncTempoControls();
 }
 setInterval(refresh, 400);
 refresh();

@@ -29,6 +29,9 @@ const el = {
   editsRow: document.getElementById('notes-edits'),
   editUndo: document.getElementById('notes-edit-undo'),
   editRows: document.getElementById('notes-edit-rows'),
+  exportBtn: document.getElementById('notes-export'),
+  importBtn: document.getElementById('notes-import'),
+  importFile: document.getElementById('notes-import-file'),
   jianpu: document.getElementById('notes-jianpu'),
   keyTonic: document.getElementById('notes-key-tonic'),
   keyMode: document.getElementById('notes-key-mode'),
@@ -269,6 +272,8 @@ function reset() {
   orphaned = [];
   el.edit.disabled = true;
   el.edit.checked = false;
+  el.exportBtn.disabled = true;
+  el.importBtn.disabled = true;
   window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false } }));
   renderEditList();
   syncJianpuControls();
@@ -304,6 +309,8 @@ function analyse() {
     el.go.hidden = true;      // its job is done; the toggle takes its place
     el.show.hidden = false;
     el.edit.disabled = false;
+    el.exportBtn.disabled = false;
+    el.importBtn.disabled = false;
     syncShowLabel();
     reinterpret();
   };
@@ -399,5 +406,69 @@ el.editUndo.addEventListener('click', () => {
 });
 window.addEventListener('sansbass:editundo', () => {
   editGroups.pop();
+  reinterpret();
+});
+
+el.exportBtn.addEventListener('click', () => {
+  const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
+  const payload = {
+    version: 1,
+    ...(mix ? { song: mix.name } : {}),
+    ...currentParams(),
+    clip: el.clip.checked,
+    jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
+    edits: editGroups.map((g) => g.edits),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${mix ? mix.name : 'song'}-edits.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+});
+
+el.importBtn.addEventListener('click', () => el.importFile.click());
+
+/* Cleared after read, same reason app.js's #file-input does it: picking the same file twice
+ * in a row must still fire change. */
+el.importFile.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch (err) {
+    window.sansBass.say('notes.importFailed', { message: err.message }, true);
+    return;
+  }
+  if (!data || data.version !== 1 || !Array.isArray(data.edits)) {
+    window.sansBass.say('notes.importFailed', { message: 'not a note-edits file' }, true);
+    return;
+  }
+
+  const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
+  if (data.song && mix && data.song !== mix.name) {
+    window.sansBass.say('notes.importMismatch', { song: data.song }, true);
+  }
+
+  if (data.params) {
+    if (data.params.minDurationMs != null) el.min.value = data.params.minDurationMs;
+    el.fold.checked = !!data.params.fold;
+    if (data.params.confidentWithin != null) el.foldTol.value = data.params.confidentWithin;
+  }
+  el.hmm.checked = data.interpreter !== 'threshold-v1';
+  el.clip.checked = data.clip !== false;
+  if (data.jianpu) {
+    jianpu.on = !!data.jianpu.on;
+    jianpu.auto = false;
+    jianpu.tonic = data.jianpu.tonic ?? 0;
+    jianpu.mode = data.jianpu.mode || 'major';
+    el.jianpu.checked = jianpu.on;
+  }
+  editGroups = data.edits.map((edits) => ({ id: nextEditId++, edits }));
+  syncJianpuControls();
   reinterpret();
 });

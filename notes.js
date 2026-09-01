@@ -593,6 +593,8 @@ el.exportBtn.addEventListener('click', () => {
     ...currentParams(),
     clip: el.clip.checked,
     jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
+    tempo: { on: tempo.on, bpmValue: tempo.bpmValue, phaseMs: tempo.phaseMs, beatsPerBar: tempo.beatsPerBar },
+    tempoRange,
     edits: editGroups.map((g) => g.edits),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -687,7 +689,19 @@ el.importFile.addEventListener('change', async (e) => {
     jianpu.mode = data.jianpu.mode || 'major';
     el.jianpu.checked = jianpu.on;
   }
+  if (data.tempo) {
+    tempo.on = !!data.tempo.on;
+    tempo.auto = false;
+    if (data.tempo.bpmValue != null) tempo.bpmValue = data.tempo.bpmValue;
+    if (data.tempo.phaseMs != null) tempo.phaseMs = data.tempo.phaseMs;
+    if (data.tempo.beatsPerBar != null) tempo.beatsPerBar = data.tempo.beatsPerBar;
+  }
+  if (data.tempoRange !== undefined) {
+    tempoRange = data.tempoRange || null;
+    window.sansBass.setTempoRange(tempoRange);
+  }
   editGroups = data.edits.map((edits) => ({ id: nextEditId++, edits }));
   syncJianpuControls();
+  syncTempoControls();
   reinterpret();
 });

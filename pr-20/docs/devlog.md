@@ -53,10 +53,13 @@ Running log of what was built and what was learned building it.
   placed note dropped onto an existing one is both drawn on top and the one a click selects,
   with no special-casing.
 - The zoomed pane's scroll wheel now seeks the playhead by default, proportional to the
-  current zoom span; Shift+wheel keeps the old zoom behavior. Arrow Left/Right always seek
-  (5s; Shift: 0.05s) regardless of whether a note is selected — nudging a selected note's time
-  from the keyboard is gone for now (the toolbar's ◀t/▶t buttons and dragging still work),
-  a deliberate interim trade-off until inline value fields (a later batch) give it a new home.
+  current zoom span; Shift+wheel keeps the old zoom behavior. Arrow Left/Right always seek —
+  also proportional to the zoom span (`zoomSeconds × 0.15`: 0.3s at a 2s zoom, 9s at a 60s
+  zoom) — regardless of whether a note is selected; Shift is a fixed 1ms step for placing a cut
+  inside a word, which is about absolute precision rather than view navigation, so it does not
+  scale with zoom. Nudging a selected note's time from the keyboard is gone for now (the
+  toolbar's ◀t/▶t buttons and dragging still work), a deliberate interim trade-off until inline
+  value fields (a later batch) give it a new home.
 - Range-select-and-delete (v1.16.0) now works in the full-song notes lane, not just the zoomed
   pane: the same bottom-band drag gesture, the same resting-state strip and caption, and the
   same shared **Delete range** button, since both panes feed one `rangeSelection`.

@@ -56,8 +56,10 @@ let rangeDrag = null;        // { startT, curT } — actively dragging
 let rangeSelection = null;   // { from, to } — committed, awaiting the delete button
 const RULER_BAND_PX = 16;    // bottom band of the zoomed canvas reserved for range-select
 const WHEEL_SEEK_FRACTION = 0.05;  // fraction of the zoom span a single wheel tick seeks
-const SEEK_STEP = 5;               // seconds — Arrow Left/Right, unchanged from before this task
-const FINE_SEEK_STEP = 0.05;       // seconds — Shift+Arrow Left/Right
+const ARROW_SEEK_FRACTION = 0.15;  // fraction of the zoom span a single Arrow Left/Right seeks
+const FINE_SEEK_STEP = 0.001;      // seconds — Shift+Arrow Left/Right, an absolute value: this
+                                    // is for placing a cut inside a word, not view navigation,
+                                    // so it stays fixed rather than scaling with the zoom span
 let ribbonVisible = readStoredFlag(RIBBON_SHOW_KEY, true);
 let duration = 0;          // longest track length, seconds
 let offset = 0;            // playhead position when stopped, seconds
@@ -2036,8 +2038,8 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); editDeleteNote(); return; }
   }
   if (e.key === ' ') { e.preventDefault(); toggle(); }
-  else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : SEEK_STEP)); }
-  else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + (e.shiftKey ? FINE_SEEK_STEP : SEEK_STEP)); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }
   else if (e.key === '0') toggleAllTracks();
   else if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setLoopPoint('a'); }
   else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setLoopPoint('b'); }

@@ -509,7 +509,9 @@ input[type=range] { width: 110px; }
 .note-tbtn-danger { border-color: color-mix(in srgb, #ff6b81 45%, var(--line)); color: #ff9aa8; }
 .note-tbtn-armed { border-color: var(--loop); color: var(--loop); }
 
-.notes-edit-list { align-items: flex-start; gap: 8px; }
+.notes-edit-list summary { font: 12px var(--mono); color: var(--dim); cursor: pointer; }
+.notes-edit-list[open] summary { margin-bottom: 6px; }
+.notes-edit-list .notes-row { align-items: flex-start; gap: 8px; }
 .edit-rows {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: 3px;

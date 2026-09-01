@@ -39,6 +39,17 @@ const el = {
   keyTonic: document.getElementById('notes-key-tonic'),
   keyMode: document.getElementById('notes-key-mode'),
   keyRel: document.getElementById('notes-key-rel'),
+  tempoOn: document.getElementById('notes-tempo-on'),
+  tempoBpm: document.getElementById('notes-tempo-bpm'),
+  tempoHalf: document.getElementById('notes-tempo-half'),
+  tempoDouble: document.getElementById('notes-tempo-double'),
+  tempoPhase: document.getElementById('notes-tempo-phase'),
+  tempoPhaseBack: document.getElementById('notes-tempo-phase-back'),
+  tempoPhaseFwd: document.getElementById('notes-tempo-phase-fwd'),
+  tempoBeats: document.getElementById('notes-tempo-beats'),
+  tempoRangeToggle: document.getElementById('notes-tempo-range'),
+  tempoRedetect: document.getElementById('notes-tempo-redetect'),
+  tempoStatus: document.getElementById('notes-tempo-status'),
 };
 
 /* Note names are never translated in this app — a saved zip is `vocals.wav` in every
@@ -76,6 +87,12 @@ let sonifier = null;         // the running note schedule, or null
  * on a newly loaded song adopts its key — but never overrides a choice already made. */
 let jianpu = { on: false, tonic: 0, mode: 'major', auto: true };
 
+/* The tempo grid. `auto` stays true until the user touches a control (or presses Re-detect,
+ * which always re-adopts auto), same lifecycle as jianpu.auto — see its own comment. */
+let tempo = { on: true, auto: true, bpmValue: 120, phaseMs: 0, beatsPerBar: 4, confidence: 0 };
+let tempoRange = null;        // { from, to } in seconds, or null = whole song (the default)
+let tempoRangeArmed = false;  // "Select BPM range" toggle; mirrored to app.js for the drag UI
+
 /* The edit list, as GROUPS — one undo/list-display entry each. Most actions push a
  * one-element group; a normal split pushes two primitive edits (a timeAdjust shrink plus an
  * add) as a single group, so undo and per-row removal act on the whole split at once rather
@@ -102,6 +119,44 @@ function currentParams() {
       fold: el.fold.checked,
       confidentWithin: Number(el.foldTol.value),
     },
+  };
+}
+
+/** The drums stem's audio, sliced to `tempoRange` if one is set — sliced BEFORE handing to
+ *  the worker, not after, so the protocol stays simple (the worker never knows about ranges)
+ *  and less data crosses the postMessage boundary for a narrow selection. Returns null when
+ *  there is no drums stem to analyse. */
+function currentTempoRangeChannels() {
+  const stem = window.sansBass.stemBuffer('drums');
+  if (!stem) return null;
+  const buffer = stem.buffer;
+  const channels = [];
+  for (let i = 0; i < buffer.numberOfChannels; i++) {
+    const data = buffer.getChannelData(i);
+    if (tempoRange) {
+      const from = Math.max(0, Math.floor(tempoRange.from * buffer.sampleRate));
+      const to = Math.min(data.length, Math.ceil(tempoRange.to * buffer.sampleRate));
+      channels.push(data.slice(from, to));
+    } else {
+      channels.push(data.slice());
+    }
+  }
+  return { channels, sampleRate: buffer.sampleRate };
+}
+
+/** Adopts a fresh { bpmValue, phaseSec, confidence } from the worker. `beatsPerBar` is never
+ *  detected — it is a pure user choice defaulting to 4 — so it survives untouched. Absolute
+ *  time correction: phaseSec is relative to whatever slice was analysed, so tempoRange.from
+ *  (or 0 for the whole song) is added before it becomes song-absolute phaseMs. Getting this
+ *  wrong would line the grid up inside the analysed window and drift everywhere else. */
+function applyTempoResult(result) {
+  tempo = {
+    on: true,
+    auto: true,
+    bpmValue: +result.bpmValue.toFixed(1),
+    phaseMs: +(((tempoRange ? tempoRange.from : 0) * 1000) + result.phaseSec * 1000).toFixed(1),
+    beatsPerBar: tempo.beatsPerBar,
+    confidence: result.confidence,
   };
 }
 
@@ -232,6 +287,7 @@ function reinterpret() {
   window.sansBass.setNotes({
     notes, frames, params: p, clip: el.clip.checked,
     jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
+    tempo: { on: tempo.on, bpmValue: tempo.bpmValue, phaseMs: tempo.phaseMs, beatsPerBar: tempo.beatsPerBar },
   });
   resync();
   renderEditList();
@@ -277,6 +333,9 @@ function reset() {
    * sit there reading a value nothing chose. The 簡譜 checkbox itself is a reading
    * preference, not a claim about the music, so it deliberately survives the load. */
   jianpu.auto = true;
+  tempo = { on: true, auto: true, bpmValue: 120, phaseMs: 0, beatsPerBar: 4, confidence: 0 };
+  tempoRange = null;
+  tempoRangeArmed = false;
   editGroups = [];
   orphaned = [];
   el.edit.disabled = true;
@@ -302,6 +361,8 @@ function analyse() {
    * detaches its backing store and the stem goes silent with no error anywhere. */
   for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i).slice());
 
+  const drums = currentTempoRangeChannels();
+
   worker = new Worker('./notes.worker.js?v=1.16.5', { type: 'module' });
   worker.onmessage = (e) => {
     const m = e.data;
@@ -314,6 +375,7 @@ function analyse() {
     }
     window.sansBass.say('');
     frames = m.frames;
+    if (m.tempo) applyTempoResult(m.tempo);
     el.tune.hidden = false;
     el.go.hidden = true;      // its job is done; the toggle takes its place
     el.show.hidden = false;
@@ -329,7 +391,10 @@ function analyse() {
     window.sansBass.say('notes.failed', { message: e.message || 'worker error' }, true);
   };
   analysedBuffer = buffer;
-  worker.postMessage({ type: 'analyse', channels, sampleRate: buffer.sampleRate });
+  worker.postMessage({
+    type: 'analyse', channels, sampleRate: buffer.sampleRate,
+    ...(drums ? { drums } : {}),
+  });
 }
 
 /* The panel is only meaningful with a vocals stem, and there is no load event to hang

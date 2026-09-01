@@ -83,3 +83,28 @@ test('jianpu: referenceOctave follows the duration-weighted median, not the note
 test('jianpu: referenceOctave survives an empty list', () => {
   assertEq(typeof J().referenceOctave([], 0), 'number', 'a number, not NaN or undefined');
 });
+
+test('jianpu: degreeToken has no octave marks in the reference octave', () => {
+  const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
+  assertEq(J().degreeToken(C4, 0, 'major', ref), '1', 'C4 in 1=C, reference octave');
+});
+
+test('jianpu: degreeToken appends an apostrophe per octave above the reference', () => {
+  const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
+  assertEq(J().degreeToken(C4 + 12, 0, 'major', ref), "1'", 'one octave up');
+  assertEq(J().degreeToken(C4 + 24, 0, 'major', ref), "1''", 'two octaves up');
+});
+
+test('jianpu: degreeToken prepends a comma per octave below the reference', () => {
+  const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
+  assertEq(J().degreeToken(C4 - 12, 0, 'major', ref), ',1', 'one octave down');
+  assertEq(J().degreeToken(C4 - 24, 0, 'major', ref), ',,1', 'two octaves down');
+});
+
+test('jianpu: degreeToken keeps the accidental between the octave marks and the digit', () => {
+  const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
+  // C4+3 = Eb4 = b3 in 1=C major (see the worked-examples test above).
+  assertEq(J().degreeToken(C4 + 3, 0, 'major', ref), 'b3', 'flat degree, reference octave');
+  assertEq(J().degreeToken(C4 + 3 + 12, 0, 'major', ref), "b3'", 'flat degree, one octave up');
+  assertEq(J().degreeToken(C4 + 3 - 12, 0, 'major', ref), ',b3', 'flat degree, one octave down');
+});

@@ -1,4 +1,4 @@
-import { test, assert, assertClose } from './assert.js';
+import { test, assert, assertClose, assertEq } from './assert.js';
 
 const SR = 44100;
 
@@ -6,6 +6,29 @@ function sine(hz, seconds, sampleRate, amp = 0.5) {
   const out = new Float32Array(Math.round(seconds * sampleRate));
   for (let i = 0; i < out.length; i++) out[i] = amp * Math.sin((2 * Math.PI * hz * i) / sampleRate);
   return out;
+}
+
+function clickTrain(sampleRate, periodSec, totalSec, clickSec = 0.02, amp = 1) {
+  const n = Math.round(sampleRate * totalSec);
+  const out = new Float32Array(n);
+  const period = Math.round(sampleRate * periodSec);
+  const clickLen = Math.round(sampleRate * clickSec);
+  for (let start = 0; start < n; start += period) {
+    for (let i = 0; i < clickLen && start + i < n; i++) out[start + i] = amp;
+  }
+  return out;
+}
+
+// Unlike analyse(), resolves the WHOLE message — needed to see `tempo` alongside `frames`,
+// or to see a standalone `{ type: 'tempo' }` reply that carries no `frames` at all.
+function roundTrip(message) {
+  return new Promise((resolve, reject) => {
+    const w = new Worker('../notes.worker.js?v=1.16.1', { type: 'module' });
+    const timer = setTimeout(() => { w.terminate(); reject(new Error('worker never answered')); }, 20000);
+    w.onmessage = (e) => { clearTimeout(timer); w.terminate(); resolve(e.data); };
+    w.onerror = (e) => { clearTimeout(timer); w.terminate(); reject(new Error(e.message)); };
+    w.postMessage(message);
+  });
 }
 
 function analyse(channels, sampleRate) {
@@ -59,4 +82,39 @@ test('notes: the worker carries candidates across postMessage', async () => {
   const c = frames.candidates[voicedIdx][0];
   assert(c && typeof c.cents === 'number' && typeof c.p === 'number',
     'a candidate arrives as a usable {cents, p} object, not a stringified husk');
+});
+
+test('notes: analyse with a drums buffer returns tempo alongside frames', async () => {
+  const bpm = 120;
+  const period = 60 / bpm;
+  const data = await roundTrip({
+    type: 'analyse',
+    channels: [sine(220, 1, SR)],
+    sampleRate: SR,
+    drums: { channels: [clickTrain(SR, period, 4)], sampleRate: SR },
+  });
+  assert(data.frames, 'vocals frames still come back');
+  assert(data.tempo, 'tempo comes back alongside frames');
+  const ratio = data.tempo.bpmValue / bpm;
+  assert([0.5, 1, 2].some((k) => Math.abs(ratio - k) < 0.05),
+    `tempo is a clean multiple of ${bpm} (got ${data.tempo.bpmValue.toFixed(1)})`);
+});
+
+test('notes: analyse without a drums buffer returns tempo: null', async () => {
+  const data = await roundTrip({ type: 'analyse', channels: [sine(220, 1, SR)], sampleRate: SR });
+  assert(data.frames, 'vocals frames still come back');
+  assertEq(data.tempo, null, 'no drums, no tempo');
+});
+
+test('notes: a standalone tempo request answers without running vocals analysis', async () => {
+  const bpm = 100;
+  const period = 60 / bpm;
+  const data = await roundTrip({
+    type: 'tempo', channels: [clickTrain(SR, period, 4)], sampleRate: SR,
+  });
+  assertEq(data.type, 'tempo', 'a dedicated tempo reply, not frames');
+  assert(!('frames' in data), 'no vocals analysis ran');
+  const ratio = data.tempo.bpmValue / bpm;
+  assert([0.5, 1, 2].some((k) => Math.abs(ratio - k) < 0.05),
+    `tempo is a clean multiple of ${bpm} (got ${data.tempo.bpmValue.toFixed(1)})`);
 });

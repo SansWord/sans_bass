@@ -45,7 +45,8 @@ let zoomPeaks = null;      // hi-res vocals envelope, computed once per song
 let zoomCenter = 0;        // seconds; follows the playhead while playing
 let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
 let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:editmode'
-let selectedNote = null;    // { at } — a time point inside the selected note, or null
+let selectedNote = null;    // { at, midi } — at is a time point inside the note, midi is its
+                             // pitch at selection time; both identify one specific note
 let zoomToolbar = null;     // built in Task 4; guarded with `if (zoomToolbar)` until then
 let zoomRangeHint = null;   // the "drag along the bottom" caption under the zoomed canvas
 let ribbonRangeHint = null; // the same caption under the full-song notes lane
@@ -1811,18 +1812,19 @@ function zoomBy(factor) {
 }
 
 /** The note in `list` whose span contains `at`, or null. Half-open — a note's END excludes
- *  it, matching lib/pitch.js's applyEdits, so a click at a shared boundary picks the note
- *  that starts there rather than the one that just finished.
+ *  it, matching lib/pitch.js's applyEdits.
  *
- *  Searches from the END of the list, not the start. `renderZoom`/`renderRibbon` draw notes
- *  in array order, so with two notes overlapping at a time point, the one drawn LAST is
- *  visually on top — this makes it the one a click resolves to as well. `add` already pushes
- *  new notes to the end, so a manually placed note dropped onto an existing one is both drawn
- *  on top and the one selected, with no special-casing needed here. */
-function noteAt(list, at) {
+ *  With `midi` given, only a note at that exact pitch counts — this is what actually
+ *  disambiguates two notes overlapping in time, which time alone never could. Without it
+ *  (the one legitimate case: nothing is selected yet), falls back to time-only.
+ *
+ *  Searches from the END of the list either way, so if pitch still leaves more than one match
+ *  (an exact duplicate — same span, same pitch) the one drawn last (topmost) wins, matching
+ *  renderZoom/renderRibbon's draw order. */
+function noteAt(list, at, midi) {
   for (let i = list.length - 1; i >= 0; i--) {
     const n = list[i];
-    if (n.start <= at && at < n.end) return n;
+    if (n.start <= at && at < n.end && (midi === undefined || n.midi === midi)) return n;
   }
   return null;
 }

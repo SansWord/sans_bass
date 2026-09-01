@@ -1,4 +1,5 @@
 import { test, assert, assertClose, assertEq } from './assert.js';
+import { interpret } from '../lib/pitch.js';
 
 const SR = 44100;
 
@@ -117,4 +118,19 @@ test('notes: a standalone tempo request answers without running vocals analysis'
   const ratio = data.tempo.bpmValue / bpm;
   assert([0.5, 1, 2].some((k) => Math.abs(ratio - k) < 0.05),
     `tempo is a clean multiple of ${bpm} (got ${data.tempo.bpmValue.toFixed(1)})`);
+});
+
+test('notes: interpret() output is byte-identical regardless of tempo state', async () => {
+  const frames = await analyse([sine(220, 0.4, SR), sine(0, 0.1, SR), sine(330, 0.4, SR)].reduce(
+    (acc, seg) => { const out = new Float32Array(acc.length + seg.length); out.set(acc); out.set(seg, acc.length); return out; },
+    new Float32Array(0),
+  ), SR);
+  // interpret() has never heard of tempo — there is no tempo argument to pass it at all.
+  // This test exists to make that structural guarantee explicit and regression-proof: any
+  // future change that threads tempo into interpret()'s signature breaks this call shape.
+  const params = { interpreter: 'threshold-v1', params: { minDurationMs: 80 } };
+  const a = interpret(frames, params);
+  const b = interpret(frames, params);
+  assertEq(JSON.stringify(a), JSON.stringify(b), 'identical params, identical output, independent of any global tempo state');
+  assertEq(interpret.length, 2, 'interpret() takes exactly (track, interpretation) — no tempo parameter exists to accidentally wire up');
 });

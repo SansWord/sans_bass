@@ -33,6 +33,8 @@ const el = {
   exportBtn: document.getElementById('notes-export'),
   importBtn: document.getElementById('notes-import'),
   importFile: document.getElementById('notes-import-file'),
+  listSecs: document.getElementById('notes-list-secs'),
+  listExport: document.getElementById('notes-list-export'),
   jianpu: document.getElementById('notes-jianpu'),
   keyTonic: document.getElementById('notes-key-tonic'),
   keyMode: document.getElementById('notes-key-mode'),
@@ -203,6 +205,9 @@ function syncJianpuControls() {
   el.keyTonic.value = String(jianpu.tonic);
   el.keyMode.value = jianpu.mode;
   for (const c of [el.keyTonic, el.keyMode, el.keyRel]) c.disabled = !jianpu.on;
+  /* Meaningless without both a key AND at least one note — unlike the key selectors, which
+   * only need 簡譜 to be on (they still work before any analysis has run). */
+  el.listExport.disabled = !jianpu.on || !notes.length;
 }
 
 /** Re-derive notes from the existing frames. No worker, no re-analysis. */
@@ -220,8 +225,8 @@ function reinterpret() {
     const k = detectKey(notesToChroma(notes));
     jianpu.tonic = k.tonic;
     jianpu.mode = k.mode;
-    syncJianpuControls();
   }
+  syncJianpuControls();
   window.sansBass.setNotes({
     notes, frames, params: p, clip: el.clip.checked,
     jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
@@ -437,6 +442,48 @@ el.exportBtn.addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = url;
   a.download = `${mix ? mix.name : 'song'}-edits.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+});
+
+/* A human-readable export, independent of the JSON edits round-trip above: the current
+ * 簡譜 reading, chunked into fixed-length timecoded lines, for reading (e.g. while singing)
+ * without the player open. See docs/superpowers/specs/2026-09-01-notes-jianpu-export-design.md. */
+function mmss(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.floor(totalSeconds % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+el.listExport.addEventListener('click', () => {
+  const secs = Number(el.listSecs.value) || 10;
+  const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
+  const refOct = window.SansJianpu.referenceOctave(notes, jianpu.tonic);
+
+  const windows = new Map();
+  for (const n of notes) {
+    const idx = Math.floor(n.start / secs);
+    if (!windows.has(idx)) windows.set(idx, []);
+    windows.get(idx).push(n);
+  }
+
+  const modeWord = tr(jianpu.mode === 'minor' ? 'notes.minor' : 'notes.major');
+  const lines = [`# ${mix ? mix.name + ' — ' : ''}1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`, ''];
+  for (const idx of [...windows.keys()].sort((a, b) => a - b)) {
+    const from = idx * secs;
+    const to = from + secs;
+    lines.push(`== ${mmss(from)} - ${mmss(to)}`);
+    lines.push(windows.get(idx)
+      .map((n) => window.SansJianpu.degreeToken(n.midi, jianpu.tonic, jianpu.mode, refOct))
+      .join(' '));
+    lines.push('');
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${mix ? mix.name : 'song'}-notes.md`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 });

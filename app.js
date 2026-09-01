@@ -1755,9 +1755,19 @@ function zoomBy(factor) {
 
 /** The note in `list` whose span contains `at`, or null. Half-open — a note's END excludes
  *  it, matching lib/pitch.js's applyEdits, so a click at a shared boundary picks the note
- *  that starts there rather than the one that just finished. */
+ *  that starts there rather than the one that just finished.
+ *
+ *  Searches from the END of the list, not the start. `renderZoom`/`renderRibbon` draw notes
+ *  in array order, so with two notes overlapping at a time point, the one drawn LAST is
+ *  visually on top — this makes it the one a click resolves to as well. `add` already pushes
+ *  new notes to the end, so a manually placed note dropped onto an existing one is both drawn
+ *  on top and the one selected, with no special-casing needed here. */
 function noteAt(list, at) {
-  return list.find((n) => n.start <= at && at < n.end) || null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const n = list[i];
+    if (n.start <= at && at < n.end) return n;
+  }
+  return null;
 }
 
 function dispatchEdit(edits) {

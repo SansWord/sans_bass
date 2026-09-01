@@ -8,7 +8,7 @@ description of the code, which would just rot alongside it.
 If you find an item here that no longer matches the app, one of the two is a bug; decide
 which before moving on.
 
-Last exercised end-to-end: **v1.2.2**; the Loading and Loading-the-page-itself rows were re-run in **v1.4.0**, and the Loading / Lanes / Unmute-all / Play-dropdown rows touched by v1.6.0 were re-run in **v1.6.0**. E19, E24 and E25 were re-run in **v1.16.2**. E27-E32 were run in **v1.16.3**; E27, E28 and E33 were run in **v1.16.4**. T1-T14 (tempo grid) were run in **v1.17.0** against a synthetic vocals+drums stems set (120 BPM click track); T15 was reasoned rather than run, for lack of a real narrated-intro track short enough to exercise through browser automation. Items marked ⚠ were reasoned from the code rather
+Last exercised end-to-end: **v1.2.2**; the Loading and Loading-the-page-itself rows were re-run in **v1.4.0**, and the Loading / Lanes / Unmute-all / Play-dropdown rows touched by v1.6.0 were re-run in **v1.6.0**. E19, E24 and E25 were re-run in **v1.16.2**. E27-E32 were run in **v1.16.3**; E27, E28 and E33 were run in **v1.16.4**. T1-T14 and T16 (tempo grid) were run in **v1.17.0** against a synthetic vocals+drums stems set (120 BPM click track); T15 was reasoned rather than run, for lack of a real narrated-intro track short enough to exercise through browser automation. Items marked ⚠ were reasoned from the code rather
 than run in that session, so treat them as the least trustworthy rows here.
 
 ---
@@ -294,6 +294,7 @@ UI on the drums stem's own lane. Design:
 | T13 | With the drums-lane range-select off, the lane's normal click-to-seek behaviour is unaffected. | With **Select BPM range** untoggled, clicking the drums lane still moves the playhead, same as any other stem lane. |
 | T14 | Export/import round-trips `tempo` and `tempoRange` exactly. | Export edits, change BPM/phase/beats-per-bar, re-import the same file: all three return to the exported values. |
 | T15 | ⚠ A song with a non-metrical intro (e.g. spoken narration) detects a materially different — and by ear, better — BPM once the range excludes the intro. | Using a real narrated-intro track from `stems/`: compare `#notes-tempo-status`'s BPM over the whole song vs. over a range starting after the narration. |
+| T16 | The grid also draws — very faintly, bars only — across each **stem lane's own waveform**, not just the notes lane; the overview wave at the top never gets it. | Zoom into any stem lane's canvas after Go: faint vertical lines recur at the bar period. The overview wave above the lanes stays clean. Toggling **Show tempo grid** off clears lane grids too; editing BPM re-spaces them live, same as the notes lane. |
 
 ## Note editing
 

@@ -209,6 +209,7 @@ function reset() {
   orphaned = [];
   el.edit.disabled = true;
   el.edit.checked = false;
+  window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false } }));
   syncJianpuControls();
 }
 

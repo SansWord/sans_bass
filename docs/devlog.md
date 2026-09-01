@@ -149,6 +149,15 @@ Running log of what was built and what was learned building it.
   Popping or removing a group's second half alone would leave the first half's change standing
   with nothing in the list to explain it; grouping at the `notes.js` layer, above `applyEdits`,
   is what keeps undo matching what the user thinks they just did.
+- `[gotcha]` **`add` appending to the end of the list broke an assumption `lib/sonify.js`
+  never had to state out loud.** `interpret()`'s output was always chronologically ordered, so
+  `scheduleNotes`'s playback loop could safely stop the moment it saw a note past its
+  scheduling horizon, trusting everything after was later still. A split-off or hand-added
+  note sitting at the very end of the array but early in the song broke that silently — it
+  showed correctly in the lane (purple, right where it should be) but never made a sound,
+  because the loop gave up on a much-later note first and never reached it. Fixed by sorting
+  a copy of the list once inside `scheduleNotes` itself, rather than asking every note-list
+  producer to maintain an order only that one function actually depended on.
 
 **Process learnings:**
 

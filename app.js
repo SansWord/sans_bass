@@ -1093,7 +1093,8 @@ function renderZoom(canvas) {
     }
     /* The selected note gets a white outline in addition to its fill — "outline plus fill"
      * is the same language buttons and inputs use for focus elsewhere in this app. */
-    if (editMode && selectedNote && live.start <= selectedNote.at && selectedNote.at < live.end) {
+    if (editMode && selectedNote && n.midi === selectedNote.midi &&
+        live.start <= selectedNote.at && selectedNote.at < live.end) {
       c.strokeStyle = '#ffffff';
       c.lineWidth = 1.5;
       c.strokeRect(x(live.start) + 0.75, by + 0.75, Math.max(0.5, bw - 1.5), Math.max(0.5, bh - 1.5));

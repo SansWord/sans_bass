@@ -8,7 +8,7 @@ description of the code, which would just rot alongside it.
 If you find an item here that no longer matches the app, one of the two is a bug; decide
 which before moving on.
 
-Last exercised end-to-end: **v1.2.2**; the Loading and Loading-the-page-itself rows were re-run in **v1.4.0**, and the Loading / Lanes / Unmute-all / Play-dropdown rows touched by v1.6.0 were re-run in **v1.6.0**. E19, E24 and E25 were re-run in **v1.16.2**. E27-E32 were run in **v1.16.3**; E27, E28 and E33 were run in **v1.16.4**. Items marked ⚠ were reasoned from the code rather
+Last exercised end-to-end: **v1.2.2**; the Loading and Loading-the-page-itself rows were re-run in **v1.4.0**, and the Loading / Lanes / Unmute-all / Play-dropdown rows touched by v1.6.0 were re-run in **v1.6.0**. E19, E24 and E25 were re-run in **v1.16.2**. E27-E32 were run in **v1.16.3**; E27, E28 and E33 were run in **v1.16.4**. T1-T14 (tempo grid) were run in **v1.17.0** against a synthetic vocals+drums stems set (120 BPM click track); T15 was reasoned rather than run, for lack of a real narrated-intro track short enough to exercise through browser automation. Items marked ⚠ were reasoned from the code rather
 than run in that session, so treat them as the least trustworthy rows here.
 
 ---
@@ -268,6 +268,32 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N53 | The **zoom pane's** axis matches the lane's: degrees and octave dots, not note names. | With 簡譜 on, capture `fillText` on the zoom canvas — the axis reads `2 b3 3 4 #4 5 …`, not `D2 D#2 E2`. The zoom pane is the view a pitch is read off; degree blocks against a note-name axis put both notations side by side in the one place it matters. |
 | N54 | The **bright gridline follows the tonic**, so the highlighted rule and the highlighted label sit on the same row. | In `1=G` the bright rules move off the C rows onto the G rows (measured: y 114/286/457 → 14/186/357/529). With 簡譜 off they are back on C. |
 | N55 | A disabled **⇄** looks disabled. | With 簡譜 off, `getComputedStyle(#notes-key-rel)` gives `opacity: .45` and `cursor: default`, and the hover rule does not brighten it. `.btn[disabled]` does not match `.mini`, so without an explicit rule the button read as live while doing nothing — the same trap as the `[hidden]` one. |
+
+## Tempo grid
+
+`lib/tempo.js` detects BPM/phase from the drums stem inside `notes.worker.js`, bundled into
+the same round trip as vocals analysis. `notes.js` owns the resulting `tempo`/`tempoRange`
+state; `app.js` draws the grid via `lib/ribbon.js`'s `beatTimes()` and owns the drag-to-select
+UI on the drums stem's own lane. Design:
+[`2026-09-01-tempo-grid-design.md`](superpowers/specs/2026-09-01-tempo-grid-design.md).
+
+| # | Expected | How to observe |
+|---|---|---|
+| T1 | The tempo row is disabled (except the checkbox) until a drums stem is loaded. | With only vocals + another stem (no drums), `#notes-tempo-bpm.disabled` etc. are `true`; `#notes-tempo-on.disabled` is `false`. |
+| T2 | Running **Find notes** with a drums stem present detects tempo in the same pass — no separate button press needed. | After Go, `#notes-tempo-status` shows a BPM and confidence percentage rather than "No tempo detected yet". |
+| T3 | The grid is **on** by default once detected. | `#notes-tempo-on.checked` is `true` after Go; beat ticks are visible on `.lane.ribbon`'s canvas. |
+| T4 | Toggling **Show tempo grid** off removes the grid from both panes without touching the notes. | Untick it: `canvas.__layers.active` loses the vertical tick pixels; `#notes-count` is unchanged. |
+| T5 | Editing BPM, phase, or beats-per-bar updates the grid **live, with no re-analysis**. | Time it: changing `#notes-tempo-bpm` must re-space the grid within tens of milliseconds, not seconds — same class of check as N8. |
+| T6 | **×½ / ×2** halve/double the BPM field and the grid re-spaces to match. | Click each; `#notes-tempo-bpm.value` halves/doubles and the on-canvas beat spacing visibly changes. |
+| T7 | The grid **never changes the note list**. This is the design's central non-goal. | `#notes-count` and the payload's `notes` array are byte-identical with the grid on, off, or with BPM/phase edited. |
+| T8 | **Select BPM range** arms a drag surface across the **whole** drums lane, distinct from the note-editing range-select's bottom-strip-only band. | Toggle it on: the drums lane's canvas tints faintly across its full height, not just a bottom strip. |
+| T9 | Dragging on the armed drums lane commits a selection and updates the caption underneath it; the caption reads "whole song" when nothing is selected. | Drag, release: caption text changes to a `mm:ss–mm:ss` range; **Clear** becomes enabled. |
+| T10 | **Clear** reverts to the whole song, both in the caption and in what a subsequent Re-detect analyses. | Click Clear: caption returns to "whole song"; `#notes-tempo-range` button.mini (Clear) becomes disabled again. |
+| T11 | Selecting a range does **not** itself trigger detection. | Drag a selection without pressing Re-detect: `#notes-tempo-status` and the drawn grid are unchanged. |
+| T12 | **Re-detect tempo** re-runs detection using the current range **without re-running vocals analysis**. | Press it after narrowing the range: `#notes-count` (vocals-derived) does not change, but `#notes-tempo-status`'s BPM can. |
+| T13 | With the drums-lane range-select off, the lane's normal click-to-seek behaviour is unaffected. | With **Select BPM range** untoggled, clicking the drums lane still moves the playhead, same as any other stem lane. |
+| T14 | Export/import round-trips `tempo` and `tempoRange` exactly. | Export edits, change BPM/phase/beats-per-bar, re-import the same file: all three return to the exported values. |
+| T15 | ⚠ A song with a non-metrical intro (e.g. spoken narration) detects a materially different — and by ear, better — BPM once the range excludes the intro. | Using a real narrated-intro track from `stems/`: compare `#notes-tempo-status`'s BPM over the whole song vs. over a range starting after the narration. |
 
 ## Note editing
 

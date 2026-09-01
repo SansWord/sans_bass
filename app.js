@@ -682,15 +682,18 @@ const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);      // C# D# F# G# A#
  * fallback. See docs/transcription.md on why the range is that wide. */
 const LABEL_MIN_PX = 7;
 
-/* Note fill by provenance. Blue for a folded note and gray for one we declined to correct:
- * both must be distinguishable from an untouched note (green) AND from an out-of-band note
- * (the A-B orange), because "corrected", "untrusted" and "off-scale" are three different
- * things the reader has to tell apart. Gray recedes without vanishing — a hidden note would
- * be a silent lie, the same rule the orange edge marks follow. */
+/* Note fill by provenance. Blue for a folded note and gray for one we declined to correct,
+ * purple for one a human touched directly (fix.state === 'manual', set by applyEdits in
+ * lib/pitch.js — see docs/superpowers/specs/2026-08-31-note-editing-design.md): all three
+ * must be distinguishable from an untouched note (green) AND from an out-of-band note (the
+ * A-B orange), because "corrected", "untrusted", "hand-edited" and "off-scale" are four
+ * different things the reader has to tell apart. Gray recedes without vanishing — a hidden
+ * note would be a silent lie, the same rule the orange edge marks follow. */
 const NOTE_FILL = {
   plain:  { normal: '#8ee0ad', dim: '#4c8f6c', zoom: 'rgba(142,224,173,.86)' },
   folded: { normal: '#6cc5e0', dim: '#3a7186', zoom: 'rgba(108,197,224,.86)' },
   doubt:  { normal: '#a8a8b8', dim: '#70707f', zoom: 'rgba(168,168,184,.86)' },
+  manual: { normal: '#c99bf0', dim: '#6d5183', zoom: 'rgba(201,155,240,.86)' },
 };
 /* Falls back rather than throwing, because a throw here does not fail loudly: tick() re-arms
  * the rAF chain only AFTER draw() returns, so one bad note freezes the playhead for the rest

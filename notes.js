@@ -8,7 +8,7 @@
  * A module, so it cannot share scope with app.js. It talks to the player only through
  * window.sansBass, exactly as separate.js does. */
 
-import { interpret, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.15.0';
+import { interpret, applyEdits, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.15.0';
 import { scheduleNotes } from './lib/sonify.js?v=1.15.0';
 
 const el = {
@@ -64,6 +64,15 @@ let sonifier = null;         // the running note schedule, or null
 /* The 簡譜 reading. `auto` stays true until the user touches a control, so a fresh detection
  * on a newly loaded song adopts its key — but never overrides a choice already made. */
 let jianpu = { on: false, tonic: 0, mode: 'major', auto: true };
+
+/* The edit list, as GROUPS — one undo/list-display entry each. Most actions push a
+ * one-element group; a normal split pushes two primitive edits (a timeAdjust shrink plus an
+ * add) as a single group, so undo and per-row removal act on the whole split at once rather
+ * than half of it. lib/pitch.js's applyEdits() only ever sees the flattened primitives — see
+ * docs/superpowers/specs/2026-08-31-note-editing-design.md. */
+let editGroups = [];
+let orphaned = [];         // primitive edits from the last applyEdits() call with no target
+let nextEditId = 1;
 
 /* Parameters carry the interpreter that understands them: params written by one are
  * meaningless to another, so the name travels with them. The checkbox picks which — both
@@ -135,6 +144,9 @@ function reinterpret() {
   if (!frames) return;
   const p = currentParams();
   notes = interpret(frames, p);
+  const applied = applyEdits(notes, editGroups.flatMap((g) => g.edits));
+  notes = applied.notes;
+  orphaned = applied.orphaned;
   el.count.textContent = tr('notes.count', { n: notes.length });
   el.minOut.textContent = `${el.min.value} ms`;
   syncFoldControls();
@@ -191,6 +203,8 @@ function reset() {
    * sit there reading a value nothing chose. The 簡譜 checkbox itself is a reading
    * preference, not a claim about the music, so it deliberately survives the load. */
   jianpu.auto = true;
+  editGroups = [];
+  orphaned = [];
   syncJianpuControls();
 }
 
@@ -302,3 +316,10 @@ window.addEventListener('sansbass:transport', (e) => {
   resync();
 });
 window.addEventListener('sansbass:ribbonmute', resync);
+/* app.js owns the zoomed pane and dispatches this once the user finishes an edit action —
+ * one primitive edit for most actions, two for a normal split (shrink + add) — always
+ * grouped as one undo/list entry. See docs/superpowers/specs/2026-08-31-note-editing-design.md. */
+window.addEventListener('sansbass:noteedit', (e) => {
+  editGroups.push({ id: nextEditId++, edits: e.detail.edits });
+  reinterpret();
+});

@@ -1420,12 +1420,35 @@ function paint(canvas, frac) {
     c.drawImage(L.active, 0, 0);
     c.restore();
   }
+  if (tracks.some((t) => t.canvas === canvas)) paintLaneGrid(c, canvas, dpr);
   paintLoopRegion(c, canvas, dpr, canvas === el.mainWave);
   if (ribbonEl && canvas === ribbonEl.canvas) paintRangeBand(c, canvas, dpr);
   if (tempoDrumsCanvas && canvas === tempoDrumsCanvas) paintTempoRangeBand(c, canvas, dpr);
 
   c.fillStyle = 'rgba(255,255,255,.85)';
   c.fillRect(px, 0, Math.max(1, dpr), canvas.height);
+}
+
+/** Faint bar lines across a stem lane's own waveform, so a hit lines up with the same grid
+ *  drawn on the notes lane above. Bars only — beat ticks at lane width are often only a few
+ *  pixels apart and would be pure clutter on top of an already-busy waveform — and much
+ *  fainter than the ribbon's version, since a lane has no dim/active distinction to fall back
+ *  on. Drawn live here rather than baked into renderWave's cached idle/active layers: those
+ *  are shared across every lane and expensive to rebuild (1400 buckets each), so redrawing
+ *  them on every BPM/phase keystroke would undercut the "live, no re-analysis" property the
+ *  notes-lane grid already has. Live redraw costs nothing extra — draw() already repaints
+ *  every lane on every tempo edit via setNotes(), same as it does every rAF tick. */
+function paintLaneGrid(c, canvas, dpr) {
+  if (!ribbon || !ribbon.tempo || !ribbon.tempo.on || !duration) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  const beats = window.SansRibbon.beatTimes(ribbon.tempo, duration);
+  c.fillStyle = 'rgba(255,255,255,.06)';
+  for (const b of beats) {
+    if (!b.bar) continue;
+    const bx = Math.round((b.t / duration) * w);
+    c.fillRect(bx, 0, Math.max(1, dpr), h);
+  }
 }
 
 /** Shade everything outside A-B and mark the boundaries. */

@@ -163,3 +163,39 @@ test('ribbon: zoomWindow handles a window wider than the song', () => {
   assertClose(r.from, 0, 1e-9, 'starts at zero');
   assertClose(r.to, 20, 1e-9, 'ends at the song end rather than past it');
 });
+
+test('ribbon: beatTimes spaces beats by the BPM period', () => {
+  // 120 BPM = 0.5s/beat
+  const beats = R().beatTimes({ bpmValue: 120, phaseMs: 0, beatsPerBar: 4 }, 2);
+  assertEq(beats.length, 5, '0, 0.5, 1, 1.5, 2');
+  assertClose(beats[1].t, 0.5, 1e-9, 'second beat at 0.5s');
+  assertClose(beats[4].t, 2, 1e-9, 'last beat sits on the duration boundary');
+});
+
+test('ribbon: beatTimes flags every beatsPerBar-th beat as a bar', () => {
+  const beats = R().beatTimes({ bpmValue: 120, phaseMs: 0, beatsPerBar: 3 }, 3);
+  assertEq(beats[0].bar, true, 'first beat is a bar');
+  assertEq(beats[1].bar, false);
+  assertEq(beats[2].bar, false);
+  assertEq(beats[3].bar, true, 'every third beat is a bar');
+});
+
+test('ribbon: beatTimes normalises a phase outside [0, period)', () => {
+  const inRange = R().beatTimes({ bpmValue: 120, phaseMs: 100, beatsPerBar: 4 }, 1);
+  const negative = R().beatTimes({ bpmValue: 120, phaseMs: 100 - 500, beatsPerBar: 4 }, 1);
+  const overOne = R().beatTimes({ bpmValue: 120, phaseMs: 100 + 500, beatsPerBar: 4 }, 1);
+  assertClose(inRange[0].t, 0.1, 1e-9, 'phase already in range starts the grid there');
+  assertClose(negative[0].t, 0.1, 1e-9, 'a negative phase normalises to the same first beat');
+  assertClose(overOne[0].t, 0.1, 1e-9, 'a phase past one period normalises the same way');
+});
+
+test('ribbon: beatTimes returns nothing when duration is shorter than the first beat', () => {
+  // 60 BPM = 1000ms period; phase 900ms means the first beat is at 0.9s.
+  const beats = R().beatTimes({ bpmValue: 60, phaseMs: 900, beatsPerBar: 4 }, 0.5);
+  assertEq(beats.length, 0, 'the first beat never arrives inside a 0.5s song');
+});
+
+test('ribbon: beatTimes tolerates a missing or zero bpmValue', () => {
+  assertEq(R().beatTimes(null, 10).length, 0, 'no tempo, no grid');
+  assertEq(R().beatTimes({ bpmValue: 0, phaseMs: 0, beatsPerBar: 4 }, 10).length, 0, 'zero BPM would divide by zero');
+});

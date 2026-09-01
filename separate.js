@@ -1,8 +1,8 @@
 /* Separation panel: owns the worker's lifecycle and the UI around it.
  * Loaded as a plain module script: file:// support was dropped in v1.5.0. */
 
-import { encodeWav } from './lib/wav.js?v=1.16.1';
-import { buildZip } from './lib/zip.js?v=1.16.1';
+import { encodeWav } from './lib/wav.js?v=1.16.2';
+import { buildZip } from './lib/zip.js?v=1.16.2';
 
 const el = {
   panel:  document.getElementById('sep'),
@@ -70,7 +70,7 @@ function busy(on) {
 
 function getWorker() {
   if (worker) return worker;
-  worker = new Worker('separate.worker.js?v=1.16.1', { type: 'module' });
+  worker = new Worker('separate.worker.js?v=1.16.2', { type: 'module' });
   return worker;
 }
 

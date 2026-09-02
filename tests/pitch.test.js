@@ -985,3 +985,12 @@ test('pitch: applyEdits with no edits returns an equivalent but distinct copy', 
   assertEq(out.length, notes.length);
   assert(out !== notes, "a new array, matching foldOctaves' no-mutation convention");
 });
+
+import { stemMismatch } from '../lib/pitch.js';
+
+test('pitch: stemMismatch flags a real mismatch and nothing else', () => {
+  assertEq(stemMismatch({ stem: 'bass' }, 'vocals'), true, 'different stem is a mismatch');
+  assertEq(stemMismatch({ stem: 'vocals' }, 'vocals'), false, 'matching stem is not a mismatch');
+  assertEq(stemMismatch({}, 'vocals'), false,
+    'a file with no stem field never mismatches — nothing about importing an old edit history should change behavior');
+});

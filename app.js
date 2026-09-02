@@ -122,6 +122,7 @@ const el = {
   play: $('play'), title: $('title'), mainWave: $('main-wave'),
   tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
+  speed: $('speed'), speedVal: $('speed-val'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
   allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'), langToggle: $('lang-toggle'),
 };
@@ -301,6 +302,8 @@ async function loadFiles(fileList, fallbackName, source) {
   stop(true);
   loopA = loopB = null;            // A-B points belong to the previous song
   renderLoopBadge();
+  ratePercent = window.SansTransportMath.RATE_DEFAULT;
+  syncSpeedUI();
   say(files.length > 1 ? 'status.decodingMany' : 'status.decodingOne', { n: files.length });
 
   // Decode in parallel: decodeAudioData runs off the main thread, so six stems
@@ -464,6 +467,8 @@ function loadSeparated(original, stems) {
 
   loopA = loopB = null;
   renderLoopBadge();
+  ratePercent = window.SansTransportMath.RATE_DEFAULT;
+  syncSpeedUI();
   // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks
   // leaves every stem unmuted — all six lanes on by default.
   buildTracks(items, original.name.replace(AUDIO_RE, ''));
@@ -2160,6 +2165,41 @@ function renderLoopBadge() {
   }
 }
 
+function syncSpeedUI() {
+  if (el.speed) el.speed.value = ratePercent;
+  if (el.speedVal) el.speedVal.textContent = `${ratePercent}%`;
+}
+
+/** Change the active playback rate. Crossing the 100% <-> non-100% boundary rebuilds the
+ *  audio graph, same as seek()/refreshLoop(); staying on one side of it rebases the clock
+ *  and live-messages the running stretch nodes instead, so dragging the slider mid-song
+ *  has no audible restart. See the design spec's "Architecture" and "Live rate changes". */
+function setRate(newPercent) {
+  const clamped = window.SansTransportMath.clampRatePercent(newPercent);
+  if (clamped === ratePercent) { syncSpeedUI(); return; }
+
+  if (!playing) {
+    ratePercent = clamped;
+    syncSpeedUI();
+    return;
+  }
+
+  const crossingBoundary = (ratePercent === 100) !== (clamped === 100);
+  if (crossingBoundary) {
+    stop(true);          // captures offset under the OLD rate
+    ratePercent = clamped;
+    play();
+  } else {
+    const rebased = currentTime();   // under the OLD rate, before it changes
+    ratePercent = clamped;
+    offset = rebased;
+    startedAt = audio.currentTime;
+    stretchNodes.forEach(n => n.port.postMessage({ type: 'setRate', rate: ratePercent / 100 }));
+    announceTransport(startedAt);
+  }
+  syncSpeedUI();
+}
+
 function tick() {
   raf = requestAnimationFrame(() => {
     if (!playing) return;
@@ -3036,6 +3076,7 @@ on(el.masterVol, 'input', () => {
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
   if (overviewVolEl) overviewVolEl.value = el.masterVol.value;
 });
+on(el.speed, 'input', () => setRate(parseInt(el.speed.value, 10)));
 
 /* The value is cleared after dispatching so picking the *same* file twice in a row still
  * fires `change`. With two inputs that was rare; with one it is the obvious retry after a
@@ -3070,6 +3111,9 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setLoopPoint('a'); }
   else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setLoopPoint('b'); }
   else if (e.key === 'c' || e.key === 'C' || e.key === 'Escape') { e.preventDefault(); clearLoop(); }
+  else if (e.key === '[') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, -window.SansTransportMath.RATE_STEP)); }
+  else if (e.key === ']') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, window.SansTransportMath.RATE_STEP)); }
+  else if (e.key === '\\') { e.preventDefault(); setRate(window.SansTransportMath.RATE_DEFAULT); }
   else if (/^[1-9]$/.test(e.key)) {
     const t = tracks[parseInt(e.key, 10) - 1];
     if (t) toggleTrack(t);

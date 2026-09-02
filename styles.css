@@ -463,8 +463,53 @@ input[type=range] { width: 110px; }
 }
 .ribbon-grip:hover::after { background: #55556a; }
 
-.lane.ribbon-zoom .lane-name { cursor: default; justify-content: space-between; }
+/* The label used to sit inline with the seconds readout and zoom buttons in the same
+   128px column as every other lane's name, which truncated "局部放大" to an ellipsis the
+   moment there was more than one CJK character's worth of room. Spanning the full lane
+   width and stacking the label above a second row fixes that AND gives the lane selector
+   below room to hold six-plus chips without crowding. zCanvas is pinned back to column 2
+   (see .lane.ribbon-zoom .wave below) since it would otherwise auto-place into column 1
+   behind this now-full-width row — see the comment above .lane.ribbon,.lane.ribbon-zoom. */
+.lane.ribbon-zoom .lane-name {
+  grid-column: 1 / -1;
+  cursor: default;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  /* The base .lane-name's negative margins/tint/divider exist to make a CLICKABLE 128px
+     column read as a click target reaching the lane's own edges — see its comment. This
+     header is neither 128px wide nor clickable now, so undo all of it back to a plain
+     block that sits in its grid cell like any other lane content. */
+  margin: 0;
+  padding: 0;
+  background: none;
+  border-right: none;
+  border-radius: 0;
+}
 .lane.ribbon-zoom .lane-name:hover { background: none; }
+.lane.ribbon-zoom .wave { grid-column: 2; }
+
+.zoom-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.zoom-lane-sel { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.zoom-chip { display: inline-flex; align-items: center; gap: 3px; }
+.zoom-chip-dot {
+  width: 10px; height: 10px; padding: 0;
+  border: 1.5px solid currentColor; border-radius: 50%;
+  background: transparent; cursor: pointer;
+}
+.zoom-chip-dot.on { background: currentColor; }
+.zoom-chip-mute {
+  background: transparent; border: none; padding: 0; line-height: 1;
+  font: 11px var(--mono); color: var(--dim); cursor: pointer;
+}
+.zoom-chip-mute:hover { color: var(--fg); }
+/* Same "the mute is a decision the user made or did not" language as ribbonMuted — a
+   struck-through note glyph reads as "silenced" without needing a second icon. */
+.zoom-chip-mute.muted { text-decoration: line-through; opacity: .55; }
+.zoom-notes-chip { font: 10px var(--mono); padding: 2px 8px; }
+.zoom-notes-chip.active { border-color: var(--loop); color: var(--loop); }
+
+.zoom-secs-group { display: flex; align-items: center; flex: none; }
 /* grab, not ns-resize: this pane pans horizontally and zooms on the wheel. */
 .zoomwave { cursor: grab; touch-action: none; }
 .zoomwave:active { cursor: grabbing; }

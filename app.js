@@ -39,13 +39,21 @@ const NOTE_STEMS = ['vocals', 'bass'];   // vocals-priority order — anchors th
 let noteLanes = {};        // stem -> { ribbon, el: {lane,canvas,txt,grip}, gain, muted, rangeHint }
                             // (volume lives in ribbonVolume[stem] below, not snapshotted here)
 let zoomNotesStem = null;  // which channel's notes the zoomed pane currently shows: 'vocals' | 'bass' | null
-let zoomNotesChipEls = {}; // stem -> { select, spk } for the zoomed pane's "Notes: <lane>" chip pair
+let zoomNotesChipEls = {}; // stem -> { chip, select, spk } for the zoomed pane's "Notes: <lane>" chip pair
+                            // — chip is the wrapping element, hidden until that stem has notes;
+                            // see syncNotesChipsVisibility.
 let editToggleEl = null;   // the one global Edit-notes checkbox, beside the two Notes chips
+let editToggleLabelEl = null; // its wrapping <label> — hidden until any channel has notes,
+                               // same gate as the Notes chips above (syncNotesChipsVisibility)
 let ribbonVolume = { vocals: 1, bass: 1 };
 let ribbonHeight = { vocals: readStoredNumber(`${RIBBON_H_KEY}.vocals`, RIBBON_H_DEFAULT, clampRibbonH),
                       bass: readStoredNumber(`${RIBBON_H_KEY}.bass`, RIBBON_H_DEFAULT, clampRibbonH) };
 let zoomSeconds = readZoomSeconds();
 let zoomEl = null;         // { lane, canvas, out }
+let overviewEl = null;     // { lane, canvas } — the full-song "Overview" lane docked above the
+                            // zoomed pane; see renderOverview and overviewStems below
+let overviewVolEl = null;  // its volume slider — mirrors el.masterVol both ways, see its build
+                            // site and the el.masterVol 'input' listener
 let zoomPeaksByStem = {};  // stem id -> hi-res envelope, computed lazily, once per song
 let zoomCenter = 0;        // seconds; follows the playhead while playing
 let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
@@ -613,9 +621,12 @@ function buildUI(title) {
    * pane would show plain waveforms only, silently missing the pitch overlay N56a promises. */
   zoomNotesStem = null;
   zoomEl = null;
+  overviewEl = null;
+  overviewVolEl = null;
   zoomChipEls = [];
   zoomNotesChipEls = {};
   editToggleEl = null;
+  editToggleLabelEl = null;
   let anchorTrack = null;   // the first (vocals-priority) stem with a note lane — the zoomed
                              // pane's DOM anchor
   for (const stem of NOTE_STEMS) {
@@ -695,7 +706,10 @@ function buildUI(title) {
     /* The zoomed pane. It shares the lane grid so its canvas starts on the same pixel as
      * every waveform, but NOT the time mapping — it shows a window, which is the whole
      * point. One shared instance, docked above the first (vocals-priority) note lane that
-     * exists — see docs/superpowers/specs/2026-09-01-bass-notes-design.md. */
+     * exists — see docs/superpowers/specs/2026-09-01-bass-notes-design.md. Always visible
+     * (as long as a vocals/bass stem exists at all) rather than gated on note detection, so
+     * it's useful as a plain-waveform inspector before "Find notes" has ever run — only the
+     * Notes chips and Edit toggle inside it wait for detection (syncNotesChipsVisibility). */
     const zLane = document.createElement('div');
     zLane.className = 'lane ribbon-zoom';
 
@@ -787,12 +801,15 @@ function buildUI(title) {
 
     /* One "Notes: <lane>" chip per stem that actually has a note lane this song — mutually
      * exclusive on select (picking one clears the other, see toggleZoomNotes), independent
-     * on mute (each mutes only its own lane). Built the same way the stem chips above are. */
+     * on mute (each mutes only its own lane). Built the same way the stem chips above are.
+     * Hidden until that stem actually has notes — see syncNotesChipsVisibility — since the
+     * zoomed pane itself is now visible from song load, before "Find notes" has ever run. */
     zoomNotesChipEls = {};
     for (const stem of NOTE_STEMS) {
       if (!noteLanes[stem]) continue;
       const chip = document.createElement('span');
       chip.className = 'zoom-chip';
+      chip.hidden = true;
       const select = document.createElement('button');
       select.type = 'button';
       select.className = 'mini zoom-notes-chip';
@@ -807,14 +824,17 @@ function buildUI(title) {
       spk.addEventListener('click', () => toggleRibbon(stem));
       chip.append(select, spk);
       zLaneSel.appendChild(chip);
-      zoomNotesChipEls[stem] = { select, spk };
+      zoomNotesChipEls[stem] = { chip, select, spk };
     }
 
     /* The one global Edit-notes toggle, beside the two Notes chips — editing is inherently
-     * single-target, so one control suffices regardless of how many note-capable stems exist. */
+     * single-target, so one control suffices regardless of how many note-capable stems exist.
+     * Hidden until any channel has notes, same reasoning as the chips above. */
     const editLabel = document.createElement('label');
     editLabel.className = 'notes-ctl zoom-edit-toggle';
     editLabel.title = tr('notes.editTip');
+    editLabel.hidden = true;
+    editToggleLabelEl = editLabel;
     editToggleEl = document.createElement('input');
     editToggleEl.type = 'checkbox';
     editToggleEl.id = 'notes-edit';
@@ -988,10 +1008,49 @@ function buildUI(title) {
                      fieldPitchOctave, applyBtn };
 
     zLane.append(zName, zCanvas, zRangeHint, zToolbar, zFields, zSpacer, zGrip);
-    el.lanes.insertBefore(zLane, anchorTrack.laneEl.nextSibling);
+    el.lanes.insertBefore(zLane, anchorTrack.laneEl);
     attachZoom(zCanvas);
     zoomEl = { lane: zLane, canvas: zCanvas, out: zOut };
-    zLane.hidden = true;
+
+    /* The overview lane: a full-song (never windowed) waveform combining whichever stems
+     * are currently selected in the zoomed pane below — zoomLaneSel's chips plus
+     * zoomNotesStem if a Notes chip is picked, always as a plain waveform (see
+     * overviewStems/renderOverview). Docked above the zoomed pane so the whole "notes"
+     * panel reads top-to-bottom as: where in the song → a close-up window → the per-channel
+     * detail lanes. Click/drag to seek exactly like any other lane. Shares the exact lane
+     * grid (label / wave / vol) so its canvas is the same width as every other lane's —
+     * the playhead lands at the same x on every row, not just this one. */
+    const oLane = document.createElement('div');
+    oLane.className = 'lane overview';
+    const oName = document.createElement('div');
+    oName.className = 'lane-name';
+    const oTxt = document.createElement('span');
+    oTxt.className = 'txt';
+    oTxt.textContent = tr('notes.overview');
+    oName.appendChild(oTxt);
+    const oCanvas = document.createElement('canvas');
+    oCanvas.className = 'wave';
+    oCanvas.title = tr('notes.overviewTip');
+
+    /* No per-stem gain to control here — it's a combination, not one channel — so this
+     * slider mirrors the master volume instead, the one thing that actually applies to the
+     * whole lane. Kept in sync both ways with el.masterVol, see that input listener. */
+    const oVol = document.createElement('div');
+    oVol.className = 'lane-vol';
+    const oSlider = document.createElement('input');
+    Object.assign(oSlider, { type: 'range', min: 0, max: 1.5, step: 0.01, value: el.masterVol.value });
+    oSlider.title = tr('ctl.volume');
+    oSlider.addEventListener('input', () => {
+      el.masterVol.value = oSlider.value;
+      el.masterVol.dispatchEvent(new Event('input'));
+    });
+    oVol.appendChild(oSlider);
+    overviewVolEl = oSlider;
+
+    oLane.append(oName, oCanvas, oVol);
+    el.lanes.insertBefore(oLane, zLane);
+    attachSeek(oCanvas);
+    overviewEl = { lane: oLane, canvas: oCanvas };
   }
 
   syncRangeHints();
@@ -1034,9 +1093,10 @@ function setNotes(stem, payload) {
    * (clearing the selection when the SELECTED channel's lane is hidden). */
   if (zoomNotesStem === null && lane.ribbon && ribbonVisible[stem]) zoomNotesStem = stem;
   applyRibbonVisibility(stem);
-  applyZoomVisibility();
+  syncNotesChipsVisibility();
   syncZoomChips();
   syncEditToggle();
+  renderOverview();
   if (!lane.ribbon) { lane.el.canvas.__layers = null; draw(); return; }
   zoomCenter = currentTime();
   renderRibbon(lane.el.canvas, lane.ribbon, lane.el.canvas.clientWidth, ribbonHeight[stem]);
@@ -1066,6 +1126,7 @@ function renderAll() {
     const lane = noteLanes[stem];
     if (lane && lane.ribbon) renderRibbon(lane.el.canvas, lane.ribbon, lane.el.canvas.clientWidth, ribbonHeight[stem]);
   }
+  renderOverview();
   draw();
 }
 
@@ -1113,6 +1174,56 @@ function renderWave(canvas, peaks, color, cssWidth, kind, scale) {
   const layers = { idle: make('#6b6b7a', 0.55), active: make(color, 1), h, w };
   canvas.__layers = layers;
   return layers;
+}
+
+/** The tracks whose waveform the overview lane should draw: every stem toggled on in the
+ *  zoomed pane's lane chips, plus whichever channel's Notes chip is selected (that stem's
+ *  plain waveform, never its notes/pitch — the overview never draws detected pitch, see
+ *  renderOverview). A Set dedupes the case where a stem is in both. */
+function overviewStems() {
+  const ids = new Set(zoomLaneSel);
+  if (zoomNotesStem) ids.add(zoomNotesStem);
+  return [...ids].map((stem) => tracks.find((t) => t.stem === stem)).filter(Boolean);
+}
+
+/** Pre-rendered idle + active layers for the overview lane, same blit-and-clip shape as
+ *  renderWave — but overlaying every selected stem's full-song peaks in its own colour
+ *  (mirroring renderZoom's own multi-stem overlay) rather than one peaks set in one colour.
+ *  Less than fully opaque so two overlapping stems blend instead of one hiding the other. */
+function renderOverview() {
+  if (!overviewEl) return;
+  const canvas = overviewEl.canvas;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(canvas.clientWidth || 600));
+  const h = 40;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.height = h + 'px';
+
+  const stems = overviewStems();
+  const make = (colorFor, alpha) => {
+    const off = document.createElement('canvas');
+    off.width = canvas.width; off.height = canvas.height;
+    const c = off.getContext('2d');
+    c.scale(dpr, dpr);
+    c.globalAlpha = alpha;
+    const mid = h / 2;
+    const barW = Math.max(1, w / BUCKETS);
+    for (const t of stems) {
+      const scale = laneScale(t.peaks);
+      c.fillStyle = colorFor(t);
+      for (let b = 0; b < BUCKETS; b++) {
+        const x = (b / BUCKETS) * w;
+        const top = Math.max(-1, t.peaks.mins[b] * scale) * mid;
+        const bot = Math.min(1, t.peaks.maxs[b] * scale) * mid;
+        c.fillRect(x, mid + top, barW, Math.max(1, bot - top));
+      }
+    }
+    return off;
+  };
+
+  const layers = { idle: make(() => '#6b6b7a', 0.45), active: make((t) => t.color, 0.6), h, w };
+  canvas.__layers = layers;
 }
 
 const NOTE_LETTERS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -1591,7 +1702,8 @@ function draw() {
     const lane = noteLanes[stem];
     if (lane && lane.ribbon) paint(lane.el.canvas, frac);
   }
-  if (zoomEl && !zoomEl.lane.hidden) {
+  if (overviewEl) paint(overviewEl.canvas, frac);
+  if (zoomEl) {
     // Follow while playing; when stopped the window is wherever it was dragged to.
     if (playing) zoomCenter = t;
     renderZoom(zoomEl.canvas);
@@ -2016,8 +2128,9 @@ function setRibbonVisible(stem, on) {
     syncRangeHints();
   }
   applyRibbonVisibility(stem);
-  applyZoomVisibility();
+  syncNotesChipsVisibility();
   syncZoomChips();
+  renderOverview();
   draw();
 }
 
@@ -2027,15 +2140,20 @@ function applyRibbonVisibility(stem) {
   lane.el.lane.hidden = !(ribbonVisible[stem] && lane.ribbon);
 }
 
-/* The zoomed pane is shared: it stays visible as long as AT LEAST ONE note lane is both
- * visible and populated — dropping to zero, or gaining its first, is what flips it. This is
- * INDEPENDENT of which (if any) Notes chip is selected: deselecting both chips (see
- * toggleZoomNotes) must leave the pane open showing plain waveforms + the beat grid,
- * exactly as today's single-channel pane does when its one Notes chip is toggled off —
- * see renderZoom()'s `showNotes`/`anyRibbon()` handling below for the other half of that. */
-function applyZoomVisibility() {
-  if (!zoomEl) return;
-  zoomEl.lane.hidden = !NOTE_STEMS.some((s) => noteLanes[s] && ribbonVisible[s] && noteLanes[s].ribbon);
+/* The zoomed pane and overview lane are always visible (see their construction in buildUI) —
+ * they're useful as plain-waveform tools before "Find notes" has ever run. Only the per-stem
+ * Notes chip and the one global Edit toggle wait for detection: each chip appears once its
+ * own channel is both visible and populated, and Edit appears once AT LEAST ONE is — showing
+ * a control for pitch data that doesn't exist yet would be a lie. */
+function syncNotesChipsVisibility() {
+  let anyReady = false;
+  for (const stem of NOTE_STEMS) {
+    const ready = !!(noteLanes[stem] && ribbonVisible[stem] && noteLanes[stem].ribbon);
+    const entry = zoomNotesChipEls[stem];
+    if (entry) entry.chip.hidden = !ready;
+    if (ready) anyReady = true;
+  }
+  if (editToggleLabelEl) editToggleLabelEl.hidden = !anyReady;
 }
 
 /* The one global Edit-notes toggle is enabled only once the currently-selected chip's
@@ -2468,6 +2586,7 @@ function zoomBy(factor) {
 function toggleZoomLane(stem) {
   if (zoomLaneSel.has(stem)) zoomLaneSel.delete(stem); else zoomLaneSel.add(stem);
   syncZoomChips();
+  renderOverview();
   draw();
 }
 
@@ -2495,6 +2614,7 @@ function toggleZoomNotes(stem) {
   syncZoomChips();
   syncEditToggle();
   syncRangeHints();
+  renderOverview();
   draw();
 }
 /* ¼ implies ½: the quarter-beat grid already draws the half-beat point (see renderZoom),
@@ -2838,6 +2958,7 @@ gcOnce(`lang-${window.SansI18n.getLocale()}`);
 on(el.masterVol, 'input', () => {
   ensureAudio();
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
+  if (overviewVolEl) overviewVolEl.value = el.masterVol.value;
 });
 
 /* The value is cleared after dispatching so picking the *same* file twice in a row still

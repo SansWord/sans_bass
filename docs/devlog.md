@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.18.5](#v1185--overview-lane-and-a-detection-independent-zoomed-pane-2026-09-02-1404) | A new full-song Overview lane docks above the zoomed pane (itself moved above the vocals lane), combining whichever stems are selected below as plain waveforms — never notes/pitch — with a master-volume mirror in its own volume slot. Both the zoomed pane and the Overview lane are now visible before note detection ever runs; only the per-stem Notes chips and Edit toggle still wait for it. |
 | [v1.18.4](#v1184--fit-the-lane-to-the-melody-off-by-default-2026-09-02-1324) | Both `notes-clip` checkboxes ("Fit the lane to the melody") shipped checked; now default off, still fully interactive if the user wants to tick it. |
 | [v1.18.3](#v1183--hide-notes-panels-until-that-channel-has-notes-2026-09-02-1309) | `#notes-vocals`/`#notes-bass` were gated on stem presence, so a loaded-but-undetected stem still showed its label plus disabled Export/Import/Export-list controls — the same illusion the meta row, tune row, and tempo panel were already fixed for one level down. Whole panel now hidden until that channel has notes. |
 | [v1.18.2](#v1182--closing-the-detection-illusion-of-completion-gap-2026-09-02-1301) | A spinner + "Detecting: vocals, bass…" hint next to the shared Find-notes button names exactly which channel(s) are still running, so vocals landing first is never mistaken for the whole run being done. Each panel's count/toggle/簡譜/key row and the tempo grid panel now stay hidden until they actually have something to show, instead of appearing empty/default the moment a stem loads. The shared button hides outright once every present stem is analysed. |
@@ -49,6 +50,52 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.18.5 — Overview lane and a detection-independent zoomed pane (2026-09-02 14:04)
+
+**Review:** not yet
+
+**What was built:**
+
+- Reordered the top of the notes panel: the zoomed pane now docks **above** the vocals
+  waveform lane instead of below it, and a new **Overview** lane docks above the zoomed
+  pane — topmost in `#lanes`.
+- The Overview lane is a full-song (never windowed) waveform combining whichever stems are
+  currently selected in the zoomed pane below: every stem toggled on via its plain-waveform
+  chips (`zoomLaneSel`) plus whichever channel's Notes chip is selected (`zoomNotesStem`), each
+  overlaid in its own colour. A stem selected only via its Notes chip still draws as a **plain
+  waveform** here — the overview never draws pitch/notes, by construction (`renderOverview`
+  only ever reads `t.peaks`, never a channel's `ribbon`). Click/drag to seek, same as any lane.
+- Its canvas shares the exact `.lane` grid (label / wave / vol columns) as every other lane, so
+  it's exactly as wide, at the same x, as the lanes below it — the playhead lines up across
+  every row. Its volume slot holds a slider that mirrors the master-volume control
+  (`#master-vol`) two-way, since the lane is a combination of several stems rather than one
+  channel with its own gain to control.
+- The zoomed pane and the new Overview lane are now **always visible** once a vocals or bass
+  stem loads — before "Find notes" has ever run — rather than hidden until note detection
+  completes. Only the per-stem **Notes chip** pair and the one global **Edit notes** toggle
+  inside the zoomed pane still wait for detection: each chip hides until its own channel is
+  both visible and populated, and Edit hides until at least one channel is.
+- `docs/behaviour.md`: N5 and N18 updated for the new DOM order and the zoomed pane's
+  always-visible rule; N63-N66 added for the Notes-chip/Edit-toggle detection gating, the
+  Overview lane itself, its width/position guarantee, and its master-volume mirror.
+
+**Key technical learnings:**
+
+- `[note]` The existing idle/active-layer blit pattern (`renderWave`, `paint()`) generalises
+  cleanly to an overlay of *multiple* stems in one lane: build two offscreen canvases — one
+  drawing every selected stem in a fixed idle gray, one drawing each in its own colour — at
+  less-than-full alpha so overlapping stems blend instead of one hiding the other, then let
+  the existing `paint()` blit-and-clip do the per-frame playhead work unchanged.
+- `[gotcha]` Eyeballing a screenshot to judge a playhead-clip boundary was actively misleading —
+  a screenshot scaled down from the real viewport (1503px captured vs. a 1728px viewport here)
+  makes a ~2.5%-wide coloured region *look* like ~22% once JPEG compression and a diagonal
+  waveform edge are involved. Sampling the canvas's own `getImageData` at the actual device-pixel
+  boundary settled it in one call; trust pixel data over a screenshot for anything geometric.
+- `[note]` `docs/behaviour.md`'s synthetic-stems browser harness (`buildStemsZip`/`loadStemsZip`,
+  building a WAV-in-ZIP from sine waves entirely inside the page) was the only practical way to
+  exercise this in a live browser session — the repo's real fixture zips are 29 MB+ and the
+  browser automation's `file_upload` tool refuses anything over 10 MB combined.
 
 ## v1.18.4 — "Fit the lane to the melody" off by default (2026-09-02 13:24)
 

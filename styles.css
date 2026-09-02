@@ -546,6 +546,12 @@ input[type=range] { width: 110px; }
 .notes-panel-label { font: 600 12px var(--mono); color: var(--fg); }
 .notes-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .notes-count { font: 12px var(--mono); color: var(--dim); font-variant-numeric: tabular-nums; }
+.notes-spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: notes-spin 0.7s linear infinite;
+}
+@keyframes notes-spin { to { transform: rotate(360deg); } }
 .notes-ctl { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--dim); }
 .notes-ctl input[type=range] { width: 150px; }
 .notes-val { font-variant-numeric: tabular-nums; min-width: 4.5em; }

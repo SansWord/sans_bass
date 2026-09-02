@@ -311,7 +311,7 @@ The default server is single-threaded, and with files this size the browser can 
 | Per-instrument level | The slider at the right of each lane |
 | Set loop start / end | **a** / **b** at the playhead |
 | Clear the loop | **c** or **Esc**, or the Clear button |
-| Change playback speed | Drag the speed slider, or **[** / **]** / **\\** |
+| Change playback speed | Drag the speed slider, or **[** / **]** (±5%, hold **Shift** for ±1%) / **\\** to reset |
 
 The notes lane has its own controls — see [Step 5](#step-5--find-the-notes).
 

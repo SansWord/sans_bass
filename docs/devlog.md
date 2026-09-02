@@ -63,9 +63,11 @@ Running log of what was built and what was learned building it.
 
 **What was built:**
 
-- A speed slider in the controls bar (50–150%, step 5, `#speed`/`#speed-val`), keyboard
-  `[`/`]` (±5%) and `\` (reset to 100%), always resetting to 100% on a fresh song load —
-  never persisted.
+- A speed slider in the controls bar (10–150%, step 5, `#speed`/`#speed-val`), keyboard
+  `[`/`]` (±5%), Shift+`[`/Shift+`]` (±1%, for landing between multiples of 5), and `\`
+  (reset to 100%), always resetting to 100% on a fresh song load — never persisted. The
+  floor moved from 50% to 10% and the fine step was added after the initial release, on
+  request.
 - Two playback paths selected by whether the rate is exactly 100%. At 100%, `play()` builds
   native `BufferSource`s exactly as before — zero behaviour change, confirmed by browser
   inspection (`stretchNodes` stays empty, `sources` populated) and by the existing test
@@ -100,6 +102,13 @@ Running log of what was built and what was learned building it.
 
 **Key technical learnings:**
 
+- `[gotcha]` `e.key === '[' && e.shiftKey` never fires for a real Shift+[ keypress on a
+  standard layout — holding Shift changes what character the physical `[`/`]` key produces
+  (`{`/`}`), so `e.key` is already `'{'`/`'}'` by the time the handler sees it, and the
+  `e.shiftKey` guard is redundant at best, dead code at worst. The fine-step shortcut checks
+  `e.key === '{'`/`'}'` directly instead. `clampRatePercent()` also had to drop its
+  snap-to-`RATE_STEP` behavior (added in the initial release) once fine 1% values needed to
+  survive being clamped — a coarse round-to-5 would have quietly erased them.
 - `[gotcha]` The playback-speed design spec and the original plan both stated SoundTouchJS
   is MIT licensed. It is **LGPL-2.1** — checked against every published npm version
   (0.1.0–0.3.0) and the upstream `LICENSE` file directly. For this project (already

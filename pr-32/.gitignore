@@ -1,0 +1,18 @@
+# Your own ripped audio and separated stems — ~860 MB of commercial recordings.
+# These are yours, not the project's, and must never be committed or published.
+rips/**
+stems/**
+!rips/.gitkeep
+!stems/.gitkeep
+
+# macOS
+.DS_Store
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Superpowers brainstorm scratch (visual companion mockups)
+.superpowers/
+
+# Superpowers git worktrees (isolated implementation workspaces)
+.worktrees/

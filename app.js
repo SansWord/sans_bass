@@ -2073,6 +2073,7 @@ function announceTransport(t0) {
       offset,
       loopA: loopOn() ? loopA : null,
       loopB: loopOn() ? loopB : null,
+      rate: ratePercent / 100,
     },
   }));
 }
@@ -3222,7 +3223,8 @@ window.sansBass = {
   },
   /** Current transport, for scheduling a synth that starts mid-playback. */
   transport: () => ({ playing, t0: startedAt, offset,
-                      loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null }),
+                      loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null,
+                      rate: ratePercent / 100 }),
   /** True while the given stem's notes lane is silent. */
   ribbonMuted: (stem) => !!noteLanes[stem]?.muted,
   /** Show or hide one stem's notes pane. Hiding also mutes. */

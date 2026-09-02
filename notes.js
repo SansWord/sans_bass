@@ -392,7 +392,7 @@ function createNotesChannel(stem, els) {
     const t = window.sansBass.transport();
     if (!audio || !t.playing) return;
     sonifier = scheduleNotes(audio.ctx, audio.destination, notes, {
-      timbre, when: t.t0, offset: t.offset, loopA: t.loopA, loopB: t.loopB,
+      timbre, when: t.t0, offset: t.offset, loopA: t.loopA, loopB: t.loopB, rate: t.rate,
     });
   }
 

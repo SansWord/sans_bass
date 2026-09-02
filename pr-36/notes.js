@@ -208,6 +208,14 @@ window.addEventListener('sansbass:temporange', (e) => { tempoRange = e.detail; }
 function refreshTempo() {
   tempoEl.panel.hidden = !(tempo.confidence > 0);
   syncTempoControls();
+  /* app.js shows a calculated/original BPM readout next to the speed percent, and needs to
+   * know the current BPM — including a manual override, which is just tempo.bpmValue like
+   * any other reading — regardless of which of the many controls changed it. Piggybacking on
+   * this function's existing 400ms poll (refreshAll()) is simpler than hooking every mutation
+   * site (the checkbox, the number field, half/double, phase, redetect, import). */
+  window.dispatchEvent(new CustomEvent('sansbass:tempo', {
+    detail: { bpmValue: tempo.bpmValue, confidence: tempo.confidence },
+  }));
 }
 
 /* app.js dispatches this once per buildUI() call (i.e. once per song load), unconditionally —

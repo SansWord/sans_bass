@@ -99,6 +99,16 @@ Running log of what was built and what was learned building it.
   `stretchNodes`/`sources`/`ratePercent`/`playGen` from the console gave ground truth for
   every scripted check — S2–S10 in `docs/behaviour.md` were each confirmed this way, not by
   eye.
+- A calculated/original BPM readout (`#t-bpm`, e.g. `84.0/120.0 BPM`) next to the speed tag,
+  once a drums stem has a confident tempo — the BPM a metronome would need at the *current*
+  rate, over whatever `tempo.bpmValue` currently is in `notes.js` (auto-detected or manually
+  overridden through the tempo panel; the calculation doesn't distinguish the two, both are
+  just "the current BPM"). `notes.js` piggybacks the broadcast on `refreshTempo()`, already
+  running every 400ms as part of `refreshAll()` regardless of which of the many tempo
+  controls changed — one broadcast point instead of hooking every mutation site (checkbox,
+  number field, half/double, phase nudges, redetect, import). `app.js` dedupes on
+  `(bpmValue, confidence)` before repainting, so a settled, paused song doesn't redraw 2.5
+  times a second for an unchanged reading.
 
 **Key technical learnings:**
 

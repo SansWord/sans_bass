@@ -3119,6 +3119,12 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'c' || e.key === 'C' || e.key === 'Escape') { e.preventDefault(); clearLoop(); }
   else if (e.key === '[') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, -window.SansTransportMath.RATE_STEP)); }
   else if (e.key === ']') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, window.SansTransportMath.RATE_STEP)); }
+  // Shift+[ / Shift+] for the fine ±1% step. NOT `e.key === '[' && e.shiftKey` — holding
+  // Shift while pressing the physical [ / ] key changes e.key to '{' / '}' on a standard
+  // layout, so a shiftKey check here would just never fire; checking the produced
+  // character directly is what actually matches a real Shift+[ keypress.
+  else if (e.key === '{') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, -window.SansTransportMath.RATE_FINE_STEP)); }
+  else if (e.key === '}') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, window.SansTransportMath.RATE_FINE_STEP)); }
   else if (e.key === '\\') { e.preventDefault(); setRate(window.SansTransportMath.RATE_DEFAULT); }
   else if (/^[1-9]$/.test(e.key)) {
     const t = tracks[parseInt(e.key, 10) - 1];

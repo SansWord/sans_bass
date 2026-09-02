@@ -1,19 +1,22 @@
 import { test, assertEq, assertClose } from './assert.js';
 const M = window.SansTransportMath;
 
-test('transport-math: clampRatePercent snaps to the nearest step and clamps to range', () => {
+test('transport-math: clampRatePercent rounds and clamps to range, without snapping to RATE_STEP', () => {
   assertEq(M.clampRatePercent(100), 100);
-  assertEq(M.clampRatePercent(103), 105, 'snaps to the nearest 5');
-  assertEq(M.clampRatePercent(102), 100, 'snaps down when closer to the lower step');
+  assertEq(M.clampRatePercent(103), 103, 'not forced onto a multiple of 5 — Shift+[ / Shift+] relies on this');
+  assertEq(M.clampRatePercent(102.4), 102, 'rounds to the nearest whole percent');
   assertEq(M.clampRatePercent(200), 150, 'clamped to the max');
-  assertEq(M.clampRatePercent(0), 50, 'clamped to the min');
+  assertEq(M.clampRatePercent(0), 10, 'clamped to the min');
 });
 
-test('transport-math: nudgeRatePercent moves by exactly one step and stays in range', () => {
-  assertEq(M.nudgeRatePercent(100, 5), 105);
+test('transport-math: nudgeRatePercent moves by exactly the given delta and stays in range', () => {
+  assertEq(M.nudgeRatePercent(100, 5), 105, 'coarse step (plain [ / ])');
   assertEq(M.nudgeRatePercent(100, -5), 95);
+  assertEq(M.nudgeRatePercent(100, 1), 101, 'fine step (Shift+[ / Shift+])');
+  assertEq(M.nudgeRatePercent(100, -1), 99);
   assertEq(M.nudgeRatePercent(150, 5), 150, 'does not overshoot the max');
-  assertEq(M.nudgeRatePercent(50, -5), 50, 'does not undershoot the min');
+  assertEq(M.nudgeRatePercent(10, -5), 10, 'does not undershoot the new min');
+  assertEq(M.nudgeRatePercent(10, -1), 10, 'the fine step does not undershoot the min either');
 });
 
 test('transport-math: currentTimeAtRate at 100% matches the un-rate-scaled formula', () => {

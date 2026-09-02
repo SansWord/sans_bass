@@ -134,6 +134,23 @@ memory while any non-100% rate is active. Those copies are dropped when the rate
 - No change to the in-browser separation pipeline, note detection, or tempo-grid work — this
   feature only touches transport/playback and the sonify scheduling formula it depends on.
 
+## Documentation
+
+Two user-facing docs need updates in the same commit as the feature, per this project's
+conventions:
+
+- **`README.md`**, `### Controls` table (around line 300–314): add a row for the speed
+  slider (e.g. `Change playback speed | Drag the speed slider, or **[** / **]** / **\\**`),
+  matching the existing row style. Given the loop-seam caveat above, also add a short note
+  near `### A–B repeat` (or as a new subsection after it) explaining that pitch stays fixed at
+  any speed, but a time-stretched loop can have a faint seam at the wrap point — the same
+  kind of "how it actually behaves, not just how to use it" detail that section already
+  gives for looping.
+- **`docs/behaviour.md`**: a new entry describing the observable behavior (rate control
+  present; changing it produces audibly pitch-preserved faster/slower playback; resets to
+  100% on load; keyboard shortcuts `[`/`]`/`\`) and how to observe each one, matching that
+  doc's existing format.
+
 ## Testing
 
 - Unit-testable pieces (`tests/test.html`): the `currentTime()` rate-scaling formula, the

@@ -66,6 +66,29 @@ needs beat tracking — see the note under note editing on why that is its own p
 and printing, persistence of the chosen key across loads, and surfacing detection confidence
 (`margin`) so a low-confidence guess reads as a guess.
 
+## Migrate to npm + a build step
+
+Wanted: drop the "no build step, no npm" hard constraint (see `CLAUDE.md`) in favour of a real
+package manager and bundler (Vite or esbuild), so third-party code (SoundTouchJS in
+[`lib/vendor/soundtouch-core.js`](../lib/vendor/soundtouch-core.js), the ONNX runtime currently
+pulled from jsDelivr in `separate.js`) can be installed as a normal dependency instead of
+vendored or CDN-loaded.
+
+**What this touches, once picked up.** This is a project-wide change, not a one-file swap:
+`app.js` and every `lib/*.js` classic script would become bundled modules; `tests/test.html`'s
+plain `<script>` tags would need to load through the same bundle (or the test harness would
+need its own build step); the CI workflows in `.github/workflows/` would gain a build stage
+before publishing to `gh-pages`, for both the `main` release and every per-PR `/pr-<N>/`
+preview (see [`deployment.md`](deployment.md)); and `CLAUDE.md`, `README.md`, and
+`deployment.md` would all need their "no build step" language rewritten.
+
+**Open questions before design:** Vite vs. esbuild vs. something else; whether the whole app
+bundles as one entry point or stays split (player / separation / notes) the way it is today;
+whether `tests/test.html` keeps working unbundled during the transition or migrates in the
+same pass. Raised while executing the v1.19.0 playback-speed plan — SoundTouchJS ended up
+vendored under LGPL-2.1 rather than installed, precisely because this migration hadn't
+happened yet.
+
 ## Paste a YouTube link, extract the audio for separation
 
 Wanted: paste a URL, get the audio, separate it — without the manual download step.

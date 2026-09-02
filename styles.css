@@ -400,6 +400,13 @@ input[type=range] { width: 110px; }
 .lane-vol { display: flex; align-items: center; }
 .lane-vol input { width: 100%; }
 
+/* The overview lane has nothing to mute or click-to-solo — it's a read-only combination of
+   whatever the zoomed pane below has selected — so its name isn't a click target like every
+   other lane's. Its wave and vol columns stay the plain .lane grid, unaltered, so its canvas
+   is exactly as wide as every other lane's and the playhead lines up at the same x. */
+.lane.overview .lane-name { cursor: default; }
+.lane.overview .lane-name:hover { background: var(--panel-2); }
+
 /* The caption + Clear button under the drums lane, naming the current BPM-detection range.
    grid-column: 1 / -1 spans the .lane grid the same way .note-range-hint already does. */
 .tempo-range-hint {

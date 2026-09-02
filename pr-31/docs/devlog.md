@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [v1.18.0](#v1180--independent-vocalsbass-note-channels-2026-09-02-0924) | A second, fully independent note-detection channel for the bass stem, alongside the existing vocals one: two per-stem panels, two lanes that can be found/shown/muted/edited independently and play simultaneously, and one shared zoomed pane whose two mutually-exclusive "Notes" chips pick which channel it displays — switching never loses the other channel's edits. Bass plays back in a new duller, longer-sustaining timbre distinct from vocals' piano tone. |
+| [v1.18.0](#v1180--independent-vocalsbass-note-channels-2026-09-02-0954) | A second, fully independent note-detection channel for the bass stem, alongside the existing vocals one: two per-stem panels, two lanes that can be found/shown/muted/edited independently and play simultaneously, and one shared zoomed pane whose two mutually-exclusive "Notes" chips pick which channel it displays — switching never loses the other channel's edits. Bass plays back in a new duller, longer-sustaining timbre distinct from vocals' piano tone. |
 | [v1.17.2](#v1172--sub-beat-dotted-lines-in-the-zoomed-pane-2026-09-01-2258) | Two toggle buttons, ½ and ¼, beside the zoomed pane's zoom controls draw dotted half-/quarter-beat lines — off by default, zoomed pane only. ¼ implies ½: clicking ¼ also switches ½ on, and turning ½ off also turns ¼ off. |
 | [v1.17.1](#v1171--zoomed-pane-lane-selector-2026-09-01-1840) | The zoomed pane gets a labelled lane selector — any combination of stem waveforms, gray while the detected-notes overlay is shown and colourful when it isn't — plus a per-lane mute glyph (stems and the notes synth alike), an always-on beat grid, and a fixed truncated "局部放大" label. |
 | [v1.17.0](#v1170--tempo-grid-2026-09-01-1650) | Detects BPM/phase from the drums stem (onset envelope + autocorrelation, bundled into the existing vocals analysis pass) and draws a correctable beat/bar grid over the notes lane, the zoomed pane, and now — faintly, bars only — each stem lane's own waveform. Drag-to-select on the drums lane narrows the audio the detector looks at; tempo round-trips through the edits export/import JSON. Purely visual: a direct regression test guards that it never touches `interpret()` or the note list. |
@@ -46,9 +46,9 @@ Running log of what was built and what was learned building it.
 
 ---
 
-## v1.18.0 — Independent vocals/bass note channels (2026-09-02 09:24)
+## v1.18.0 — Independent vocals/bass note channels (2026-09-02 09:54)
 
-**Review:** not yet
+**Review:** complete
 
 **Design docs:**
 - Bass notes: [Spec](superpowers/specs/2026-09-01-bass-notes-design.md) [Plan](superpowers/plans/2026-09-01-bass-notes.md)
@@ -87,6 +87,15 @@ Running log of what was built and what was learned building it.
   import.
 - `docs/behaviour.md` gained rows N18/N23/N56-N56d/N59/N61 documenting the two-channel lane and
   zoomed-pane behaviour, and every new/changed string landed in both `lib/i18n.js` locales.
+- A final whole-branch review (after all 11 tasks individually passed their own review) found
+  and fixed one Critical bug — shared tempo state was never reset between song loads, so a
+  second song silently inherited the first song's `tempoRange`/BPM/phase — plus five Important
+  fixes: a manual-tempo overwrite guard when the second channel's detection completes, the
+  zoomed pane no longer keeps showing a channel's pitch overlay after that channel's lane is
+  hidden, ~20 stale DOM-id references in `docs/behaviour.md` were corrected (including one row
+  describing an element that had been deleted outright), the global Edit-notes checkbox got its
+  `id` back, and both full-song note lanes now carry a stem-qualified label instead of an
+  identical unlabelled "Notes" on both.
 
 **Key technical learnings:**
 
@@ -130,6 +139,23 @@ Running log of what was built and what was learned building it.
   a verification pass and reloading the page later in the same pass left it hidden on the next
   load, which is correct behaviour but worth remembering when a lane doesn't appear as expected
   after a reload during manual testing.
+- `[gotcha]` Pulling per-song state up from a single-instance module to shared, module-level
+  scope (tempo, in this case) is not the same edit as pulling it into a factory closure —
+  nothing forces you to re-home the OLD owner's teardown path. The pre-refactor `reset()`
+  zeroed `tempo`/`tempoRange`/`tempoRangeArmed` on every new song load; the post-refactor
+  per-channel `reset()` simply had nowhere obvious to put those lines once tempo moved out of
+  its closure, so they were silently dropped. Every per-task review (each seeing only that
+  task's own diff) passed, because no single task's diff contained both the old `reset()` and
+  the new one to compare — only the whole-branch review, with the full history in view, caught
+  that a second song load was silently inheriting the first song's tempo window. Any "pull X up
+  to shared scope" refactor needs an explicit line-by-line diff of the old owner's reset/
+  teardown path against the new one, not just a check that the moved state initializes
+  correctly on first use.
+- `[insight]` A scoped final review that explicitly tells the reviewer "here are the N findings
+  the earlier task reviews already ruled on, don't re-flag them" is what makes a broad
+  whole-branch pass worth running at all — without that framing, a reviewer re-litigates
+  already-settled calls (like Task 5's intentional markup duplication) instead of spending its
+  budget on the cross-task interactions no single task's diff could reveal.
 
 ## v1.17.2 — Sub-beat dotted lines in the zoomed pane (2026-09-01 22:58)
 

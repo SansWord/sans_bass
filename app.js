@@ -53,6 +53,13 @@ let zoomLaneSel = new Set(['vocals', 'notes']);
 let zoomChipEls = [];      // [{ stem, select, label, spk }] for the current song's lane chips
 let zoomNotesChipEl = null;
 let zoomNotesMuteEl = null;
+/* Sub-beat dotted lines in the zoomed pane, off by default — the beat/bar grid is the
+ * reference most songs need, and quarter-beat ticks are clutter until asked for. Not
+ * persisted, same as zoomLaneSel: every fresh page load starts back at the default. */
+let showHalfBeat = false;
+let showQuarterBeat = false;
+let halfBeatBtn = null;
+let quarterBeatBtn = null;
 let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:editmode'
 let selectedNote = null;    // { at, midi } — at is a time point inside the note, midi is its
                              // pitch at selection time; both identify one specific note
@@ -680,6 +687,27 @@ function buildUI(title) {
     };
     zBtns.append(mkBtn('\u2212', 1.5, 'notes.zoomOut'), mkBtn('+', 1 / 1.5, 'notes.zoomIn'));
 
+    /* Sub-beat dotted-line toggles \u2014 view options for this pane, same family as the zoom
+     * level buttons beside them, not a lane selection (which is why they sit here rather
+     * than in zLaneSel below). */
+    const zSubBtns = document.createElement('span');
+    zSubBtns.className = 'zoom-btns zoom-sub-btns';
+    halfBeatBtn = document.createElement('button');
+    halfBeatBtn.type = 'button';
+    halfBeatBtn.className = 'mini zoom-sub-btn';
+    halfBeatBtn.classList.toggle('active', showHalfBeat);
+    halfBeatBtn.textContent = '\u00bd';
+    halfBeatBtn.title = tr('notes.zoomHalfBeatTip');
+    halfBeatBtn.addEventListener('click', toggleHalfBeat);
+    quarterBeatBtn = document.createElement('button');
+    quarterBeatBtn.type = 'button';
+    quarterBeatBtn.className = 'mini zoom-sub-btn';
+    quarterBeatBtn.classList.toggle('active', showQuarterBeat);
+    quarterBeatBtn.textContent = '\u00bc';
+    quarterBeatBtn.title = tr('notes.zoomQuarterBeatTip');
+    quarterBeatBtn.addEventListener('click', toggleQuarterBeat);
+    zSubBtns.append(halfBeatBtn, quarterBeatBtn);
+
     /* The label stays with what it actually names \u2014 the seconds readout and the zoom
      * buttons \u2014 on one row. It used to sit alone above a second row of lane chips, which
      * read as if it were labelling THEM instead. */
@@ -687,7 +715,7 @@ function buildUI(title) {
     zTopRow.className = 'zoom-top-row';
     const zSecsGroup = document.createElement('span');
     zSecsGroup.className = 'zoom-secs-group';
-    zSecsGroup.append(zOut, zBtns);
+    zSecsGroup.append(zOut, zBtns, zSubBtns);
     zTopRow.append(zTxt, zSecsGroup);
 
     /* Which stem(s) \u2014 and whether the detected-notes overlay \u2014 the pane below draws. One
@@ -1294,6 +1322,34 @@ function renderZoom(canvas) {
       const bx = x(b.t);
       c.fillStyle = b.bar ? 'rgba(255,255,255,.30)' : 'rgba(255,255,255,.12)';
       c.fillRect(bx, 0, b.bar ? 2 : 1, h);
+    }
+
+    /* Sub-beat dotted lines, gated behind the ½/¼ toggle buttons beside the zoom controls —
+     * off by default, since quarter-beat ticks are clutter until asked for. Quarter drawn
+     * first, fainter, since it already includes the half-beat point at its centre; half
+     * drawn on top of it in a slightly stronger dash. */
+    if (showQuarterBeat || showHalfBeat) {
+      const drawDotted = (t, color) => {
+        const bx = Math.round(x(t)) + 0.5;
+        c.strokeStyle = color;
+        c.beginPath();
+        c.moveTo(bx, 0);
+        c.lineTo(bx, h);
+        c.stroke();
+      };
+      c.lineWidth = 1;
+      c.setLineDash([2, 2]);
+      if (showQuarterBeat) {
+        for (const t of window.SansRibbon.subdivisionTimes(ribbon.tempo, duration, 4)) {
+          if (t >= win.from && t <= win.to) drawDotted(t, 'rgba(255,255,255,.07)');
+        }
+      }
+      if (showHalfBeat) {
+        for (const t of window.SansRibbon.subdivisionTimes(ribbon.tempo, duration, 2)) {
+          if (t >= win.from && t <= win.to) drawDotted(t, 'rgba(255,255,255,.14)');
+        }
+      }
+      c.setLineDash([]);
     }
   }
 
@@ -2254,6 +2310,23 @@ function toggleZoomLane(stem) {
 function toggleZoomNotes() {
   if (zoomLaneSel.has('notes')) zoomLaneSel.delete('notes'); else zoomLaneSel.add('notes');
   syncZoomChips();
+  draw();
+}
+/* ¼ implies ½: the quarter-beat grid already draws the half-beat point (see renderZoom),
+ * so a quarter grid with no half toggle on would show sub-beat lines the ½ button claims
+ * are off. Turning ½ off therefore also turns ¼ off; ½ alone is still a valid state. */
+function toggleHalfBeat() {
+  showHalfBeat = !showHalfBeat;
+  if (!showHalfBeat) showQuarterBeat = false;
+  halfBeatBtn.classList.toggle('active', showHalfBeat);
+  quarterBeatBtn.classList.toggle('active', showQuarterBeat);
+  draw();
+}
+function toggleQuarterBeat() {
+  showQuarterBeat = !showQuarterBeat;
+  if (showQuarterBeat) showHalfBeat = true;
+  halfBeatBtn.classList.toggle('active', showHalfBeat);
+  quarterBeatBtn.classList.toggle('active', showQuarterBeat);
   draw();
 }
 

@@ -122,6 +122,26 @@ test('pitch: yinFrame resolves sines across the whole search range', () => {
   }
 });
 
+import { BASS_RANGE } from '../lib/pitch.js';
+
+test('pitch: BASS_RANGE finds a fundamental the vocal range cannot see', () => {
+  const SR = 11025;
+  const hz = 41.2;   // open E1
+  const buf = sine(hz, 0.2, SR);
+  const vocalRange = yinFrame(buf, 0, SR);                 // YIN_DEFAULTS: tauMax 138 -> 79.9 Hz floor
+  const bassRange = yinFrame(buf, 0, SR, BASS_RANGE);
+  assert(vocalRange.confidence < 0.5, 'the vocal range cannot find a period this long — no true minimum inside [10,138]');
+  assertClose(centsFromHz(bassRange.f0), centsFromHz(hz), 20, 'the bass range resolves it within 20 cents');
+  assert(bassRange.confidence > 0.9, 'and reads as strongly periodic');
+});
+
+test('pitch: BASS_RANGE\'s window is wide enough to keep the vocal range\'s period-count ratio', () => {
+  // The vocal range gets ~3.7 periods per window at its own floor (512 / 138*sampleRate/tauMax-ish
+  // arithmetic is approximate by design — this pins the INTENT, not an exact ratio): a bass window
+  // that regressed back toward the vocal default would starve the difference function of cycles.
+  assert(BASS_RANGE.window >= 2 * 512, 'the bass window is meaningfully wider than the vocal default');
+});
+
 test('pitch: yinFrame reports low confidence on noise', () => {
   const buf = new Float32Array(1024);
   let seed = 12345;

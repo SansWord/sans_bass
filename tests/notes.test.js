@@ -85,6 +85,20 @@ test('notes: the worker carries candidates across postMessage', async () => {
     'a candidate arrives as a usable {cents, p} object, not a stringified husk');
 });
 
+import { BASS_RANGE } from '../lib/pitch.js';
+
+test('notes: analyse threads an optional range into f0Track', async () => {
+  const hz = 41.2;   // open E1 - below YIN_DEFAULTS' 79.9 Hz floor
+  const withoutRange = await analyse([sine(hz, 1.5, SR)], SR);
+  const data = await roundTrip({
+    type: 'analyse', channels: [sine(hz, 1.5, SR)], sampleRate: SR, range: BASS_RANGE,
+  });
+  const voicedWithout = [...withoutRange.cents].filter((c) => c !== 0).length;
+  const voicedWith = [...data.frames.cents].filter((c) => c !== 0).length;
+  assert(voicedWith > voicedWithout,
+    `a wider range finds far more voiced frames for a low tone the default misses (${voicedWith} vs ${voicedWithout})`);
+});
+
 test('notes: analyse with a drums buffer returns tempo alongside frames', async () => {
   const bpm = 120;
   const period = 60 / bpm;

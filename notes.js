@@ -17,8 +17,8 @@
  * See docs/superpowers/specs/2026-09-01-bass-notes-design.md. */
 
 import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, stemMismatch, BASS_RANGE }
-  from './lib/pitch.js?v=1.18.2';
-import { scheduleNotes } from './lib/sonify.js?v=1.18.2';
+  from './lib/pitch.js?v=1.18.3';
+import { scheduleNotes } from './lib/sonify.js?v=1.18.3';
 
 const tr = (key, params) => window.SansI18n.t(key, params);
 
@@ -179,7 +179,7 @@ tempoEl.rangeToggle.addEventListener('click', () => {
 tempoEl.redetect.addEventListener('click', () => {
   const drums = currentTempoRangeChannels();
   if (!drums) return;
-  const w = new Worker('./notes.worker.js?v=1.18.2', { type: 'module' });
+  const w = new Worker('./notes.worker.js?v=1.18.3', { type: 'module' });
   tempoEl.redetect.disabled = true;
   w.onmessage = (e) => {
     w.terminate();
@@ -441,7 +441,7 @@ function createNotesChannel(stem, els) {
 
     const drums = currentTempoRangeChannels();
 
-    worker = new Worker('./notes.worker.js?v=1.18.2', { type: 'module' });
+    worker = new Worker('./notes.worker.js?v=1.18.3', { type: 'module' });
     worker.onmessage = (e) => {
       const m = e.data;
       worker.terminate();
@@ -478,12 +478,17 @@ function createNotesChannel(stem, els) {
     });
   }
 
-  /* The panel is only meaningful with this stem loaded, and there is no load event to hang
-   * this on — separate.js polls the same way, for the same reason. */
+  /* Hidden until this channel actually has notes, not merely until its stem is loaded —
+   * same principle as the meta/tune rows inside it (and #notes-tempo): an empty panel with
+   * disabled Export/Import/Export-list controls sitting there before Find Notes is pressed
+   * is output before there is any. Checked ahead of the reset() call below so a song/stem
+   * change hides the panel in the same tick frames is cleared, not one poll tick later.
+   * There is no load event to hang this on — separate.js polls the same way, for the same
+   * reason. */
   function refresh() {
     const stemAudio = window.sansBass?.stemBuffer?.(stem);
-    els.panel.hidden = !stemAudio;
     if (frames && (!stemAudio || stemAudio.buffer !== analysedBuffer)) reset();
+    els.panel.hidden = !frames;
   }
 
   /* Read by the shared #notes-go-all button (module-level, below) to decide whether this

@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.18.1](#v1181--one-shared-find-notes-button-2026-09-02-1244) | The two per-panel Find-notes buttons become one shared button that detects whichever of vocals/bass still needs it — a single-melodic-stem zip detects just that stem, and the button disables (not hides) once nothing is pending. |
 | [v1.18.0](#v1180--independent-vocalsbass-note-channels-2026-09-02-0954) | A second, fully independent note-detection channel for the bass stem, alongside the existing vocals one: two per-stem panels, two lanes that can be found/shown/muted/edited independently and play simultaneously, and one shared zoomed pane whose two mutually-exclusive "Notes" chips pick which channel it displays — switching never loses the other channel's edits. Bass plays back in a new duller, longer-sustaining timbre distinct from vocals' piano tone. |
 | [v1.17.2](#v1172--sub-beat-dotted-lines-in-the-zoomed-pane-2026-09-01-2258) | Two toggle buttons, ½ and ¼, beside the zoomed pane's zoom controls draw dotted half-/quarter-beat lines — off by default, zoomed pane only. ¼ implies ½: clicking ¼ also switches ½ on, and turning ½ off also turns ¼ off. |
 | [v1.17.1](#v1171--zoomed-pane-lane-selector-2026-09-01-1840) | The zoomed pane gets a labelled lane selector — any combination of stem waveforms, gray while the detected-notes overlay is shown and colourful when it isn't — plus a per-lane mute glyph (stems and the notes synth alike), an always-on beat grid, and a fixed truncated "局部放大" label. |
@@ -45,6 +46,44 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.18.1 — One shared Find-notes button (2026-09-02 12:44)
+
+**Review:** not yet
+
+**What was built:**
+
+- The two per-panel Find-notes buttons (`#notes-go-vocals`, `#notes-go-bass`) are replaced by
+  one shared `#notes-go-all` button, placed above both panels rather than inside either. Clicking
+  it runs `analyse()` only on whichever channel(s) still need it (have a stem, no notes yet), so
+  a zip with just one melodic stem detects only that one and leaves the other panel — which
+  never renders in the first place, per its own stem-presence gate — untouched.
+- Each channel now exposes `analyse`/`needsAnalyse`/`busy` from `createNotesChannel()`'s return
+  object instead of driving a per-channel go button's `hidden`/`disabled` directly; `analyse()`
+  and `reset()` lost every `els.go.*` line, since there is no longer a DOM element to own that
+  state, and `worker !== null` stands in for the busy flag it used to track via the button.
+- The shared button's own enabled state is recomputed on the existing 400 ms `refreshAll()`
+  poll (`syncGoAll()`), the same "no load/analysis-done event to hang this on" pattern the
+  per-panel `refresh()` and `separate.js` already use. It is **disabled**, not hidden, whenever
+  no melodic stem is loaded at all, both present stems are already analysed, or a worker is
+  currently running — staying visible and legible even when there is nothing to detect, rather
+  than vanishing the way the panels themselves do.
+- `docs/behaviour.md` N3/N22 updated for the new element id and button-sharing semantics; N22a
+  added to document the two corner cases directly: a single-melodic-stem zip leaves the button
+  enabled and detects only that stem, a zip with neither vocals nor bass disables it immediately
+  on load with no click required to observe it.
+
+**Key technical learnings:**
+
+- `[note]` The per-channel go button's `hidden`/`disabled` toggling was pure UI bookkeeping —
+  the real state (`frames`, `worker`) already lived in each channel's closure. Exposing that
+  state as getters (`needsAnalyse`, `busy`) instead of reading it back off a DOM element made
+  the shared button a small, independent addition rather than a rewrite of `analyse()`/`reset()`.
+- `[note]` Auto-triggering detection right after in-browser separation was considered and
+  explicitly rejected: separation is already the heaviest thing the app does (a 285 MB ONNX
+  model), and stacking ~7 s of worker CPU per melodic stem immediately after it would be
+  unbidden CPU exactly the size the button-triggered design in v1.10.0 was written to avoid.
+  Left manual.
 
 ## v1.18.0 — Independent vocals/bass note channels (2026-09-02 09:54)
 

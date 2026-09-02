@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.17.1](#v1171--zoomed-pane-lane-selector-2026-09-01-1840) | The zoomed pane gets a labelled lane selector — any combination of stem waveforms, gray while the detected-notes overlay is shown and colourful when it isn't — plus a per-lane mute glyph (stems and the notes synth alike), an always-on beat grid, and a fixed truncated "局部放大" label. |
 | [v1.17.0](#v1170--tempo-grid-2026-09-01-1650) | Detects BPM/phase from the drums stem (onset envelope + autocorrelation, bundled into the existing vocals analysis pass) and draws a correctable beat/bar grid over the notes lane, the zoomed pane, and now — faintly, bars only — each stem lane's own waveform. Drag-to-select on the drums lane narrows the audio the detector looks at; tempo round-trips through the edits export/import JSON. Purely visual: a direct regression test guards that it never touches `interpret()` or the note list. |
 | [v1.16.5](#v1165--簡譜-note-list-markdown-export-2026-09-01-1258) | A second, human-readable export from the Notes panel: **Export list** downloads the current 簡譜 reading as a Markdown file, chunked into fixed-length timecoded blocks by note start time — separate from the JSON edits round-trip. |
 | [v1.16.4](#v1164--inline-field-labels-and-flat-pitch-entry-2026-09-01-1209) | Visible labels above the Start/End/Pitch fields, and Pitch becomes three dropdowns (letter/accidental/octave) so a flat spelling can be entered directly. `parseNoteName()` moves from a sharps-only lookup to a semitone formula that resolves flats correctly, including the two letters (`Cb`, `Fb`) whose flat crosses an octave boundary. Picking a pitch dropdown auto-commits, splitting Pitch away from Start/End's Enter/Apply-staged path. |
@@ -42,6 +43,61 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.17.1 — Zoomed-pane lane selector (2026-09-01 18:40)
+
+**Review:** not yet
+
+**What was built:**
+
+- The zoomed pane's header now carries a lane selector: one labelled chip per stem actually
+  loaded in the song, plus a **Notes** chip — any combination of stem waveforms can be shown
+  at once alongside, or instead of, the detected-notes overlay. Default is vocals + notes,
+  matching the pane's original fixed behaviour.
+- Render rule: while **Notes** is selected, every selected stem's waveform renders gray so
+  the note blocks stay the colourful thing; with Notes off, each selected waveform renders in
+  its own stem colour and the pitch grid/contour/note blocks disappear — there's nothing
+  pitched to plot them against.
+- A speaker glyph beside each stem chip mutes/unmutes that lane exactly like clicking its row
+  in the main list; the Notes chip carries the same glyph wired to the synthesised-notes
+  lane's own mute instead — a separate decision from whether the overlay is shown at all.
+  Both stay in sync in either direction (`applyGains()` / `applyRibbonGain()`).
+- The beat/bar grid now always draws in the zoomed pane when tempo detection is on,
+  independent of the Notes toggle — it's a tempo reference for whatever's on screen, not
+  something the pitch view should own.
+- Fixed the "局部放大"/"Zoom" label truncating in its old 128px column: it now sits on the
+  same row as the seconds readout and zoom buttons (full lane width, no longer squeezed),
+  with the lane selector as a visually distinct row below it.
+- Peaks are now cached per stem (`zoomPeaksByStem`, lazy on first selection), generalizing
+  the old vocals-only `zoomPeaks`.
+- The lane selection is **not** persisted — it resets to vocals + notes on every page load,
+  unlike the zoom width/height.
+
+**Key technical learnings:**
+
+- `[insight]` The zoomed pane's very existence (`applyRibbonVisibility`) and its whole render
+  loop were hard-gated on `ribbon` (Find Notes having run on vocals), and its Y axis was
+  pitch-derived from the detected notes. Supporting "view any stem alone, no notes needed"
+  meant branching `renderZoom` into two modes — a pitch-grid mode and a plain-waveform mode —
+  rather than removing that gate, which would have meant building a second coordinate system
+  from scratch for a case the feature didn't actually need.
+- `[gotcha]` A first pass moved the pane's title onto its own row above a full-width row of
+  lane chips, to fix the truncation. That read as if the title were labelling the chips below
+  it. The fix wasn't more structure, it was regrouping: the title stays adjacent to the
+  seconds readout/zoom buttons it actually names, and the lane selector is a separate,
+  visually distinct row.
+- `[note]` A colour dot alone didn't identify six similarly-sized swatches — every stem chip
+  needed its own visible name text alongside the dot, not just the colour language the main
+  lane list already relies on.
+
+**Process learnings:**
+
+- `[note]` Classified as bounded — the zoomed pane already existed as a flow to extend — but
+  it still took several rounds of clarifying questions (is vocals mandatory in the selection,
+  what's the gray/colour rule exactly, what happens with 2+ non-notes lanes selected) before
+  the "Notes is its own selectable item, separate from the vocals waveform" distinction the
+  user actually had in mind became clear. Worth re-confirming understanding mid-brainstorm
+  rather than running with the first reasonable-sounding reading.
 
 ## v1.17.0 — Tempo grid (2026-09-01 16:50)
 

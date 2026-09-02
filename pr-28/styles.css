@@ -489,15 +489,27 @@ input[type=range] { width: 110px; }
 .lane.ribbon-zoom .lane-name:hover { background: none; }
 .lane.ribbon-zoom .wave { grid-column: 2; }
 
-.zoom-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.zoom-lane-sel { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+/* The title stays grouped with what it names — the seconds readout and zoom buttons —
+   on one row; the lane selector is a visually distinct row below, so it reads as its own
+   control rather than a caption for the title above it. */
+.zoom-top-row { display: flex; align-items: center; gap: 10px; }
+.zoom-lane-sel { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 1px; }
 .zoom-chip { display: inline-flex; align-items: center; gap: 3px; }
-.zoom-chip-dot {
-  width: 10px; height: 10px; padding: 0;
-  border: 1.5px solid currentColor; border-radius: 50%;
-  background: transparent; cursor: pointer;
+/* A colour alone doesn't say which stem a dot is — see the chip's own label span. The dot
+   still carries the stem's colour (via --chip-color) so it reads at a glance once learned. */
+.zoom-chip-select {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: transparent; border: none; padding: 0; cursor: pointer;
+  font: 10px var(--mono); color: var(--dim);
 }
-.zoom-chip-dot.on { background: currentColor; }
+.zoom-chip-select:hover { color: var(--fg); }
+.zoom-chip-select.on { color: var(--chip-color); }
+.zoom-chip-dot {
+  width: 8px; height: 8px; flex: none;
+  border: 1.5px solid var(--chip-color); border-radius: 50%;
+  background: transparent;
+}
+.zoom-chip-select.on .zoom-chip-dot { background: var(--chip-color); }
 .zoom-chip-mute {
   background: transparent; border: none; padding: 0; line-height: 1;
   font: 11px var(--mono); color: var(--dim); cursor: pointer;

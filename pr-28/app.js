@@ -50,8 +50,9 @@ let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
  * fresh page load starts back at the default. A stem id it contains that the current song
  * doesn't have is simply never drawn. */
 let zoomLaneSel = new Set(['vocals', 'notes']);
-let zoomChipEls = [];      // [{ stem, dot, spk }] for the current song's lane chips
+let zoomChipEls = [];      // [{ stem, select, label, spk }] for the current song's lane chips
 let zoomNotesChipEl = null;
+let zoomNotesMuteEl = null;
 let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:editmode'
 let selectedNote = null;    // { at, midi } — at is a time point inside the note, midi is its
                              // pitch at selection time; both identify one specific note
@@ -600,6 +601,7 @@ function buildUI(title) {
   zoomEl = null;
   zoomChipEls = [];
   zoomNotesChipEl = null;
+  zoomNotesMuteEl = null;
   const vocals = tracks.find((t) => t.stem === 'vocals');
   if (vocals) {
     const lane = document.createElement('div');
@@ -661,41 +663,6 @@ function buildUI(title) {
     zTxt.className = 'txt';
     zTxt.textContent = tr('notes.zoom');
 
-    /* Which stem(s) \u2014 and whether the detected-notes overlay \u2014 the pane below draws. One
-     * chip per stem actually in this song, plus a 'notes' chip: a dot to toggle it into the
-     * pane, and (stems only) a speaker glyph that mutes/unmutes the lane exactly like
-     * clicking its row in the main list does (see toggleTrack). Left of the seconds readout,
-     * on its own row so six-plus chips have room without crowding the label above. */
-    const zLaneSel = document.createElement('span');
-    zLaneSel.className = 'zoom-lane-sel';
-    zoomChipEls = tracks.filter((t) => t.stem).map((t) => {
-      const chip = document.createElement('span');
-      chip.className = 'zoom-chip';
-      const dot = document.createElement('button');
-      dot.type = 'button';
-      dot.className = 'zoom-chip-dot';
-      dot.style.color = t.color;
-      dot.title = tr('notes.zoomLaneShowTip', { lane: laneLabel(t) });
-      dot.addEventListener('click', () => toggleZoomLane(t.stem));
-      const spk = document.createElement('button');
-      spk.type = 'button';
-      spk.className = 'zoom-chip-mute';
-      spk.textContent = '\u266a';
-      spk.title = tr('notes.zoomLaneMuteTip', { lane: laneLabel(t) });
-      spk.addEventListener('click', () => toggleTrack(t));
-      chip.append(dot, spk);
-      zLaneSel.appendChild(chip);
-      return { stem: t.stem, dot, spk };
-    });
-    zoomNotesChipEl = document.createElement('button');
-    zoomNotesChipEl.type = 'button';
-    zoomNotesChipEl.className = 'mini zoom-notes-chip';
-    zoomNotesChipEl.textContent = tr('notes.zoomNotesChip');
-    zoomNotesChipEl.title = tr('notes.zoomNotesChipTip');
-    zoomNotesChipEl.addEventListener('click', toggleZoomNotes);
-    zLaneSel.appendChild(zoomNotesChipEl);
-    syncZoomChips();
-
     const zOut = document.createElement('span');
     zOut.className = 'zoom-secs';
 
@@ -713,13 +680,72 @@ function buildUI(title) {
     };
     zBtns.append(mkBtn('\u2212', 1.5, 'notes.zoomOut'), mkBtn('+', 1 / 1.5, 'notes.zoomIn'));
 
-    const zMetaRow = document.createElement('div');
-    zMetaRow.className = 'zoom-meta-row';
+    /* The label stays with what it actually names \u2014 the seconds readout and the zoom
+     * buttons \u2014 on one row. It used to sit alone above a second row of lane chips, which
+     * read as if it were labelling THEM instead. */
+    const zTopRow = document.createElement('div');
+    zTopRow.className = 'zoom-top-row';
     const zSecsGroup = document.createElement('span');
     zSecsGroup.className = 'zoom-secs-group';
     zSecsGroup.append(zOut, zBtns);
-    zMetaRow.append(zLaneSel, zSecsGroup);
-    zName.append(zTxt, zMetaRow);
+    zTopRow.append(zTxt, zSecsGroup);
+
+    /* Which stem(s) \u2014 and whether the detected-notes overlay \u2014 the pane below draws. One
+     * chip per stem actually in this song, plus a 'notes' chip: a coloured dot AND its
+     * stem name (a colour alone doesn't say which lane it is), toggling it into the pane,
+     * plus (stems only) a speaker glyph that mutes/unmutes the lane exactly like clicking
+     * its row in the main list does (see toggleTrack). Its own row below the title/seconds
+     * row, so it reads as a distinct control \u2014 lane selection, not a caption for anything
+     * above it \u2014 and so six-plus chips have room without crowding that row. */
+    const zLaneSel = document.createElement('span');
+    zLaneSel.className = 'zoom-lane-sel';
+    zoomChipEls = tracks.filter((t) => t.stem).map((t) => {
+      const chip = document.createElement('span');
+      chip.className = 'zoom-chip';
+      const select = document.createElement('button');
+      select.type = 'button';
+      select.className = 'zoom-chip-select';
+      select.style.setProperty('--chip-color', t.color);
+      select.title = tr('notes.zoomLaneShowTip', { lane: laneLabel(t) });
+      const dot = document.createElement('span');
+      dot.className = 'zoom-chip-dot';
+      const label = document.createElement('span');
+      label.className = 'zoom-chip-label';
+      label.textContent = laneLabel(t);
+      select.append(dot, label);
+      select.addEventListener('click', () => toggleZoomLane(t.stem));
+      const spk = document.createElement('button');
+      spk.type = 'button';
+      spk.className = 'zoom-chip-mute';
+      spk.textContent = '\u266a';
+      spk.title = tr('notes.zoomLaneMuteTip', { lane: laneLabel(t) });
+      spk.addEventListener('click', () => toggleTrack(t));
+      chip.append(select, spk);
+      zLaneSel.appendChild(chip);
+      return { stem: t.stem, select, label, spk };
+    });
+    const notesChip = document.createElement('span');
+    notesChip.className = 'zoom-chip';
+    zoomNotesChipEl = document.createElement('button');
+    zoomNotesChipEl.type = 'button';
+    zoomNotesChipEl.className = 'mini zoom-notes-chip';
+    zoomNotesChipEl.textContent = tr('notes.zoomNotesChip');
+    zoomNotesChipEl.title = tr('notes.zoomNotesChipTip');
+    zoomNotesChipEl.addEventListener('click', toggleZoomNotes);
+    /* The synthesised-notes lane has its own mute (see ribbonMuted) — a separate decision
+     * from whether this pane shows the notes overlay at all. Same speaker glyph as a stem
+     * chip's, wired to toggleRibbon rather than toggleTrack. */
+    zoomNotesMuteEl = document.createElement('button');
+    zoomNotesMuteEl.type = 'button';
+    zoomNotesMuteEl.className = 'zoom-chip-mute';
+    zoomNotesMuteEl.textContent = '♪';
+    zoomNotesMuteEl.title = tr('notes.zoomNotesMuteTip');
+    zoomNotesMuteEl.addEventListener('click', toggleRibbon);
+    notesChip.append(zoomNotesChipEl, zoomNotesMuteEl);
+    zLaneSel.appendChild(notesChip);
+    syncZoomChips();
+
+    zName.append(zTopRow, zLaneSel);
 
     const zCanvas = document.createElement('canvas');
     zCanvas.className = 'wave zoomwave';
@@ -1257,6 +1283,20 @@ function renderZoom(canvas) {
     }
   }
 
+  /* The beat/bar grid, independent of whether Notes is selected — it's a tempo reference
+   * for whatever waveform(s) are on screen, not something the pitch view owns. Drawn over
+   * the waveform but under the pitch grid/note blocks, same order as before this was
+   * pulled out of the showNotes block. */
+  if (ribbon.tempo && ribbon.tempo.on) {
+    const beats = window.SansRibbon.beatTimes(ribbon.tempo, duration);
+    for (const b of beats) {
+      if (b.t < win.from || b.t > win.to) continue;
+      const bx = x(b.t);
+      c.fillStyle = b.bar ? 'rgba(255,255,255,.30)' : 'rgba(255,255,255,.12)';
+      c.fillRect(bx, 0, b.bar ? 2 : 1, h);
+    }
+  }
+
   if (showNotes) {
     // Piano-roll grid, same language as the lane.
     const lo = Math.ceil(loM);
@@ -1278,16 +1318,6 @@ function renderZoom(canvas) {
     for (let m = lo; m <= hi + 1; m++) {
       c.fillStyle = isHome(m) ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.075)';
       c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
-    }
-
-    if (ribbon.tempo && ribbon.tempo.on) {
-      const beats = window.SansRibbon.beatTimes(ribbon.tempo, duration);
-      for (const b of beats) {
-        if (b.t < win.from || b.t > win.to) continue;
-        const bx = x(b.t);
-        c.fillStyle = b.bar ? 'rgba(255,255,255,.30)' : 'rgba(255,255,255,.12)';
-        c.fillRect(bx, 0, b.bar ? 2 : 1, h);
-      }
     }
 
     /* Names, overlaid at the left rather than in a gutter — same reason as the lane: a
@@ -1798,6 +1828,7 @@ function applyRibbonGain() {
     ribbonGain.gain.setTargetAtTime(ribbonMuted ? 0 : ribbonVolume, audio.currentTime, 0.012);
   }
   ribbonEl?.lane.classList.toggle('muted', ribbonMuted);
+  syncZoomChips();
 }
 
 /* Hiding silences. A pane you cannot see should not still be sounding — you would have
@@ -1891,16 +1922,18 @@ function retranslate() {
   // Lane labels translate; the note NAMES drawn inside the ribbon never do.
   if (ribbonEl) ribbonEl.txt.textContent = tr('notes.lane');
   if (zoomEl) zoomEl.lane.querySelector('.txt').textContent = tr('notes.zoom');
-  for (const { stem, dot, spk } of zoomChipEls) {
+  for (const { stem, select, label: labelEl, spk } of zoomChipEls) {
     const t = tracks.find((tr) => tr.stem === stem);
     const label = t ? laneLabel(t) : stem;
-    dot.title = tr('notes.zoomLaneShowTip', { lane: label });
+    select.title = tr('notes.zoomLaneShowTip', { lane: label });
+    labelEl.textContent = label;
     spk.title = tr('notes.zoomLaneMuteTip', { lane: label });
   }
   if (zoomNotesChipEl) {
     zoomNotesChipEl.textContent = tr('notes.zoomNotesChip');
     zoomNotesChipEl.title = tr('notes.zoomNotesChipTip');
   }
+  if (zoomNotesMuteEl) zoomNotesMuteEl.title = tr('notes.zoomNotesMuteTip');
   syncTempoRangeHint();
   renderLoopBadge();
   // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
@@ -2224,16 +2257,17 @@ function toggleZoomNotes() {
   draw();
 }
 
-/** Keeps every chip's selected/muted look in sync with zoomLaneSel and each track's own
- *  .muted — called after a chip click, and from applyGains() since a lane can be muted
- *  from its own row in the main list too (every mute path routes through applyGains). */
+/** Keeps every chip's selected/muted look in sync with zoomLaneSel, each track's own
+ *  .muted, and ribbonMuted — called after a chip click, from applyGains() (a stem can be
+ *  muted from its own row in the main list too) and from applyRibbonGain() likewise. */
 function syncZoomChips() {
-  for (const { stem, dot, spk } of zoomChipEls) {
-    dot.classList.toggle('on', zoomLaneSel.has(stem));
+  for (const { stem, select, spk } of zoomChipEls) {
+    select.classList.toggle('on', zoomLaneSel.has(stem));
     const t = tracks.find((tr) => tr.stem === stem);
     spk.classList.toggle('muted', !!t?.muted);
   }
   if (zoomNotesChipEl) zoomNotesChipEl.classList.toggle('active', zoomLaneSel.has('notes'));
+  if (zoomNotesMuteEl) zoomNotesMuteEl.classList.toggle('muted', ribbonMuted);
 }
 
 /** The note in `list` whose span contains `at`, or null. Half-open — a note's END excludes

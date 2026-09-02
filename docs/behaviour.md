@@ -236,6 +236,7 @@ The button and the `0` key are the same action.
 | S9 | A time-stretched A–B loop can have a faint discontinuity at the seam — accepted, not fixed by this feature. Native 100% looping is unaffected. | Loop tightly at a non-100% rate and listen at the wrap point; a native 100% loop over the same points stays glitch-free. |
 | S10 | Returning to 100% falls back to native playback with no lingering artifacts. | Play at 70%, then reset to 100% mid-playback: sounds identical to a song that was never rate-changed. |
 | S11 | The current speed is shown next to every time-code — the main transport, and the Overview/Zoom lanes when present — always visible, not just away from 100%. | `#t-speed` reads e.g. `70%`; the Overview/Zoom `.time-code` text ends `· 70%`. Updates live while playing and immediately on a paused rate change. |
+| S12 | When a drums stem has a confidently detected tempo (see Tempo grid, T-series below), a calculated/original BPM readout appears next to the speed tag — the BPM a metronome would need at the CURRENT rate, over the BPM notes.js reports (auto-detected or manually overridden). Absent until then. | `#t-bpm` reads e.g. `84.0/120.0 BPM` at 70% on a 120 BPM song; hidden while `tempo.confidence` is 0 (no drums stem, or not yet analysed). Typing a manual override in the tempo panel changes the second number within ~400ms (`sansbass:tempo`'s poll interval); the first number rescales the moment the speed changes, no poll delay. |
 
 ## Separation panel
 

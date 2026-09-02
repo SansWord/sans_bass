@@ -105,7 +105,9 @@ let playing = false;
 let sources = [];
 let stretchNodes = [];     // AudioWorkletNodes, one per stem — populated only while
                             // ratePercent !== 100 and playing; empty otherwise
-let ratePercent = 100;     // 50-150, step 5; never persisted — see loadFiles/loadSeparated
+let ratePercent = 100;     // 10-150, step 5 (1 with Shift); never persisted — see loadFiles/loadSeparated
+let tempoInfo = null;      // last { bpmValue, confidence } from notes.js's sansbass:tempo
+                            // broadcast; null until a song with a drums stem has one
 let playGen = 0;           // bumped by play()/stop() so a stale in-flight play() can bail
 let scrubbing = false;
 let raf = 0;
@@ -120,7 +122,7 @@ const el = {
   dropzone: $('dropzone'), player: $('player'), status: $('status'),
   fileInput: $('file-input'),
   play: $('play'), title: $('title'), mainWave: $('main-wave'),
-  tCur: $('t-cur'), tDur: $('t-dur'), tSpeed: $('t-speed'), mode: $('mode'),
+  tCur: $('t-cur'), tDur: $('t-dur'), tSpeed: $('t-speed'), tBpm: $('t-bpm'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
   speed: $('speed'), speedVal: $('speed-val'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
@@ -303,6 +305,7 @@ async function loadFiles(fileList, fallbackName, source) {
   loopA = loopB = null;            // A-B points belong to the previous song
   renderLoopBadge();
   ratePercent = window.SansTransportMath.RATE_DEFAULT;
+  tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
   say(files.length > 1 ? 'status.decodingMany' : 'status.decodingOne', { n: files.length });
 
@@ -468,6 +471,7 @@ function loadSeparated(original, stems) {
   loopA = loopB = null;
   renderLoopBadge();
   ratePercent = window.SansTransportMath.RATE_DEFAULT;
+  tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
   // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks
   // leaves every stem unmuted — all six lanes on by default.
@@ -1732,7 +1736,15 @@ function draw() {
   // Shown next to every time-code (main transport, Overview lane, Zoom lane) so the
   // current rate stays visible without looking back at the speed slider.
   const speedTag = `${ratePercent}%`;
-  const timeCode = `${fmtCs(t)}/${fmt(duration)} · ${speedTag}`;
+  // The BPM a metronome would need to match this song at the CURRENT speed, next to the
+  // BPM notes.js actually detected (or the user's manual override — tempoInfo.bpmValue is
+  // that value either way, see refreshTempo() in notes.js). Absent until a drums stem has
+  // been analysed with a confident result, same gate as the tempo panel itself.
+  const haveBpm = tempoInfo && tempoInfo.confidence > 0;
+  const bpmText = haveBpm
+    ? `${(tempoInfo.bpmValue * ratePercent / 100).toFixed(1)}/${tempoInfo.bpmValue.toFixed(1)} BPM`
+    : '';
+  const timeCode = `${fmtCs(t)}/${fmt(duration)} · ${speedTag}` + (haveBpm ? ` · ${bpmText}` : '');
   if (overviewEl) { paint(overviewEl.canvas, frac); overviewEl.time.textContent = timeCode; }
   if (zoomEl) {
     // Follow while playing; when stopped the window is wherever it was dragged to.
@@ -1744,6 +1756,7 @@ function draw() {
   if (editMode) syncEditToolbar();
   el.tCur.textContent = fmt(t);
   if (el.tSpeed) el.tSpeed.textContent = speedTag;
+  if (el.tBpm) { el.tBpm.hidden = !haveBpm; if (haveBpm) el.tBpm.textContent = bpmText; }
 }
 
 /** Keeps the toolbar's enabled state in sync with the current selection. Called from draw(),
@@ -3074,6 +3087,16 @@ window.addEventListener('sansbass:editmode', (e) => {
 });
 window.addEventListener('sansbass:temporangemode', (e) => {
   tempoRangeArmed = e.detail.on;
+});
+/* notes.js re-broadcasts this on its own 400ms poll regardless of whether anything changed
+ * (typing a manual BPM, half/double, redetect, import, or a fresh auto-detection landing all
+ * go through the same path) — only redraw when the reading actually moved, so a paused,
+ * settled song doesn't repaint 2.5 times a second for nothing. */
+window.addEventListener('sansbass:tempo', (e) => {
+  const d = e.detail;
+  const changed = !tempoInfo || tempoInfo.bpmValue !== d.bpmValue || tempoInfo.confidence !== d.confidence;
+  tempoInfo = d;
+  if (changed) draw();
 });
 renderLangToggle();
 gcOnce(`lang-${window.SansI18n.getLocale()}`);

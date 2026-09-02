@@ -12,8 +12,8 @@
  * See docs/transcription.md for the layer model this implements, and
  * docs/superpowers/specs/2026-09-01-tempo-grid-design.md for the tempo half. */
 
-import { decimate, f0Track } from './lib/pitch.js?v=1.17.1';
-import { onsetEnvelope, estimateTempo } from './lib/tempo.js?v=1.17.1';
+import { decimate, f0Track } from './lib/pitch.js?v=1.17.2';
+import { onsetEnvelope, estimateTempo } from './lib/tempo.js?v=1.17.2';
 
 function computeTempo(channels, sampleRate) {
   const { env, hopSeconds } = onsetEnvelope(channels, sampleRate);

@@ -8,8 +8,8 @@
  * A module, so it cannot share scope with app.js. It talks to the player only through
  * window.sansBass, exactly as separate.js does. */
 
-import { interpret, applyEdits, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.17.1';
-import { scheduleNotes } from './lib/sonify.js?v=1.17.1';
+import { interpret, applyEdits, detectKey, notesToChroma, relativeKey } from './lib/pitch.js?v=1.17.2';
+import { scheduleNotes } from './lib/sonify.js?v=1.17.2';
 
 const el = {
   panel: document.getElementById('notes'),
@@ -383,7 +383,7 @@ function analyse() {
 
   const drums = currentTempoRangeChannels();
 
-  worker = new Worker('./notes.worker.js?v=1.17.1', { type: 'module' });
+  worker = new Worker('./notes.worker.js?v=1.17.2', { type: 'module' });
   worker.onmessage = (e) => {
     const m = e.data;
     worker.terminate();
@@ -496,7 +496,7 @@ el.tempoRangeToggle.addEventListener('click', () => {
 el.tempoRedetect.addEventListener('click', () => {
   const drums = currentTempoRangeChannels();
   if (!drums) return;
-  const w = new Worker('./notes.worker.js?v=1.17.1', { type: 'module' });
+  const w = new Worker('./notes.worker.js?v=1.17.2', { type: 'module' });
   el.tempoRedetect.disabled = true;
   w.onmessage = (e) => {
     w.terminate();

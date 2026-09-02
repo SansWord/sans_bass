@@ -520,6 +520,8 @@ input[type=range] { width: 110px; }
 .zoom-chip-mute.muted { text-decoration: line-through; opacity: .55; }
 .zoom-notes-chip { font: 10px var(--mono); padding: 2px 8px; }
 .zoom-notes-chip.active { border-color: var(--loop); color: var(--loop); }
+.zoom-sub-btn { padding: 2px 6px; }
+.zoom-sub-btn.active { border-color: var(--loop); color: var(--loop); }
 
 .zoom-secs-group { display: flex; align-items: center; flex: none; }
 /* grab, not ns-resize: this pane pans horizontally and zooms on the wheel. */

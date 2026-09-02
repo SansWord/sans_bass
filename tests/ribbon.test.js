@@ -199,3 +199,31 @@ test('ribbon: beatTimes tolerates a missing or zero bpmValue', () => {
   assertEq(R().beatTimes(null, 10).length, 0, 'no tempo, no grid');
   assertEq(R().beatTimes({ bpmValue: 0, phaseMs: 0, beatsPerBar: 4 }, 10).length, 0, 'zero BPM would divide by zero');
 });
+
+test('ribbon: subdivisionTimes(2) returns only the half-beat midpoints', () => {
+  // 120 BPM = 0.5s/beat, so the midpoint of each beat is 0.25s later.
+  const halves = R().subdivisionTimes({ bpmValue: 120, phaseMs: 0, beatsPerBar: 4 }, 1, 2);
+  assertEq(halves.length, 2, 'midpoints at 0.25 and 0.75, not the on-beat points at 0/0.5/1');
+  assertClose(halves[0], 0.25, 1e-9);
+  assertClose(halves[1], 0.75, 1e-9);
+});
+
+test('ribbon: subdivisionTimes(4) returns the two true quarters plus the midpoint', () => {
+  const quarters = R().subdivisionTimes({ bpmValue: 120, phaseMs: 0, beatsPerBar: 4 }, 0.5, 4);
+  assertEq(quarters.length, 3, '0.125, 0.25, 0.375 within the first beat');
+  assertClose(quarters[0], 0.125, 1e-9);
+  assertClose(quarters[1], 0.25, 1e-9, 'includes the half-beat point');
+  assertClose(quarters[2], 0.375, 1e-9);
+});
+
+test('ribbon: subdivisionTimes excludes on-beat points', () => {
+  const quarters = R().subdivisionTimes({ bpmValue: 120, phaseMs: 0, beatsPerBar: 4 }, 2, 4);
+  for (const t of quarters) {
+    assert(Math.abs(t % 0.5) > 1e-9 && Math.abs((t % 0.5) - 0.5) > 1e-9, `${t} lands on a beat`);
+  }
+});
+
+test('ribbon: subdivisionTimes tolerates a missing tempo or a division below 2', () => {
+  assertEq(R().subdivisionTimes(null, 10, 2).length, 0, 'no tempo, no grid');
+  assertEq(R().subdivisionTimes({ bpmValue: 120, phaseMs: 0, beatsPerBar: 4 }, 10, 1).length, 0, 'divisionsPerBeat < 2 is meaningless');
+});

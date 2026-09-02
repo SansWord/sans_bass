@@ -226,6 +226,17 @@ function fmt(t) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** Like fmt(), but to the hundredth of a second — for the overview/zoom time-code, where the
+ *  playhead visibly moves within a single displayed second and whole-second precision would
+ *  look frozen. */
+function fmtCs(t) {
+  if (!isFinite(t) || t < 0) t = 0;
+  const totalCs = Math.round(t * 100);
+  const m = Math.floor(totalCs / 6000);
+  const s = ((totalCs % 6000) / 100).toFixed(2).padStart(5, '0');
+  return `${m}:${s}`;
+}
+
 /** Like fmt(), but to the millisecond — fmt()'s whole-second precision is too coarse for a
  *  note boundary, which is meaningful down to the 20ms floor (MIN_DUR). */
 function fmtPrecise(t) {
@@ -719,6 +730,9 @@ function buildUI(title) {
     zTxt.className = 'txt';
     zTxt.textContent = tr('notes.zoom');
 
+    const zTime = document.createElement('span');
+    zTime.className = 'time-code';
+
     const zOut = document.createElement('span');
     zOut.className = 'zoom-secs';
 
@@ -765,7 +779,7 @@ function buildUI(title) {
     const zSecsGroup = document.createElement('span');
     zSecsGroup.className = 'zoom-secs-group';
     zSecsGroup.append(zOut, zBtns, zSubBtns);
-    zTopRow.append(zTxt, zSecsGroup);
+    zTopRow.append(zTxt, zTime, zSecsGroup);
 
     /* Which stem(s) — as plain waveforms — the pane below draws, plus the two Notes chips
      * below. One chip per stem actually in this song: a coloured dot AND its stem name,
@@ -1010,7 +1024,7 @@ function buildUI(title) {
     zLane.append(zName, zCanvas, zRangeHint, zToolbar, zFields, zSpacer, zGrip);
     el.lanes.insertBefore(zLane, anchorTrack.laneEl);
     attachZoom(zCanvas);
-    zoomEl = { lane: zLane, canvas: zCanvas, out: zOut };
+    zoomEl = { lane: zLane, canvas: zCanvas, out: zOut, time: zTime };
 
     /* The overview lane: a full-song (never windowed) waveform combining whichever stems
      * are currently selected in the zoomed pane below — zoomLaneSel's chips plus
@@ -1027,7 +1041,9 @@ function buildUI(title) {
     const oTxt = document.createElement('span');
     oTxt.className = 'txt';
     oTxt.textContent = tr('notes.overview');
-    oName.appendChild(oTxt);
+    const oTime = document.createElement('span');
+    oTime.className = 'time-code';
+    oName.append(oTxt, oTime);
     const oCanvas = document.createElement('canvas');
     oCanvas.className = 'wave';
     oCanvas.title = tr('notes.overviewTip');
@@ -1050,7 +1066,7 @@ function buildUI(title) {
     oLane.append(oName, oCanvas, oVol);
     el.lanes.insertBefore(oLane, zLane);
     attachSeek(oCanvas);
-    overviewEl = { lane: oLane, canvas: oCanvas };
+    overviewEl = { lane: oLane, canvas: oCanvas, time: oTime };
   }
 
   syncRangeHints();
@@ -1702,12 +1718,14 @@ function draw() {
     const lane = noteLanes[stem];
     if (lane && lane.ribbon) paint(lane.el.canvas, frac);
   }
-  if (overviewEl) paint(overviewEl.canvas, frac);
+  const timeCode = `${fmtCs(t)}/${fmt(duration)}`;
+  if (overviewEl) { paint(overviewEl.canvas, frac); overviewEl.time.textContent = timeCode; }
   if (zoomEl) {
     // Follow while playing; when stopped the window is wherever it was dragged to.
     if (playing) zoomCenter = t;
     renderZoom(zoomEl.canvas);
     zoomEl.out.textContent = `${zoomSeconds.toFixed(zoomSeconds < 10 ? 1 : 0)}s`;
+    zoomEl.time.textContent = timeCode;
   }
   if (editMode) syncEditToolbar();
   el.tCur.textContent = fmt(t);

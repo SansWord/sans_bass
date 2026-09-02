@@ -394,6 +394,15 @@ input[type=range] { width: 110px; }
   margin-left: auto;
 }
 .lane-name .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* current/total for the overview and zoom lanes only — every other lane already has its
+   own solo/mute state to show here, and per-lane elapsed time isn't meaningful for a
+   single-instrument stem the way it is for the whole-song overview and the zoom window. */
+.lane-name .time-code {
+  flex: none;
+  font-weight: 400;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
 
 .lane .wave { height: 40px; }
 
@@ -406,6 +415,12 @@ input[type=range] { width: 110px; }
    is exactly as wide as every other lane's and the playhead lines up at the same x. */
 .lane.overview .lane-name { cursor: default; }
 .lane.overview .lane-name:hover { background: var(--panel-2); }
+/* The overview's time-code carries hundredths (see fmtCs), which no longer fits beside the
+   label on one line without truncating it to an ellipsis — and this column's width is pinned
+   to every other lane's for the playhead alignment above, so it can't just grow. Stacking
+   fits both in the same row height instead. */
+.lane.overview .lane-name { flex-direction: column; align-items: flex-start; gap: 2px; }
+.lane.overview .lane-name .time-code { font-size: 11px; }
 
 /* The caption + Clear button under the drums lane, naming the current BPM-detection range.
    grid-column: 1 / -1 spans the .lane grid the same way .note-range-hint already does. */

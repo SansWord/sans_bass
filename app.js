@@ -735,6 +735,9 @@ function buildUI(title) {
     quarterBeatBtn.addEventListener('click', toggleQuarterBeat);
     zSubBtns.append(halfBeatBtn, quarterBeatBtn);
 
+    /* The label stays with what it actually names — the seconds readout and the zoom
+     * buttons — on one row. It used to sit alone above a second row of lane chips, which
+     * read as if it were labelling THEM instead. */
     const zTopRow = document.createElement('div');
     zTopRow.className = 'zoom-top-row';
     const zSecsGroup = document.createElement('span');
@@ -823,6 +826,10 @@ function buildUI(title) {
     zCanvas.className = 'wave zoomwave';
     zCanvas.title = tr('notes.zoomTip');
 
+    /* Names the bottom range-select band for anyone who hasn't found it by trial and error —
+     * the band itself is hinted on-canvas (see renderZoom's idle strip), but a highlighted
+     * strip alone doesn't say what it's FOR. Hidden while edit mode is off, alongside the
+     * toolbar (see the 'sansbass:editmode' listener). */
     const zRangeHint = document.createElement('div');
     zRangeHint.className = 'note-range-hint';
     zRangeHint.textContent = tr('notes.rangeTip');
@@ -835,6 +842,8 @@ function buildUI(title) {
     zGrip.title = tr('notes.resizeTip');
     attachResize(zGrip, () => zoomHeight, (v) => { zoomHeight = v; }, ZOOM_H_KEY, () => draw());
 
+    /* The edit toolbar. Hidden while edit mode is off (see the 'sansbass:editmode' listener);
+     * each button disabled until a note is selected. */
     const zToolbar = document.createElement('div');
     zToolbar.className = 'note-toolbar';
     zToolbar.hidden = !editMode;
@@ -867,6 +876,9 @@ function buildUI(title) {
 
     zToolbar.append(addBtn, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, split, del, rangeDel);
 
+    /* Inline Start/End/Pitch fields, next to the toolbar. Same hidden-until-edit-mode and
+     * disabled-until-selected rules as the toolbar buttons above — see docs/superpowers/
+     * specs/2026-09-01-note-inline-fields-design.md and its labels/flat-pitch follow-up. */
     const zFields = document.createElement('div');
     zFields.className = 'note-fields';
     zFields.hidden = !editMode;
@@ -892,6 +904,8 @@ function buildUI(title) {
       return inp;
     };
 
+    /* Wraps a field in a <label> so the visible caption also focuses the control on click —
+     * no id/for plumbing needed, this project doesn't put ids on dynamically-built elements. */
     const mkFieldGroup = (titleKey, control) => {
       const label = document.createElement('label');
       label.className = 'note-field-group';
@@ -907,6 +921,9 @@ function buildUI(title) {
     const startGroup = mkFieldGroup('notes.editFieldStart', fieldStart);
     const endGroup = mkFieldGroup('notes.editFieldEnd', fieldEnd);
 
+    /* Pitch is three selects, not a text field — a flat accidental is an explicit choice here,
+     * not a guess a free-text parser would have to interpret. Auto-commits on change (see
+     * commitPitchDropdown), so it never joins Start/End's Enter/Apply-staged path. */
     const mkFieldSelect = (options, titleKey) => {
       const sel = document.createElement('select');
       sel.className = 'note-field note-field-select';
@@ -2437,7 +2454,21 @@ function toggleZoomLane(stem) {
  *  selected, every plain waveform behind it renders gray instead of its own colour, so the
  *  notes stay the thing your eye reads — see renderZoom. */
 function toggleZoomNotes(stem) {
+  const prev = zoomNotesStem;
   zoomNotesStem = zoomNotesStem === stem ? null : stem;
+  /* Switching which channel is selected must never leave an active edit session silently
+   * pointed at the channel that's no longer selected — see docs/superpowers/plans/
+   * 2026-09-01-bass-notes.md row N56c. syncEditToggle() below only turns editing off when
+   * the NEWLY selected channel lacks notes; in the ordinary two-channel case (both vocals
+   * and bass have notes) that check never fires, so the selection change is handled here
+   * instead, unconditionally, whenever the selection actually changed while editing was on.
+   * The dispatch names `prev` (the channel editing was pointed at), but notes.js clears its
+   * `editable` flag on any on:false event regardless of which stem it names, so a single
+   * dispatch is enough — and the listener below also resets editMode, the toolbar/fields
+   * visibility, and the checkbox itself. */
+  if (prev !== zoomNotesStem && editMode) {
+    window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false, stem: prev } }));
+  }
   syncZoomChips();
   syncEditToggle();
   syncRangeHints();

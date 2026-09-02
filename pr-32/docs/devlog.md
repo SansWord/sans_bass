@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.18.4](#v1184--fit-the-lane-to-the-melody-off-by-default-2026-09-02-1324) | Both `notes-clip` checkboxes ("Fit the lane to the melody") shipped checked; now default off, still fully interactive if the user wants to tick it. |
 | [v1.18.3](#v1183--hide-notes-panels-until-that-channel-has-notes-2026-09-02-1309) | `#notes-vocals`/`#notes-bass` were gated on stem presence, so a loaded-but-undetected stem still showed its label plus disabled Export/Import/Export-list controls — the same illusion the meta row, tune row, and tempo panel were already fixed for one level down. Whole panel now hidden until that channel has notes. |
 | [v1.18.2](#v1182--closing-the-detection-illusion-of-completion-gap-2026-09-02-1301) | A spinner + "Detecting: vocals, bass…" hint next to the shared Find-notes button names exactly which channel(s) are still running, so vocals landing first is never mistaken for the whole run being done. Each panel's count/toggle/簡譜/key row and the tempo grid panel now stay hidden until they actually have something to show, instead of appearing empty/default the moment a stem loads. The shared button hides outright once every present stem is analysed. |
 | [v1.18.1](#v1181--one-shared-find-notes-button-2026-09-02-1244) | The two per-panel Find-notes buttons become one shared button that detects whichever of vocals/bass still needs it — a single-melodic-stem zip detects just that stem, and the button disables (not hides) once nothing is pending. |
@@ -48,6 +49,21 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.18.4 — "Fit the lane to the melody" off by default (2026-09-02 13:24)
+
+**Review:** not yet
+
+**What was built:**
+
+- `#notes-clip-vocals`/`#notes-clip-bass` ("Fit the lane to the melody" / 音域貼合旋律) both
+  shipped with the HTML `checked` attribute; removed from both, so the lane now shows its
+  full natural range on first detection and clipping to the melody is an explicit opt-in the
+  user can still tick — the checkbox's own enabled/disabled state is untouched, just its
+  default value.
+- `docs/behaviour.md` N9 rewritten to state the new off-by-default and how to observe it;
+  N35 no longer calls clip-ticked "the default" since it now requires an explicit tick to
+  reach the state that row's measured counts (12 gray / 4 orange) describe.
 
 ## v1.18.3 — Hide notes panels until that channel has notes (2026-09-02 13:09)
 

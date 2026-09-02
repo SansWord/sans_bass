@@ -431,3 +431,42 @@ test('sonify: a doubtful note straddling A is still silent', async () => {
   const peak = Math.max(...Array.from(out, Math.abs));
   assert(peak < 1e-3, `an untrusted note stays silent when straddled (peak ${peak.toFixed(6)})`);
 });
+
+test('sonify: rate 0.5 halves the onset speed', async () => {
+  const ctx = new OfflineAudioContext(1, SR * 3, SR);
+  const notes = [{ start: 1.0, end: 1.2, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset: 0, rate: 0.5, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  assert(rms(out, 0, Math.round(1.9 * SR)) < 1e-4, 'silent before the rate-scaled onset');
+  assert(rms(out, Math.round(2.02 * SR), Math.round(2.3 * SR)) > 0.01, 'sounds once real time reaches onset/rate');
+});
+
+test('sonify: rate 2 doubles onset speed and compresses note duration to match', async () => {
+  const ctx = new OfflineAudioContext(1, SR * 2, SR);
+  const notes = [{ start: 1.0, end: 1.4, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset: 0, rate: 2, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  assert(rms(out, 0, Math.round(0.45 * SR)) < 1e-4, 'silent before the compressed onset');
+  assert(rms(out, Math.round(0.52 * SR), Math.round(0.68 * SR)) > 0.01, 'sounds around the compressed onset');
+});
+
+test('sonify: omitting rate defaults to 1 and matches the pre-existing behaviour', async () => {
+  const ctx = new OfflineAudioContext(1, SR * 2, SR);
+  const notes = [{ start: 0.5, end: 1.0, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes, { when: 0, offset: 0, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  assert(rms(out, 0, Math.round(0.45 * SR)) < 1e-4, 'silent before the note starts');
+  assert(rms(out, Math.round(0.55 * SR), Math.round(0.9 * SR)) > 0.01, 'sounding during the note');
+});
+
+test('sonify: rate scales the loop period so laps stay locked to a slowed loop', async () => {
+  const ctx = new OfflineAudioContext(1, SR * 3, SR);
+  // One note at 0.1s inside a 0.5s SONG-timeline loop; at rate 0.5 each real-time lap is 1.0s.
+  const notes = [{ start: 0.1, end: 0.25, midi: 69, cents: 6900, name: 'A4', confidence: 1 }];
+  scheduleNotes(ctx, ctx.destination, notes,
+                { when: 0, offset: 0, loopA: 0, loopB: 0.5, rate: 0.5, aheadSeconds: Infinity });
+  const out = (await ctx.startRendering()).getChannelData(0);
+  // Lap 0 fires around 0.2s (0.1 / 0.5); lap 1 fires around 0.2 + 1.0 = 1.2s.
+  assert(rms(out, Math.round(0.15 * SR), Math.round(0.3 * SR)) > 0.01, 'lap 0 sounds at the rate-scaled onset');
+  assert(rms(out, Math.round(1.15 * SR), Math.round(1.3 * SR)) > 0.01, 'lap 1 sounds one rate-scaled period later');
+});

@@ -17,8 +17,8 @@
  * See docs/superpowers/specs/2026-09-01-bass-notes-design.md. */
 
 import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, stemMismatch, BASS_RANGE }
-  from './lib/pitch.js?v=1.18.8';
-import { scheduleNotes } from './lib/sonify.js?v=1.18.8';
+  from './lib/pitch.js?v=1.19.0';
+import { scheduleNotes } from './lib/sonify.js?v=1.19.0';
 
 const tr = (key, params) => window.SansI18n.t(key, params);
 
@@ -179,7 +179,7 @@ tempoEl.rangeToggle.addEventListener('click', () => {
 tempoEl.redetect.addEventListener('click', () => {
   const drums = currentTempoRangeChannels();
   if (!drums) return;
-  const w = new Worker('./notes.worker.js?v=1.18.8', { type: 'module' });
+  const w = new Worker('./notes.worker.js?v=1.19.0', { type: 'module' });
   tempoEl.redetect.disabled = true;
   w.onmessage = (e) => {
     w.terminate();
@@ -208,6 +208,14 @@ window.addEventListener('sansbass:temporange', (e) => { tempoRange = e.detail; }
 function refreshTempo() {
   tempoEl.panel.hidden = !(tempo.confidence > 0);
   syncTempoControls();
+  /* app.js shows a calculated/original BPM readout next to the speed percent, and needs to
+   * know the current BPM — including a manual override, which is just tempo.bpmValue like
+   * any other reading — regardless of which of the many controls changed it. Piggybacking on
+   * this function's existing 400ms poll (refreshAll()) is simpler than hooking every mutation
+   * site (the checkbox, the number field, half/double, phase, redetect, import). */
+  window.dispatchEvent(new CustomEvent('sansbass:tempo', {
+    detail: { bpmValue: tempo.bpmValue, confidence: tempo.confidence },
+  }));
 }
 
 /* app.js dispatches this once per buildUI() call (i.e. once per song load), unconditionally —
@@ -392,7 +400,7 @@ function createNotesChannel(stem, els) {
     const t = window.sansBass.transport();
     if (!audio || !t.playing) return;
     sonifier = scheduleNotes(audio.ctx, audio.destination, notes, {
-      timbre, when: t.t0, offset: t.offset, loopA: t.loopA, loopB: t.loopB,
+      timbre, when: t.t0, offset: t.offset, loopA: t.loopA, loopB: t.loopB, rate: t.rate,
     });
   }
 
@@ -441,7 +449,7 @@ function createNotesChannel(stem, els) {
 
     const drums = currentTempoRangeChannels();
 
-    worker = new Worker('./notes.worker.js?v=1.18.8', { type: 'module' });
+    worker = new Worker('./notes.worker.js?v=1.19.0', { type: 'module' });
     worker.onmessage = (e) => {
       const m = e.data;
       worker.terminate();

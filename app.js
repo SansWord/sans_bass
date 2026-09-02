@@ -103,20 +103,28 @@ let offset = 0;            // playhead position when stopped, seconds
 let startedAt = 0;         // audio.currentTime at which playback began
 let playing = false;
 let sources = [];
+let stretchNodes = [];     // AudioWorkletNodes, one per stem — populated only while
+                            // ratePercent !== 100 and playing; empty otherwise
+let ratePercent = 100;     // 10-150, step 5 (1 with Shift); never persisted — see loadFiles/loadSeparated
+let tempoInfo = null;      // last { bpmValue, confidence } from notes.js's sansbass:tempo
+                            // broadcast; null until a song with a drums stem has one
+let playGen = 0;           // bumped by play()/stop() so a stale in-flight play() can bail
 let scrubbing = false;
 let raf = 0;
 let loopA = null;          // A-B repeat start, seconds (null = unset)
 let loopB = null;          // A-B repeat end, seconds
 let muteSnapshot = null;   // lane mutes to return to when "unmute all" is undone
 const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
+let workletReady = null;   // Promise: resolves once lib/stretch-processor.js is registered
 
 const $ = (id) => document.getElementById(id);
 const el = {
   dropzone: $('dropzone'), player: $('player'), status: $('status'),
   fileInput: $('file-input'),
   play: $('play'), title: $('title'), mainWave: $('main-wave'),
-  tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
+  tCur: $('t-cur'), tDur: $('t-dur'), tSpeed: $('t-speed'), tBpm: $('t-bpm'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
+  speed: $('speed'), speedVal: $('speed-val'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
   allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'), langToggle: $('lang-toggle'),
 };
@@ -177,6 +185,7 @@ function ensureAudio() {
     master.connect(audio.destination);
     // Each stem's synthesised-notes gain node is created per lane, in buildUI() — no lane
     // exists yet the first time ensureAudio() runs, before any song is loaded.
+    workletReady = audio.audioWorklet.addModule('lib/stretch-processor.js?v=1.19.0');
   }
   if (audio.state === 'suspended') audio.resume();
   return audio;
@@ -295,6 +304,9 @@ async function loadFiles(fileList, fallbackName, source) {
   stop(true);
   loopA = loopB = null;            // A-B points belong to the previous song
   renderLoopBadge();
+  ratePercent = window.SansTransportMath.RATE_DEFAULT;
+  tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
+  syncSpeedUI();
   say(files.length > 1 ? 'status.decodingMany' : 'status.decodingOne', { n: files.length });
 
   // Decode in parallel: decodeAudioData runs off the main thread, so six stems
@@ -458,6 +470,9 @@ function loadSeparated(original, stems) {
 
   loopA = loopB = null;
   renderLoopBadge();
+  ratePercent = window.SansTransportMath.RATE_DEFAULT;
+  tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
+  syncSpeedUI();
   // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks
   // leaves every stem unmuted — all six lanes on by default.
   buildTracks(items, original.name.replace(AUDIO_RE, ''));
@@ -1718,7 +1733,18 @@ function draw() {
     const lane = noteLanes[stem];
     if (lane && lane.ribbon) paint(lane.el.canvas, frac);
   }
-  const timeCode = `${fmtCs(t)}/${fmt(duration)}`;
+  // Shown next to every time-code (main transport, Overview lane, Zoom lane) so the
+  // current rate stays visible without looking back at the speed slider.
+  const speedTag = `${ratePercent}%`;
+  // The BPM a metronome would need to match this song at the CURRENT speed, next to the
+  // BPM notes.js actually detected (or the user's manual override — tempoInfo.bpmValue is
+  // that value either way, see refreshTempo() in notes.js). Absent until a drums stem has
+  // been analysed with a confident result, same gate as the tempo panel itself.
+  const haveBpm = tempoInfo && tempoInfo.confidence > 0;
+  const bpmText = haveBpm
+    ? `${(tempoInfo.bpmValue * ratePercent / 100).toFixed(1)}/${tempoInfo.bpmValue.toFixed(1)} BPM`
+    : '';
+  const timeCode = `${fmtCs(t)}/${fmt(duration)} · ${speedTag}` + (haveBpm ? ` · ${bpmText}` : '');
   if (overviewEl) { paint(overviewEl.canvas, frac); overviewEl.time.textContent = timeCode; }
   if (zoomEl) {
     // Follow while playing; when stopped the window is wherever it was dragged to.
@@ -1729,6 +1755,8 @@ function draw() {
   }
   if (editMode) syncEditToolbar();
   el.tCur.textContent = fmt(t);
+  if (el.tSpeed) el.tSpeed.textContent = speedTag;
+  if (el.tBpm) { el.tBpm.hidden = !haveBpm; if (haveBpm) el.tBpm.textContent = bpmText; }
 }
 
 /** Keeps the toolbar's enabled state in sync with the current selection. Called from draw(),
@@ -1945,17 +1973,43 @@ function currentTime() {
   if (!playing) return offset;
   const elapsed = audio.currentTime - startedAt;
   if (elapsed <= 0) return offset;
-  if (loopOn()) {
-    // play() snaps offset into [A,B), so this stays positive and wraps cleanly.
-    const span = loopB - loopA;
-    return loopA + ((offset - loopA + elapsed) % span);
-  }
-  return Math.min(duration, offset + elapsed);
+  return window.SansTransportMath.currentTimeAtRate({
+    offset, elapsed, ratePercent,
+    loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null, duration,
+  });
 }
 
-function play() {
+/** One AudioWorkletNode per stem, fed a COPY of its decoded PCM (the worklet cannot read
+ *  the main-thread AudioBuffer directly — see the design spec's "Memory cost" section) and
+ *  started at the same t0/LOOKAHEAD scheduling the native path uses, so every stretch node
+ *  stays sample-locked to its siblings the same way native BufferSources do today. */
+function createStretchNode(t, willLoop, t0) {
+  const node = new AudioWorkletNode(audio, 'stretch-processor', {
+    numberOfInputs: 0,
+    numberOfOutputs: 1,
+    outputChannelCount: [t.buffer.numberOfChannels],
+  });
+  const channels = [];
+  for (let ch = 0; ch < t.buffer.numberOfChannels; ch++) {
+    channels.push(new Float32Array(t.buffer.getChannelData(ch)));
+  }
+  node.port.postMessage({ type: 'load', channels }, channels.map(c => c.buffer));
+  node.port.postMessage({
+    type: 'start',
+    t0,
+    offsetSample: Math.round(offset * audio.sampleRate),
+    loopASample: willLoop ? Math.round(loopA * audio.sampleRate) : null,
+    loopBSample: willLoop ? Math.round(loopB * audio.sampleRate) : null,
+    rate: ratePercent / 100,
+  });
+  node.connect(t.gain);
+  return node;
+}
+
+async function play() {
   if (!tracks.length) return;
   ensureAudio();
+  const myGen = ++playGen;
 
   const looping = loopOn();
   if (looping) {
@@ -1966,32 +2020,55 @@ function play() {
     offset = 0;
   }
 
+  const stretched = ratePercent !== 100;
+  if (stretched) {
+    try { await workletReady; } catch (err) {
+      console.error('sans_bass: stretch worklet failed to load', err);
+      return;
+    }
+    if (myGen !== playGen) return;   // stopped or replaced while the module was loading
+  }
+
   const t0 = audio.currentTime + LOOKAHEAD;
   const longest = tracks.reduce((a, b) => (b.buffer.duration > a.buffer.duration ? b : a));
 
-  sources = tracks.map(t => {
-    if (offset >= t.buffer.duration) return null;   // this stem already ended
-    const src = audio.createBufferSource();
-    src.buffer = t.buffer;
-    src.connect(t.gain);
+  if (stretched) {
+    stretchNodes = tracks.map(t => {
+      if (offset >= t.buffer.duration) return null;
+      const willLoop = looping && t.buffer.duration >= loopB;
+      const node = createStretchNode(t, willLoop, t0);
+      if (t === longest && !willLoop) {
+        node.port.onmessage = (e) => { if (e.data.type === 'ended' && playing) stop(false); };
+      }
+      return node;
+    }).filter(Boolean);
+    sources = [];
+  } else {
+    sources = tracks.map(t => {
+      if (offset >= t.buffer.duration) return null;   // this stem already ended
+      const src = audio.createBufferSource();
+      src.buffer = t.buffer;
+      src.connect(t.gain);
 
-    // Loop on the audio thread rather than in JS: sample-accurate, identical across
-    // every stem, and it keeps running when the tab is in the background.
-    // A stem shorter than loopEnd would wrap at its own end and drift out of sync,
-    // so it is left unlooped and simply falls silent instead.
-    if (looping && t.buffer.duration >= loopB) {
-      src.loop = true;
-      src.loopStart = loopA;
-      src.loopEnd = loopB;
-    }
+      // Loop on the audio thread rather than in JS: sample-accurate, identical across
+      // every stem, and it keeps running when the tab is in the background.
+      // A stem shorter than loopEnd would wrap at its own end and drift out of sync,
+      // so it is left unlooped and simply falls silent instead.
+      if (looping && t.buffer.duration >= loopB) {
+        src.loop = true;
+        src.loopStart = loopA;
+        src.loopEnd = loopB;
+      }
 
-    // End of song is detected on the audio graph, not in the animation loop:
-    // rAF is paused in background tabs, so the loop can't be trusted for transport.
-    // A looping source never ends, so this only ever fires when not looping.
-    if (t === longest && !src.loop) src.onended = () => { if (playing) stop(false); };
-    src.start(t0, offset);
-    return src;
-  }).filter(Boolean);
+      // End of song is detected on the audio graph, not in the animation loop:
+      // rAF is paused in background tabs, so the loop can't be trusted for transport.
+      // A looping source never ends, so this only ever fires when not looping.
+      if (t === longest && !src.loop) src.onended = () => { if (playing) stop(false); };
+      src.start(t0, offset);
+      return src;
+    }).filter(Boolean);
+    stretchNodes = [];
+  }
 
   startedAt = t0;
   playing = true;
@@ -2013,15 +2090,19 @@ function announceTransport(t0) {
       offset,
       loopA: loopOn() ? loopA : null,
       loopB: loopOn() ? loopB : null,
+      rate: ratePercent / 100,
     },
   }));
 }
 
 function stop(keepPosition) {
   if (playing) offset = currentTime();
+  playGen++;   // invalidate any play() still awaiting the worklet module
   // Detach onended first so our own stop() doesn't re-enter through it.
   sources.forEach(s => { s.onended = null; try { s.stop(); } catch (_) {} s.disconnect(); });
   sources = [];
+  stretchNodes.forEach(n => { n.port.onmessage = null; n.disconnect(); });
+  stretchNodes = [];
   playing = false;
   el.play.classList.remove('playing');
   cancelAnimationFrame(raf);
@@ -2100,6 +2181,42 @@ function renderLoopBadge() {
     el.loopText.textContent = tr(loopA !== null ? 'loop.aSet' : 'loop.bSet');
     badge.classList.remove('armed');
   }
+}
+
+function syncSpeedUI() {
+  if (el.speed) el.speed.value = ratePercent;
+  if (el.speedVal) el.speedVal.textContent = `${ratePercent}%`;
+}
+
+/** Change the active playback rate. Crossing the 100% <-> non-100% boundary rebuilds the
+ *  audio graph, same as seek()/refreshLoop(); staying on one side of it rebases the clock
+ *  and live-messages the running stretch nodes instead, so dragging the slider mid-song
+ *  has no audible restart. See the design spec's "Architecture" and "Live rate changes". */
+function setRate(newPercent) {
+  const clamped = window.SansTransportMath.clampRatePercent(newPercent);
+  if (clamped === ratePercent) { syncSpeedUI(); return; }
+
+  if (!playing) {
+    ratePercent = clamped;
+    syncSpeedUI();
+    draw();   // the time-code speed tag is stale otherwise until the next play()
+    return;
+  }
+
+  const crossingBoundary = (ratePercent === 100) !== (clamped === 100);
+  if (crossingBoundary) {
+    stop(true);          // captures offset under the OLD rate
+    ratePercent = clamped;
+    play();
+  } else {
+    const rebased = currentTime();   // under the OLD rate, before it changes
+    ratePercent = clamped;
+    offset = rebased;
+    startedAt = audio.currentTime;
+    stretchNodes.forEach(n => n.port.postMessage({ type: 'setRate', rate: ratePercent / 100 }));
+    announceTransport(startedAt);
+  }
+  syncSpeedUI();
 }
 
 function tick() {
@@ -2971,6 +3088,16 @@ window.addEventListener('sansbass:editmode', (e) => {
 window.addEventListener('sansbass:temporangemode', (e) => {
   tempoRangeArmed = e.detail.on;
 });
+/* notes.js re-broadcasts this on its own 400ms poll regardless of whether anything changed
+ * (typing a manual BPM, half/double, redetect, import, or a fresh auto-detection landing all
+ * go through the same path) — only redraw when the reading actually moved, so a paused,
+ * settled song doesn't repaint 2.5 times a second for nothing. */
+window.addEventListener('sansbass:tempo', (e) => {
+  const d = e.detail;
+  const changed = !tempoInfo || tempoInfo.bpmValue !== d.bpmValue || tempoInfo.confidence !== d.confidence;
+  tempoInfo = d;
+  if (changed) draw();
+});
 renderLangToggle();
 gcOnce(`lang-${window.SansI18n.getLocale()}`);
 on(el.masterVol, 'input', () => {
@@ -2978,6 +3105,7 @@ on(el.masterVol, 'input', () => {
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
   if (overviewVolEl) overviewVolEl.value = el.masterVol.value;
 });
+on(el.speed, 'input', () => setRate(parseInt(el.speed.value, 10)));
 
 /* The value is cleared after dispatching so picking the *same* file twice in a row still
  * fires `change`. With two inputs that was rare; with one it is the obvious retry after a
@@ -3012,6 +3140,15 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setLoopPoint('a'); }
   else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setLoopPoint('b'); }
   else if (e.key === 'c' || e.key === 'C' || e.key === 'Escape') { e.preventDefault(); clearLoop(); }
+  else if (e.key === '[') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, -window.SansTransportMath.RATE_STEP)); }
+  else if (e.key === ']') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, window.SansTransportMath.RATE_STEP)); }
+  // Shift+[ / Shift+] for the fine ±1% step. NOT `e.key === '[' && e.shiftKey` — holding
+  // Shift while pressing the physical [ / ] key changes e.key to '{' / '}' on a standard
+  // layout, so a shiftKey check here would just never fire; checking the produced
+  // character directly is what actually matches a real Shift+[ keypress.
+  else if (e.key === '{') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, -window.SansTransportMath.RATE_FINE_STEP)); }
+  else if (e.key === '}') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, window.SansTransportMath.RATE_FINE_STEP)); }
+  else if (e.key === '\\') { e.preventDefault(); setRate(window.SansTransportMath.RATE_DEFAULT); }
   else if (/^[1-9]$/.test(e.key)) {
     const t = tracks[parseInt(e.key, 10) - 1];
     if (t) toggleTrack(t);
@@ -3120,7 +3257,8 @@ window.sansBass = {
   },
   /** Current transport, for scheduling a synth that starts mid-playback. */
   transport: () => ({ playing, t0: startedAt, offset,
-                      loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null }),
+                      loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null,
+                      rate: ratePercent / 100 }),
   /** True while the given stem's notes lane is silent. */
   ribbonMuted: (stem) => !!noteLanes[stem]?.muted,
   /** Show or hide one stem's notes pane. Hiding also mutes. */

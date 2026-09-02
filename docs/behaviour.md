@@ -221,6 +221,23 @@ The button and the `0` key are the same action.
 | R12 | A remainder under **10 ms** is dropped, and no whole note ever is. | Entering 5 ms before a *short* note ends makes no sound. `interpret()` enforces `minDurationMs >= 20`, so the shortest real note is twice the floor — pinned by a test. |
 | R13 | An untrusted note straddling A stays **silent**, as N36 requires. | A `fix.state === 'doubt'` note spanning A renders to silence. "It was already playing" is not an exception to the fold's judgement. |
 
+## Playback speed
+
+| # | Expected | How to observe |
+|---|---|---|
+| S1 | A speed control (slider, 10–150%, step 5) is present in the controls bar, alongside Volume. | `#speed` exists with `min=10 max=150 step=5`. |
+| S2 | Always starts at 100% when a song loads — never persisted across songs or reloads. | Set it to e.g. 70%, load a different song: reads 100% again. |
+| S3 | ⚠ Changing speed away from 100% audibly changes tempo while the pitch stays the same. | Play a held note at 70% and at 130%: the tone is slower/faster but not lower/higher — the thing native `playbackRate` cannot do. |
+| S4 | At exactly 100% the native, unprocessed playback path runs — zero behaviour change from before this feature. | No `AudioWorkletNode` is created; `stretchNodes` stays empty. |
+| S5 | ⚠ Crossing the 100% ↔ non-100% boundary rebuilds the audio graph (same `stop()`→`play()` pattern as a loop-bounds change); staying on one side of it while dragging the slider does **not** restart the audio. | Drag the slider between two non-100% values during playback: no audible glitch/restart. Cross 100% itself: a brief rebuild is expected, same as pressing `a`/`b`. |
+| S6 | `[` / `]` nudge the rate ±5%, clamped to [10, 150]; Shift+`[` / Shift+`]` nudge ±1% over the same range; `\` resets to 100%. | Press repeatedly past either bound: it stops at 10 or 150, for both the coarse and fine step. `\` from any value returns to 100. |
+| S7 | A–B looping and seeking still work at non-100% rates. | Set a loop, change speed, seek inside and outside the loop: behaves like at 100%, aside from the known loop-seam limitation (S9). |
+| S8 | Sonify reference tones (Notes lane) stay locked to the (possibly slowed/sped) stems. | With a Notes lane active, play at 70%: the tone timing tracks the slowed audio rather than the original tempo. |
+| S9 | A time-stretched A–B loop can have a faint discontinuity at the seam — accepted, not fixed by this feature. Native 100% looping is unaffected. | Loop tightly at a non-100% rate and listen at the wrap point; a native 100% loop over the same points stays glitch-free. |
+| S10 | Returning to 100% falls back to native playback with no lingering artifacts. | Play at 70%, then reset to 100% mid-playback: sounds identical to a song that was never rate-changed. |
+| S11 | The current speed is shown next to every time-code — the main transport, and the Overview/Zoom lanes when present — always visible, not just away from 100%. | `#t-speed` reads e.g. `70%`; the Overview/Zoom `.time-code` text ends `· 70%`. Updates live while playing and immediately on a paused rate change. |
+| S12 | When a drums stem has a confidently detected tempo (see Tempo grid, T-series below), a calculated/original BPM readout appears next to the speed tag — the BPM a metronome would need at the CURRENT rate, over the BPM notes.js reports (auto-detected or manually overridden). Absent until then. | `#t-bpm` reads e.g. `84.0/120.0 BPM` at 70% on a 120 BPM song; hidden while `tempo.confidence` is 0 (no drums stem, or not yet analysed). Typing a manual override in the tempo panel changes the second number within ~400ms (`sansbass:tempo`'s poll interval); the first number rescales the moment the speed changes, no poll delay. |
+
 ## Separation panel
 
 Served over HTTP like the rest of the site. `separate.js` loads as a plain

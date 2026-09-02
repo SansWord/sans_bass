@@ -221,6 +221,21 @@ The button and the `0` key are the same action.
 | R12 | A remainder under **10 ms** is dropped, and no whole note ever is. | Entering 5 ms before a *short* note ends makes no sound. `interpret()` enforces `minDurationMs >= 20`, so the shortest real note is twice the floor — pinned by a test. |
 | R13 | An untrusted note straddling A stays **silent**, as N36 requires. | A `fix.state === 'doubt'` note spanning A renders to silence. "It was already playing" is not an exception to the fold's judgement. |
 
+## Playback speed
+
+| # | Expected | How to observe |
+|---|---|---|
+| S1 | A speed control (slider, 50–150%, step 5) is present in the controls bar, alongside Volume. | `#speed` exists with `min=50 max=150 step=5`. |
+| S2 | Always starts at 100% when a song loads — never persisted across songs or reloads. | Set it to e.g. 70%, load a different song: reads 100% again. |
+| S3 | ⚠ Changing speed away from 100% audibly changes tempo while the pitch stays the same. | Play a held note at 70% and at 130%: the tone is slower/faster but not lower/higher — the thing native `playbackRate` cannot do. |
+| S4 | At exactly 100% the native, unprocessed playback path runs — zero behaviour change from before this feature. | No `AudioWorkletNode` is created; `stretchNodes` stays empty. |
+| S5 | ⚠ Crossing the 100% ↔ non-100% boundary rebuilds the audio graph (same `stop()`→`play()` pattern as a loop-bounds change); staying on one side of it while dragging the slider does **not** restart the audio. | Drag the slider between two non-100% values during playback: no audible glitch/restart. Cross 100% itself: a brief rebuild is expected, same as pressing `a`/`b`. |
+| S6 | `[` / `]` nudge the rate ±5%, clamped to [50, 150]; `\` resets to 100%. | Press repeatedly past either bound: it stops at 50 or 150. `\` from any value returns to 100. |
+| S7 | A–B looping and seeking still work at non-100% rates. | Set a loop, change speed, seek inside and outside the loop: behaves like at 100%, aside from the known loop-seam limitation (S9). |
+| S8 | Sonify reference tones (Notes lane) stay locked to the (possibly slowed/sped) stems. | With a Notes lane active, play at 70%: the tone timing tracks the slowed audio rather than the original tempo. |
+| S9 | A time-stretched A–B loop can have a faint discontinuity at the seam — accepted, not fixed by this feature. Native 100% looping is unaffected. | Loop tightly at a non-100% rate and listen at the wrap point; a native 100% loop over the same points stays glitch-free. |
+| S10 | Returning to 100% falls back to native playback with no lingering artifacts. | Play at 70%, then reset to 100% mid-playback: sounds identical to a song that was never rate-changed. |
+
 ## Separation panel
 
 Served over HTTP like the rest of the site. `separate.js` loads as a plain

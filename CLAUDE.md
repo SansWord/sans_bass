@@ -118,6 +118,10 @@ out of the project; never commit them.
   layers (audio → frames → notes → edits), which are re-derivable and which can be lost,
   what each interpretation parameter measurably does, and why beat tracking is not the fix
   for spiky notes. **Read this before touching `lib/pitch.js` or anything consuming it.**
+- [`docs/tuning-cases.md`](docs/tuning-cases.md) — a log of cases where a missing or wrong
+  note came from a music-domain assumption (an instrument's tuning or range) baked into a
+  detection parameter, not a coding bug. **Check this before chasing a "note missing" report
+  as a fresh bug** — it may be the same shape as one already solved.
 - [`docs/deployment.md`](docs/deployment.md) — how the site is hosted: GitHub Pages off the
   `gh-pages` branch, the three CI workflows, per-PR preview URLs, and the rules that keep
   `rips/`, `stems/` and the model unpublished. **Read this before touching
@@ -171,7 +175,7 @@ out of the project; never commit them.
   `separate.worker.js` (1), `notes.js` (4) and `notes.worker.js` (2) — 25 in all;
   `tests/versions.test.js` fails if they drift — and it
   covers `.png` and `.svg` as well as `.js`/`.css`, so the icons are included. Currently
-  `v1.18.5`.
+  `v1.18.7`.
 - **Separation is desktop-only, and that is not fixable from this repo.** On iOS the first
   `session.run()` kills the tab; the accumulators, the 285 MB model, the memory floor,
   WebGPU and asyncify were each ruled out by measurement, and `N_SAMPLES = 343980` is baked

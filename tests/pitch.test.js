@@ -135,6 +135,38 @@ test('pitch: BASS_RANGE finds a fundamental the vocal range cannot see', () => {
   assert(bassRange.confidence > 0.9, 'and reads as strongly periodic');
 });
 
+test('pitch: BASS_RANGE reaches below open E1, down to a half-step-down D#1', () => {
+  // A whole band tuned down a half step (Eb standard) puts its lowest string at D#1
+  // (38.9 Hz), a semitone below open E1 (41.2 Hz) on standard tuning. Measured on
+  // "6 南國的風"'s real bass stem: tauMax 269 (E1 floor) missed this note entirely;
+  // tauMax 300 (D1 floor, 36.7 Hz) resolved it as one clean sustained note with no
+  // regression in octave-outlier rate on two other songs, and the now-shipped 379 (widened
+  // further for 5-string headroom) keeps it clean too. See docs/transcription.md.
+  const SR = 11025;
+  const hz = 38.891;   // D#1
+  const buf = sine(hz, 0.2, SR);
+  const r = yinFrame(buf, 0, SR, BASS_RANGE);
+  assertClose(centsFromHz(r.f0), centsFromHz(hz), 20, 'D#1 resolves within 20 cents');
+  assert(r.confidence > 0.9, 'and reads as strongly periodic');
+});
+
+test('pitch: BASS_RANGE reaches a 5-string bass\'s low B, with a semitone of margin', () => {
+  // A 5-string bass's low B string is B0 (30.9 Hz standard). tauMax was widened to 379
+  // (29.1 Hz floor, one semitone below B0 — the same margin used below D#1 for tauMax:300)
+  // ahead of a confirmed case, since no 5-string stem exists in this project yet. window
+  // widened alongside it (1024 -> 1408) to hold the periods-per-window ratio near the
+  // vocal range's own (~3.7) rather than let it drop toward the noisiest ratio the
+  // original window sweep found. This is a deliberate, accepted accuracy trade — see the
+  // BASS_RANGE comment in lib/pitch.js and docs/transcription.md for the measured cost on
+  // real bass stems that don't contain a B0 at all.
+  const SR = 11025;
+  const hz = 30.868;   // B0
+  const buf = sine(hz, 0.2, SR);
+  const r = yinFrame(buf, 0, SR, BASS_RANGE);
+  assertClose(centsFromHz(r.f0), centsFromHz(hz), 20, 'B0 resolves within 20 cents');
+  assert(r.confidence > 0.9, 'and reads as strongly periodic');
+});
+
 test('pitch: BASS_RANGE\'s window is wide enough to keep the vocal range\'s period-count ratio', () => {
   // The vocal range gets ~3.7 periods per window at its own floor (512 / 138*sampleRate/tauMax-ish
   // arithmetic is approximate by design — this pins the INTENT, not an exact ratio): a bass window

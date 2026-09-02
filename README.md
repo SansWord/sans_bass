@@ -311,6 +311,7 @@ The default server is single-threaded, and with files this size the browser can 
 | Per-instrument level | The slider at the right of each lane |
 | Set loop start / end | **a** / **b** at the playhead |
 | Clear the loop | **c** or **Esc**, or the Clear button |
+| Change playback speed | Drag the speed slider, or **[** / **]** (±5%, hold **Shift** for ±1%) / **\\** to reset |
 
 The notes lane has its own controls — see [Step 5](#step-5--find-the-notes).
 
@@ -332,6 +333,11 @@ Details worth knowing:
 - Move either point at any time, including mid-playback; the change applies immediately
   without an audible gap.
 - Loading a new song clears the points.
+- Pitch stays fixed at any playback speed. A time-stretched (non-100%) loop can have a
+  faint discontinuity right at the seam, because the stretch pipeline's internal state has
+  no way to know the input just jumped back to A — inherent to real-time time-stretching
+  across an arbitrary loop point, not specific to this player. Native 100% looping is
+  unaffected and stays exactly as glitch-free as always.
 
 Looping runs on the audio thread via the Web Audio node's own loop parameters, not from a
 JavaScript timer. That keeps all six stems sample-locked to each other across every lap,

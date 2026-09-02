@@ -8,13 +8,17 @@ import { test, assert, assertEq } from './assert.js';
  * It reads the shipped files over HTTP rather than a constant, so it checks what the browser
  * actually gets. Needs ./scripts/serve.sh, like the rest of tests/. */
 
-const FILES = ['../index.html', '../separate.js', '../separate.worker.js',
+const FILES = ['../index.html', '../app.js', '../lib/stretch-processor.js',
+               '../separate.js', '../separate.worker.js',
                '../notes.js', '../notes.worker.js'];
 
 // Only local assets are versioned; a jsDelivr or Hugging Face URL carries its own version.
 // Images are in the list because the icons are local assets like any other — an icon left
 // on a stale ?v= is a stale icon, and nothing else would notice.
-const LOCAL_VERSIONED = /(?:src|href|from|Worker\()\s*=?\s*['"]([^'":]+?\.(?:js|css|png|svg))(\?v=([^'"]*))?['"]/g;
+// addModule( catches app.js's audio.audioWorklet.addModule('lib/stretch-processor.js?v=...')
+// — without it, that reference is invisible to this regex and a version drift there goes
+// undetected even with app.js listed in FILES below.
+const LOCAL_VERSIONED = /(?:src|href|from|Worker\(|addModule\()\s*=?\s*['"]([^'":]+?\.(?:js|css|png|svg))(\?v=([^'"]*))?['"]/g;
 
 async function fetchAll() {
   const out = {};

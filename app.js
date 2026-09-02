@@ -41,9 +41,18 @@ let ribbonVolume = 1;
 let ribbonHeight = readRibbonHeight();
 let zoomSeconds = readZoomSeconds();
 let zoomEl = null;         // { lane, canvas, out }
-let zoomPeaks = null;      // hi-res vocals envelope, computed once per song
+let zoomPeaksByStem = {};  // stem id -> hi-res envelope, computed lazily, once per song
 let zoomCenter = 0;        // seconds; follows the playhead while playing
 let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
+/* What the zoomed pane shows: any mix of stem ids (their waveform, gray while 'notes' is
+ * also selected, in their own colour when it isn't) plus the literal 'notes' entry (the
+ * detected-pitch overlay this pane was originally built around). Not persisted — every
+ * fresh page load starts back at the default. A stem id it contains that the current song
+ * doesn't have is simply never drawn. */
+let zoomLaneSel = new Set(['vocals', 'notes']);
+let zoomChipEls = [];      // [{ stem, select, label, spk }] for the current song's lane chips
+let zoomNotesChipEl = null;
+let zoomNotesMuteEl = null;
 let editMode = false;       // mirrors the notes.js toggle — see 'sansbass:editmode'
 let selectedNote = null;    // { at, midi } — at is a time point inside the note, midi is its
                              // pitch at selection time; both identify one specific note
@@ -191,6 +200,12 @@ function readRibbonHeight() {
 
 function readZoomSeconds() {
   return readStoredNumber(ZOOM_SEC_KEY, ZOOM_SEC_DEFAULT, clampZoomSec);
+}
+
+/** '#rrggbb' -> 'rgba(r,g,b,a)'. Stem colours are always this 6-digit hex form (lib/stems.js). */
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
 function fmt(t) {
@@ -506,7 +521,7 @@ function buildUI(title) {
   /* The previous song's frames describe the previous song's audio; drawn against the new
    * duration they would be silently wrong. Drop them before the lanes are rebuilt. */
   ribbon = null;
-  zoomPeaks = null;
+  zoomPeaksByStem = {};
   tempoRangeDrag = null;
   tempoRange = null;
   tempoRangeArmed = false;
@@ -584,6 +599,9 @@ function buildUI(title) {
    * with the lanes it survives by construction, and lands directly under vocals. */
   ribbonEl = null;
   zoomEl = null;
+  zoomChipEls = [];
+  zoomNotesChipEl = null;
+  zoomNotesMuteEl = null;
   const vocals = tracks.find((t) => t.stem === 'vocals');
   if (vocals) {
     const lane = document.createElement('div');
@@ -644,6 +662,7 @@ function buildUI(title) {
     const zTxt = document.createElement('span');
     zTxt.className = 'txt';
     zTxt.textContent = tr('notes.zoom');
+
     const zOut = document.createElement('span');
     zOut.className = 'zoom-secs';
 
@@ -660,7 +679,73 @@ function buildUI(title) {
       return b;
     };
     zBtns.append(mkBtn('\u2212', 1.5, 'notes.zoomOut'), mkBtn('+', 1 / 1.5, 'notes.zoomIn'));
-    zName.append(zTxt, zOut, zBtns);
+
+    /* The label stays with what it actually names \u2014 the seconds readout and the zoom
+     * buttons \u2014 on one row. It used to sit alone above a second row of lane chips, which
+     * read as if it were labelling THEM instead. */
+    const zTopRow = document.createElement('div');
+    zTopRow.className = 'zoom-top-row';
+    const zSecsGroup = document.createElement('span');
+    zSecsGroup.className = 'zoom-secs-group';
+    zSecsGroup.append(zOut, zBtns);
+    zTopRow.append(zTxt, zSecsGroup);
+
+    /* Which stem(s) \u2014 and whether the detected-notes overlay \u2014 the pane below draws. One
+     * chip per stem actually in this song, plus a 'notes' chip: a coloured dot AND its
+     * stem name (a colour alone doesn't say which lane it is), toggling it into the pane,
+     * plus (stems only) a speaker glyph that mutes/unmutes the lane exactly like clicking
+     * its row in the main list does (see toggleTrack). Its own row below the title/seconds
+     * row, so it reads as a distinct control \u2014 lane selection, not a caption for anything
+     * above it \u2014 and so six-plus chips have room without crowding that row. */
+    const zLaneSel = document.createElement('span');
+    zLaneSel.className = 'zoom-lane-sel';
+    zoomChipEls = tracks.filter((t) => t.stem).map((t) => {
+      const chip = document.createElement('span');
+      chip.className = 'zoom-chip';
+      const select = document.createElement('button');
+      select.type = 'button';
+      select.className = 'zoom-chip-select';
+      select.style.setProperty('--chip-color', t.color);
+      select.title = tr('notes.zoomLaneShowTip', { lane: laneLabel(t) });
+      const dot = document.createElement('span');
+      dot.className = 'zoom-chip-dot';
+      const label = document.createElement('span');
+      label.className = 'zoom-chip-label';
+      label.textContent = laneLabel(t);
+      select.append(dot, label);
+      select.addEventListener('click', () => toggleZoomLane(t.stem));
+      const spk = document.createElement('button');
+      spk.type = 'button';
+      spk.className = 'zoom-chip-mute';
+      spk.textContent = '\u266a';
+      spk.title = tr('notes.zoomLaneMuteTip', { lane: laneLabel(t) });
+      spk.addEventListener('click', () => toggleTrack(t));
+      chip.append(select, spk);
+      zLaneSel.appendChild(chip);
+      return { stem: t.stem, select, label, spk };
+    });
+    const notesChip = document.createElement('span');
+    notesChip.className = 'zoom-chip';
+    zoomNotesChipEl = document.createElement('button');
+    zoomNotesChipEl.type = 'button';
+    zoomNotesChipEl.className = 'mini zoom-notes-chip';
+    zoomNotesChipEl.textContent = tr('notes.zoomNotesChip');
+    zoomNotesChipEl.title = tr('notes.zoomNotesChipTip');
+    zoomNotesChipEl.addEventListener('click', toggleZoomNotes);
+    /* The synthesised-notes lane has its own mute (see ribbonMuted) — a separate decision
+     * from whether this pane shows the notes overlay at all. Same speaker glyph as a stem
+     * chip's, wired to toggleRibbon rather than toggleTrack. */
+    zoomNotesMuteEl = document.createElement('button');
+    zoomNotesMuteEl.type = 'button';
+    zoomNotesMuteEl.className = 'zoom-chip-mute';
+    zoomNotesMuteEl.textContent = '♪';
+    zoomNotesMuteEl.title = tr('notes.zoomNotesMuteTip');
+    zoomNotesMuteEl.addEventListener('click', toggleRibbon);
+    notesChip.append(zoomNotesChipEl, zoomNotesMuteEl);
+    zLaneSel.appendChild(notesChip);
+    syncZoomChips();
+
+    zName.append(zTopRow, zLaneSel);
 
     const zCanvas = document.createElement('canvas');
     zCanvas.className = 'wave zoomwave';
@@ -835,16 +920,21 @@ function setNotes(payload) {
   ribbon = payload && payload.notes && payload.frames ? payload : null;
   if (!ribbonEl) return;
   applyRibbonVisibility();
-  if (!ribbon) { ribbonEl.canvas.__layers = null; zoomPeaks = null; return; }
-  if (!zoomPeaks) {
-    // Computed once per song, off the vocals stem the notes came from.
-    const v = tracks.find((t) => t.stem === 'vocals');
-    if (v) zoomPeaks = window.SansRibbon.zoomPeaks(v.buffer.getChannelData(0),
-                                                   v.buffer.sampleRate, ZOOM_BPS);
-  }
+  if (!ribbon) { ribbonEl.canvas.__layers = null; return; }
   zoomCenter = currentTime();
   renderRibbon(ribbonEl.canvas, ribbon, ribbonEl.canvas.clientWidth);
   draw();
+}
+
+/** Hi-res peak envelope for one stem's waveform in the zoomed pane, computed on first use
+ *  and cached for the rest of the song — see zoomPeaksByStem. */
+function ensureZoomPeaks(stem) {
+  if (zoomPeaksByStem[stem]) return zoomPeaksByStem[stem];
+  const t = tracks.find((tr) => tr.stem === stem);
+  if (!t || !t.buffer) return null;
+  const peaks = window.SansRibbon.zoomPeaks(t.buffer.getChannelData(0), t.buffer.sampleRate, ZOOM_BPS);
+  zoomPeaksByStem[stem] = peaks;
+  return peaks;
 }
 
 function renderAll() {
@@ -1131,18 +1221,30 @@ function renderZoom(canvas) {
   const x = (t) => ((t - win.from) / span) * w;
 
   const { notes, frames } = ribbon;
-  const [loM, hiM] = window.SansRibbon.pitchRange(notes, { clip: ribbon.clip !== false });
-  const pitchSpan = hiM - loM || 1;
-  const y = (midi) => h - ((midi - loM) / pitchSpan) * h;
-  const semi = Math.abs(y(0) - y(1));
+  /* Whether the 'notes' chip is on. When it is, the note blocks are the thing this pane
+   * exists to show, so every selected stem's waveform behind them renders gray instead of
+   * competing in colour. When it's off there's nothing pitched to plot, so the whole
+   * pitch-grid/contour/note-block machinery below is skipped in favour of each selected
+   * waveform in its own stem colour — see the lane selector this draws for (app.js's zLane
+   * construction) and docs/behaviour.md. */
+  const showNotes = zoomLaneSel.has('notes');
+  let loM, hiM, y, semi;
+  if (showNotes) {
+    [loM, hiM] = window.SansRibbon.pitchRange(notes, { clip: ribbon.clip !== false });
+    const pitchSpan = hiM - loM || 1;
+    y = (midi) => h - ((midi - loM) / pitchSpan) * h;
+    semi = Math.abs(y(0) - y(1));
+  }
 
   c.fillStyle = '#141419';
   c.fillRect(0, 0, w, h);
 
   /* A resting-state hint for the range-select band, drawn even with nothing dragged or
    * selected — otherwise the strip is only visible once you already know to look for it.
-   * Faint enough not to compete with the brighter, more saturated rsel highlight below. */
-  if (editMode) {
+   * Faint enough not to compete with the brighter, more saturated rsel highlight below.
+   * The range-select band deletes NOTES, so it (and the selection drawn below it) only
+   * make sense while notes are actually in view. */
+  if (showNotes && editMode) {
     c.fillStyle = 'rgba(255,209,102,.07)';
     c.fillRect(0, h - RULER_BAND_PX, w, RULER_BAND_PX);
     c.strokeStyle = 'rgba(255,209,102,.4)';
@@ -1153,7 +1255,7 @@ function renderZoom(canvas) {
     c.stroke();
   }
 
-  const rsel = rangeDrag || rangeSelection;
+  const rsel = showNotes ? (rangeDrag || rangeSelection) : null;
   if (rsel) {
     const s = Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
     const eT = Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
@@ -1161,42 +1263,30 @@ function renderZoom(canvas) {
     c.fillRect(x(s), 0, Math.max(1, x(eT) - x(s)), h);
   }
 
-  // Vocal envelope behind everything, from the high-resolution peaks.
-  if (zoomPeaks) {
-    c.fillStyle = 'rgba(255,255,255,.10)';
-    const mid = h / 2;
+  /* Every selected stem's waveform, behind everything else, from its high-resolution
+   * peaks: gray while notes are in view (so the note blocks stay the colourful thing),
+   * each in its own stem colour when notes are off — see toggleZoomNotes. */
+  const mid = h / 2;
+  for (const stem of zoomLaneSel) {
+    if (stem === 'notes') continue;
+    const peaks = ensureZoomPeaks(stem);
+    if (!peaks) continue;
+    const t = tracks.find((tr) => tr.stem === stem);
+    c.fillStyle = showNotes ? 'rgba(255,255,255,.10)' : hexToRgba(t?.color || '#ffffff', 0.55);
     for (let px = 0; px < w; px++) {
-      const t = win.from + (px / w) * span;
-      const b = Math.floor(t * zoomPeaks.bps);
-      if (b < 0 || b >= zoomPeaks.mins.length) continue;
-      const top = mid + Math.max(-1, zoomPeaks.mins[b]) * mid;
-      const bot = mid + Math.min(1, zoomPeaks.maxs[b]) * mid;
+      const tm = win.from + (px / w) * span;
+      const b = Math.floor(tm * peaks.bps);
+      if (b < 0 || b >= peaks.mins.length) continue;
+      const top = mid + Math.max(-1, peaks.mins[b]) * mid;
+      const bot = mid + Math.min(1, peaks.maxs[b]) * mid;
       c.fillRect(px, top, 1, Math.max(1, bot - top));
     }
   }
 
-  // Piano-roll grid, same language as the lane.
-  const lo = Math.ceil(loM);
-  const hi = Math.floor(hiM);
-  for (let m = lo; m <= hi; m++) {
-    if (!BLACK_KEYS.has(((m % 12) + 12) % 12)) continue;
-    const top = y(m + 0.5);
-    c.fillStyle = 'rgba(255,255,255,.040)';
-    c.fillRect(0, top, w, Math.max(1, y(m - 0.5) - top));
-  }
-  /* Same 簡譜 resolution as the lane, and for the same reasons — see renderRibbon. This is
-   * the pane a pitch is actually read off, so leaving its axis in note names while its
-   * blocks drew degrees put both notations side by side in the one view where it matters. */
-  const jp = ribbon.jianpu && ribbon.jianpu.on ? ribbon.jianpu : null;
-  const refOct = jp && window.SansJianpu
-    ? window.SansJianpu.referenceOctave(notes, jp.tonic) : 0;
-  const isHome = (m) => (((m - (jp ? jp.tonic : 0)) % 12) + 12) % 12 === 0;
-
-  for (let m = lo; m <= hi + 1; m++) {
-    c.fillStyle = isHome(m) ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.075)';
-    c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
-  }
-
+  /* The beat/bar grid, independent of whether Notes is selected — it's a tempo reference
+   * for whatever waveform(s) are on screen, not something the pitch view owns. Drawn over
+   * the waveform but under the pitch grid/note blocks, same order as before this was
+   * pulled out of the showNotes block. */
   if (ribbon.tempo && ribbon.tempo.on) {
     const beats = window.SansRibbon.beatTimes(ribbon.tempo, duration);
     for (const b of beats) {
@@ -1207,93 +1297,117 @@ function renderZoom(canvas) {
     }
   }
 
-  /* Names, overlaid at the left rather than in a gutter — same reason as the lane: a
-   * gutter moves the window's left edge away from win.from. This is the view you read a
-   * pitch off, so it labels every semitone the moment there is room. */
-  if (semi >= 6) {
-    const everySemitone = semi >= LABEL_MIN_PX;
-    c.font = `500 ${Math.min(10, Math.max(8, semi * 0.62)).toFixed(1)}px ui-monospace, Menlo, monospace`;
-    c.textBaseline = 'middle';
+  if (showNotes) {
+    // Piano-roll grid, same language as the lane.
+    const lo = Math.ceil(loM);
+    const hi = Math.floor(hiM);
     for (let m = lo; m <= hi; m++) {
-      const pc = ((m % 12) + 12) % 12;
-      const home = isHome(m);
-      if (!everySemitone && !home) continue;
-      let label;
-      let dots = 0;
-      if (jp && window.SansJianpu) {
-        const d = window.SansJianpu.degreeOf(m, jp.tonic, jp.mode);
-        label = d.accidental + d.digit;
-        dots = d.octaveIndex - refOct;
-      } else {
-        label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
-      }
-      const ty = y(m);
-      const tw = c.measureText(label).width;
-      c.fillStyle = 'rgba(13,13,16,.82)';
-      c.fillRect(0, ty - semi / 2, tw + 7, semi);
-      c.fillStyle = home ? '#c9c9d6' : '#8a8a99';
-      c.fillText(label, 3, ty + 0.5);
-      if (dots) drawOctaveDots(c, 3 + tw + 2.5, ty, dots, semi);
+      if (!BLACK_KEYS.has(((m % 12) + 12) % 12)) continue;
+      const top = y(m + 0.5);
+      c.fillStyle = 'rgba(255,255,255,.040)';
+      c.fillRect(0, top, w, Math.max(1, y(m - 0.5) - top));
     }
-  }
+    /* Same 簡譜 resolution as the lane, and for the same reasons — see renderRibbon. This is
+     * the pane a pitch is actually read off, so leaving its axis in note names while its
+     * blocks drew degrees put both notations side by side in the one view where it matters. */
+    const jp = ribbon.jianpu && ribbon.jianpu.on ? ribbon.jianpu : null;
+    const refOct = jp && window.SansJianpu
+      ? window.SansJianpu.referenceOctave(notes, jp.tonic) : 0;
+    const isHome = (m) => (((m - (jp ? jp.tonic : 0)) % 12) + 12) % 12 === 0;
 
-  /* Here a column is a frame or less, so the contour is a real line rather than the
-   * per-pixel band the full-width lane has to fall back on. */
-  c.strokeStyle = '#7fb2d9';
-  c.lineWidth = 1.6;
-  c.lineJoin = 'round';
-  const dt = frames.frameSeconds;
-  const i0 = Math.max(0, Math.floor(win.from / dt) - 1);
-  const i1 = Math.min(frames.cents.length - 1, Math.ceil(win.to / dt) + 1);
-  c.beginPath();
-  let drawing = false;
-  for (let i = i0; i <= i1; i++) {
-    const cents = frames.cents[i];
-    if (!cents) { drawing = false; continue; }
-    const px = x(frames.t[i]);
-    const py = y(cents / 100);
-    if (!drawing) { c.moveTo(px, py); drawing = true; } else c.lineTo(px, py);
-  }
-  c.stroke();
+    for (let m = lo; m <= hi + 1; m++) {
+      c.fillStyle = isHome(m) ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.075)';
+      c.fillRect(0, Math.round(y(m - 0.5)), w, 1);
+    }
 
-  for (const n of notes) {
-    const live = noteDrag && noteDrag.note === n
-      ? { start: noteDrag.previewStart, end: noteDrag.previewEnd } : n;
-    if (live.end < win.from || live.start > win.to) continue;
-    const out = n.midi < loM || n.midi > hiM;
-    const by = out ? (n.midi < loM ? h - 3 : 0) : y(n.midi + 0.5);
-    const bh = out ? 3 : Math.max(3, semi * 0.8);
-    const bw = Math.max(2, x(live.end) - x(live.start));
-    c.fillStyle = out ? '#ff9f1c' : NOTE_FILL[noteFillKey(n)].zoom;
-    c.fillRect(x(live.start), by, bw, bh);
-    const minLabelPx = (ribbon.jianpu && ribbon.jianpu.on) ? 14 : 26;
-    if (!out && bw > minLabelPx && bh > 9) {
-      c.fillStyle = '#0d0d10';
-      c.font = '600 10px ui-monospace, Menlo, monospace';
+    /* Names, overlaid at the left rather than in a gutter — same reason as the lane: a
+     * gutter moves the window's left edge away from win.from. This is the view you read a
+     * pitch off, so it labels every semitone the moment there is room. */
+    if (semi >= 6) {
+      const everySemitone = semi >= LABEL_MIN_PX;
+      c.font = `500 ${Math.min(10, Math.max(8, semi * 0.62)).toFixed(1)}px ui-monospace, Menlo, monospace`;
       c.textBaseline = 'middle';
-      c.fillText(noteLabel(n, ribbon.jianpu), x(live.start) + 3, by + bh / 2 + 0.5);
+      for (let m = lo; m <= hi; m++) {
+        const pc = ((m % 12) + 12) % 12;
+        const home = isHome(m);
+        if (!everySemitone && !home) continue;
+        let label;
+        let dots = 0;
+        if (jp && window.SansJianpu) {
+          const d = window.SansJianpu.degreeOf(m, jp.tonic, jp.mode);
+          label = d.accidental + d.digit;
+          dots = d.octaveIndex - refOct;
+        } else {
+          label = NOTE_LETTERS[pc] + (Math.floor(m / 12) - 1);
+        }
+        const ty = y(m);
+        const tw = c.measureText(label).width;
+        c.fillStyle = 'rgba(13,13,16,.82)';
+        c.fillRect(0, ty - semi / 2, tw + 7, semi);
+        c.fillStyle = home ? '#c9c9d6' : '#8a8a99';
+        c.fillText(label, 3, ty + 0.5);
+        if (dots) drawOctaveDots(c, 3 + tw + 2.5, ty, dots, semi);
+      }
     }
-    /* The selected note gets a white outline in addition to its fill — "outline plus fill"
-     * is the same language buttons and inputs use for focus elsewhere in this app. */
-    if (editMode && selectedNote && n.midi === selectedNote.midi &&
-        live.start <= selectedNote.at && selectedNote.at < live.end) {
-      c.strokeStyle = '#ffffff';
-      c.lineWidth = 1.5;
-      c.strokeRect(x(live.start) + 0.75, by + 0.75, Math.max(0.5, bw - 1.5), Math.max(0.5, bh - 1.5));
-      // Small edge tabs — the visual affordance for the drag target pointerdown tests above.
-      c.fillStyle = '#ffffff';
-      const hw = 3;
-      c.fillRect(x(live.start) - hw / 2, by, hw, bh);
-      c.fillRect(x(live.end) - hw / 2, by, hw, bh);
-    }
-  }
 
-  if (addDrag) {
-    const s = Math.min(addDrag.startT, addDrag.curT);
-    const eT = Math.max(addDrag.startT, addDrag.curT);
-    const by2 = y(addDrag.midi + 0.5);
-    c.fillStyle = 'rgba(201,155,240,.5)';
-    c.fillRect(x(s), by2, Math.max(2, x(eT) - x(s)), Math.max(3, semi * 0.8));
+    /* Here a column is a frame or less, so the contour is a real line rather than the
+     * per-pixel band the full-width lane has to fall back on. */
+    c.strokeStyle = '#7fb2d9';
+    c.lineWidth = 1.6;
+    c.lineJoin = 'round';
+    const dt = frames.frameSeconds;
+    const i0 = Math.max(0, Math.floor(win.from / dt) - 1);
+    const i1 = Math.min(frames.cents.length - 1, Math.ceil(win.to / dt) + 1);
+    c.beginPath();
+    let drawing = false;
+    for (let i = i0; i <= i1; i++) {
+      const cents = frames.cents[i];
+      if (!cents) { drawing = false; continue; }
+      const px = x(frames.t[i]);
+      const py = y(cents / 100);
+      if (!drawing) { c.moveTo(px, py); drawing = true; } else c.lineTo(px, py);
+    }
+    c.stroke();
+
+    for (const n of notes) {
+      const live = noteDrag && noteDrag.note === n
+        ? { start: noteDrag.previewStart, end: noteDrag.previewEnd } : n;
+      if (live.end < win.from || live.start > win.to) continue;
+      const out = n.midi < loM || n.midi > hiM;
+      const by = out ? (n.midi < loM ? h - 3 : 0) : y(n.midi + 0.5);
+      const bh = out ? 3 : Math.max(3, semi * 0.8);
+      const bw = Math.max(2, x(live.end) - x(live.start));
+      c.fillStyle = out ? '#ff9f1c' : NOTE_FILL[noteFillKey(n)].zoom;
+      c.fillRect(x(live.start), by, bw, bh);
+      const minLabelPx = (ribbon.jianpu && ribbon.jianpu.on) ? 14 : 26;
+      if (!out && bw > minLabelPx && bh > 9) {
+        c.fillStyle = '#0d0d10';
+        c.font = '600 10px ui-monospace, Menlo, monospace';
+        c.textBaseline = 'middle';
+        c.fillText(noteLabel(n, ribbon.jianpu), x(live.start) + 3, by + bh / 2 + 0.5);
+      }
+      /* The selected note gets a white outline in addition to its fill — "outline plus fill"
+       * is the same language buttons and inputs use for focus elsewhere in this app. */
+      if (editMode && selectedNote && n.midi === selectedNote.midi &&
+          live.start <= selectedNote.at && selectedNote.at < live.end) {
+        c.strokeStyle = '#ffffff';
+        c.lineWidth = 1.5;
+        c.strokeRect(x(live.start) + 0.75, by + 0.75, Math.max(0.5, bw - 1.5), Math.max(0.5, bh - 1.5));
+        // Small edge tabs — the visual affordance for the drag target pointerdown tests above.
+        c.fillStyle = '#ffffff';
+        const hw = 3;
+        c.fillRect(x(live.start) - hw / 2, by, hw, bh);
+        c.fillRect(x(live.end) - hw / 2, by, hw, bh);
+      }
+    }
+
+    if (addDrag) {
+      const s = Math.min(addDrag.startT, addDrag.curT);
+      const eT = Math.max(addDrag.startT, addDrag.curT);
+      const by2 = y(addDrag.midi + 0.5);
+      c.fillStyle = 'rgba(201,155,240,.5)';
+      c.fillRect(x(s), by2, Math.max(2, x(eT) - x(s)), Math.max(3, semi * 0.8));
+    }
   }
 
   // Time ruler, one label per second while there is room for it.
@@ -1714,6 +1828,7 @@ function applyRibbonGain() {
     ribbonGain.gain.setTargetAtTime(ribbonMuted ? 0 : ribbonVolume, audio.currentTime, 0.012);
   }
   ribbonEl?.lane.classList.toggle('muted', ribbonMuted);
+  syncZoomChips();
 }
 
 /* Hiding silences. A pane you cannot see should not still be sounding — you would have
@@ -1766,6 +1881,7 @@ function applyGains() {
   });
   // Every mute path routes through here, so the button label can never drift out of sync.
   renderAllToggle();
+  syncZoomChips();
 }
 
 /* Three states, and the label is the only thing that says which one you are in:
@@ -1806,6 +1922,18 @@ function retranslate() {
   // Lane labels translate; the note NAMES drawn inside the ribbon never do.
   if (ribbonEl) ribbonEl.txt.textContent = tr('notes.lane');
   if (zoomEl) zoomEl.lane.querySelector('.txt').textContent = tr('notes.zoom');
+  for (const { stem, select, label: labelEl, spk } of zoomChipEls) {
+    const t = tracks.find((tr) => tr.stem === stem);
+    const label = t ? laneLabel(t) : stem;
+    select.title = tr('notes.zoomLaneShowTip', { lane: label });
+    labelEl.textContent = label;
+    spk.title = tr('notes.zoomLaneMuteTip', { lane: label });
+  }
+  if (zoomNotesChipEl) {
+    zoomNotesChipEl.textContent = tr('notes.zoomNotesChip');
+    zoomNotesChipEl.title = tr('notes.zoomNotesChipTip');
+  }
+  if (zoomNotesMuteEl) zoomNotesMuteEl.title = tr('notes.zoomNotesMuteTip');
   syncTempoRangeHint();
   renderLoopBadge();
   // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
@@ -2111,6 +2239,35 @@ function zoomBy(factor) {
   zoomSeconds = clampZoomSec(zoomSeconds * factor);
   writeStored(ZOOM_SEC_KEY, zoomSeconds);
   draw();
+}
+
+/** Add or drop a stem from the zoomed pane's waveform selection. */
+function toggleZoomLane(stem) {
+  if (zoomLaneSel.has(stem)) zoomLaneSel.delete(stem); else zoomLaneSel.add(stem);
+  syncZoomChips();
+  draw();
+}
+
+/** Show/hide the detected-notes overlay (pitch grid, contour and note blocks) in the
+ *  zoomed pane. Whenever it's on, every selected stem's waveform behind it renders gray
+ *  instead of its own colour, so the notes stay the thing your eye reads — see renderZoom. */
+function toggleZoomNotes() {
+  if (zoomLaneSel.has('notes')) zoomLaneSel.delete('notes'); else zoomLaneSel.add('notes');
+  syncZoomChips();
+  draw();
+}
+
+/** Keeps every chip's selected/muted look in sync with zoomLaneSel, each track's own
+ *  .muted, and ribbonMuted — called after a chip click, from applyGains() (a stem can be
+ *  muted from its own row in the main list too) and from applyRibbonGain() likewise. */
+function syncZoomChips() {
+  for (const { stem, select, spk } of zoomChipEls) {
+    select.classList.toggle('on', zoomLaneSel.has(stem));
+    const t = tracks.find((tr) => tr.stem === stem);
+    spk.classList.toggle('muted', !!t?.muted);
+  }
+  if (zoomNotesChipEl) zoomNotesChipEl.classList.toggle('active', zoomLaneSel.has('notes'));
+  if (zoomNotesMuteEl) zoomNotesMuteEl.classList.toggle('muted', ribbonMuted);
 }
 
 /** The note in `list` whose span contains `at`, or null. Half-open — a note's END excludes

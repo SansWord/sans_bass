@@ -91,6 +91,19 @@ function currentTempoRangeChannels() {
   return { channels: chans, sampleRate: buffer.sampleRate };
 }
 
+/** Restores the tempo grid to its defaults for a freshly loaded song. Tempo is derived from
+ *  THIS song's drums stem, so nothing about it — including a range selection or a manual
+ *  BPM/phase override — should survive into the next song. Idempotent: safe to call more
+ *  than once for the same load (each channel's reset() calls it, and so does the
+ *  'sansbass:songload' listener below, so both paths agreeing is fine). */
+function resetTempo() {
+  tempo = { on: true, auto: true, bpmValue: 120, phaseMs: 0, beatsPerBar: 4, confidence: 0 };
+  tempoRange = null;
+  tempoRangeArmed = false;
+  tempoEl.rangeToggle.classList.remove('note-tbtn-armed');
+  syncTempoControls();
+}
+
 /** Adopts a fresh { bpmValue, phaseSec, confidence } from the worker. */
 function applyTempoResult(result) {
   tempo = {
@@ -193,6 +206,12 @@ function refreshTempo() {
   tempoEl.panel.hidden = !anyMelodic;
   syncTempoControls();
 }
+
+/* app.js dispatches this once per buildUI() call (i.e. once per song load), unconditionally —
+ * unlike each channel's own reset(), which only fires once that channel has frames to discard.
+ * Tempo can be dirtied (a manual BPM tweak, a range drag) without either channel ever having
+ * run analysis, so the module-level reset can't rely on the per-channel path alone. */
+window.addEventListener('sansbass:songload', resetTempo);
 
 // ---------------------------------------------------------------- per-channel factory
 
@@ -399,6 +418,9 @@ function createNotesChannel(stem, els) {
     if (editable) window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false, stem: null } }));
     renderEditList();
     syncJianpuControls();
+    // Belt-and-braces alongside the 'sansbass:songload' listener above: harmless to call
+    // twice (once per channel) since resetTempo() is idempotent.
+    resetTempo();
   }
 
   function analyse() {
@@ -426,7 +448,10 @@ function createNotesChannel(stem, els) {
       }
       window.sansBass.say('');
       frames = m.frames;
-      if (m.tempo) { applyTempoResult(m.tempo); syncTempoControls(); }
+      // Skip re-applying an auto-detected tempo once the user has manually tuned it
+      // (tempo.auto === false) — otherwise running analysis on the second channel silently
+      // discards a manual BPM/phase tweak made between the two runs.
+      if (m.tempo && tempo.auto) { applyTempoResult(m.tempo); syncTempoControls(); }
       els.tune.hidden = false;
       els.go.hidden = true;
       els.show.hidden = false;

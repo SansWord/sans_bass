@@ -527,6 +527,11 @@ function buildUI(title) {
   tempoRangeDrag = null;
   tempoRange = null;
   tempoRangeArmed = false;
+  // notes.js owns its own copy of the same three things (tempo, tempoRange, tempoRangeArmed)
+  // plus the BPM/phase grid itself — none of it is derived from THIS song otherwise, so it
+  // must not survive into a new one. See notes.js's resetTempo() and its 'sansbass:songload'
+  // listener.
+  window.dispatchEvent(new CustomEvent('sansbass:songload'));
   tempoHintEl = null;
   tempoClearBtn = null;
   tempoDrumsCanvas = null;
@@ -629,7 +634,10 @@ function buildUI(title) {
     dot.className = 'dot';
     const txt = document.createElement('span');
     txt.className = 'txt';
-    txt.textContent = tr('notes.lane');
+    // Same pattern as the zoomed pane's two Notes chips ("Vocals notes"/"Bass notes") — with
+    // both channels populated, two identical "Notes" rows give no way to tell which lane
+    // controls which channel. See retranslate() for the language-switch half of this.
+    txt.textContent = tr('notes.zoomNotesChipFor', { lane: tr('stem.' + stem) });
     name.append(dot, txt);
     name.addEventListener('click', () => toggleRibbon(stem));
 
@@ -809,6 +817,7 @@ function buildUI(title) {
     editLabel.title = tr('notes.editTip');
     editToggleEl = document.createElement('input');
     editToggleEl.type = 'checkbox';
+    editToggleEl.id = 'notes-edit';
     editToggleEl.disabled = true;
     const editSpan = document.createElement('span');
     editSpan.textContent = tr('notes.edit');
@@ -1019,8 +1028,11 @@ function setNotes(stem, payload) {
   if (!lane) return;
   lane.ribbon = payload && payload.notes && payload.frames ? payload : null;
   /* First channel to finish analysis claims the zoomed pane; vocals wins only because it
-   * tends to finish first in practice — see docs/superpowers/specs/2026-09-01-bass-notes-design.md. */
-  if (zoomNotesStem === null && lane.ribbon) zoomNotesStem = stem;
+   * tends to finish first in practice — see docs/superpowers/specs/2026-09-01-bass-notes-design.md.
+   * Guarded on visibility too: a channel whose own lane is currently hidden must not silently
+   * claim the pane's overlay — see setRibbonVisible for the matching guard on the other side
+   * (clearing the selection when the SELECTED channel's lane is hidden). */
+  if (zoomNotesStem === null && lane.ribbon && ribbonVisible[stem]) zoomNotesStem = stem;
   applyRibbonVisibility(stem);
   applyZoomVisibility();
   syncZoomChips();
@@ -1994,8 +2006,18 @@ function setRibbonVisible(stem, on) {
     applyRibbonGain(stem);
     window.dispatchEvent(new CustomEvent('sansbass:ribbonmute', { detail: { muted: true, stem } }));
   }
+  /* Hiding the lane the zoomed pane is currently reading notes from must not leave that
+   * channel's pitch overlay drawn with its own lane gone — clear the selection, same
+   * "deselect closes the overlay but the pane stays open" behavior as clicking the chip
+   * itself (see toggleZoomNotes). */
+  if (!ribbonVisible[stem] && zoomNotesStem === stem) {
+    zoomNotesStem = null;
+    syncEditToggle();
+    syncRangeHints();
+  }
   applyRibbonVisibility(stem);
   applyZoomVisibility();
+  syncZoomChips();
   draw();
 }
 
@@ -2111,10 +2133,11 @@ function retranslate() {
       if (txt) txt.textContent = laneLabel(t);
     });
   }
-  // Lane labels translate; the note NAMES drawn inside a ribbon never do.
+  // Lane labels translate; the note NAMES drawn inside a ribbon never do. Same i18n key/
+  // pattern as the zoomed pane's two Notes chips — see buildUI().
   for (const stem of NOTE_STEMS) {
     const lane = noteLanes[stem];
-    if (lane) lane.el.txt.textContent = tr('notes.lane');
+    if (lane) lane.el.txt.textContent = tr('notes.zoomNotesChipFor', { lane: tr('stem.' + stem) });
   }
   if (zoomEl) zoomEl.lane.querySelector('.txt').textContent = tr('notes.zoom');
   for (const { stem, select, label: labelEl, spk } of zoomChipEls) {

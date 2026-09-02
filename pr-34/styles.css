@@ -1,0 +1,662 @@
+:root {
+  --bg: #0d0d10;
+  --panel: #16161b;
+  --panel-2: #1d1d24;
+  --line: #2a2a33;
+  --fg: #e9e9ef;
+  --dim: #7c7c8a;
+  --accent: #ff2e63;
+  --loop: #ff9f1c;
+  --radius: 10px;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  /* PingFang TC / JhengHei / Noto Sans TC carry the Traditional Chinese glyphs: Segoe UI
+     has no CJK coverage at all. System fonts only — a web font would be an outbound
+     fetch, and this project makes none for the UI. */
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+        "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { min-height: 100vh; }
+
+/* ---------- header ---------- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: rgba(13, 13, 16, .88);
+  backdrop-filter: blur(12px);
+  z-index: 5;
+}
+
+.bar h1 {
+  margin: 0;
+  font: 700 17px/1 var(--mono);
+  letter-spacing: -.02em;
+  text-transform: lowercase;
+}
+.bar h1 span { color: var(--accent); }
+
+.brand { display: flex; align-items: center; gap: 10px; }
+
+/* Sized and rounded like an app icon rather than a logo, so it reads as the same mark the
+   user sees on their home screen. `flex: none` keeps it square when the header gets tight. */
+.brand-mark {
+  display: block;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+/* Below ~348px the header's items stop fitting and the bar scrolls sideways — measured by
+   cloning the bar at a range of widths, not guessed. The mark is the only decorative item
+   in there, so it is the one that goes. Every current phone is 375px or wider; this is
+   iPhone SE 1st-generation territory. */
+@media (max-width: 359px) {
+  .brand-mark { display: none; }
+}
+
+.bar-right { display: flex; align-items: center; gap: 14px; }
+
+/* Sits at --dim so it never competes with the pink Load button, and comes up to --fg on
+   hover. `display: flex` keeps the svg from picking up the inline baseline gap. */
+.repo-link {
+  display: flex;
+  align-items: center;
+  color: var(--dim);
+  transition: color .12s;
+}
+.repo-link:hover { color: var(--fg); }
+.loadzone { display: flex; gap: 8px; }
+
+/* Segmented two-state toggle. Both options are always visible, so switching is one click
+   and the inactive language is legible rather than hidden behind a dropdown. */
+.lang-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.lang-toggle button {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 6px 11px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.lang-toggle button:hover { color: var(--fg); background: var(--panel-2); }
+.lang-toggle button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+.lang-toggle button[aria-pressed="true"]:hover { background: var(--accent); filter: brightness(1.1); }
+
+/* Any author rule that sets `display` beats the UA stylesheet's `[hidden] { display: none }`,
+   so .btn / .loop-badge / .sep elements stayed visible while their .hidden property read
+   true. Every hidden-attribute toggle in app.js and separate.js depends on this line. */
+[hidden] { display: none !important; }
+
+.btn {
+  display: inline-block;
+  padding: 7px 14px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  user-select: none;
+}
+.btn:hover { filter: brightness(1.1); }
+.btn.ghost {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--line);
+}
+.btn.ghost:hover { background: var(--panel-2); }
+.btn[disabled] { opacity: .5; cursor: default; }
+.btn[disabled]:hover { filter: none; background: transparent; }
+
+/* ---------- layout ---------- */
+
+main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+
+.dim { color: var(--dim); }
+code {
+  font: 12px var(--mono);
+  background: var(--panel-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.dropzone {
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 56px 24px;
+  text-align: center;
+  transition: border-color .15s, background .15s;
+}
+/* Title, explain and privacy share one column, centred in the panel but ragged-right
+   inside it, so all three hang off the same left edge. Two things this depends on:
+   the width is px, not ch — `ch` scales with each paragraph's own font-size, so the 19px
+   heading would get a wider column and break the shared edge — and `.big` sets its inline
+   margins to `auto` itself, because it outranks `.dropzone p` on specificity and the
+   shorthand would otherwise reset them to 0. */
+.dropzone .big { font-size: 19px; font-weight: 600; margin: 0 auto 12px; }
+.dropzone p { margin: 6px auto; max-width: 540px; text-align: left; }
+
+/* ---------- drag overlay ---------- */
+
+/* pointer-events: none is deliberate. The overlay appears under the cursor mid-drag, so if
+   it could receive events it would become the drop target and fire its own
+   dragenter/dragleave pair — the depth count in app.js would never settle at zero. */
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: none;
+  background: rgba(13, 13, 16, .8);
+  backdrop-filter: blur(3px);
+}
+.drag-card {
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 44px 56px;
+  text-align: center;
+}
+.drag-card .big { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+.drag-card p { margin: 0; }
+
+/* ---------- master row ---------- */
+
+.master {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.master-mid { flex: 1; min-width: 0; }
+
+.title {
+  font: 600 13px/1.4 var(--mono);
+  color: var(--fg);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.play {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform .1s;
+}
+.play:active { transform: scale(.94); }
+
+.ico-play {
+  width: 0; height: 0;
+  border-left: 15px solid #fff;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  margin-left: 4px;
+}
+.play.playing .ico-play {
+  border: none;
+  width: 14px; height: 16px;
+  margin-left: 0;
+  background: linear-gradient(90deg, #fff 0 5px, transparent 5px 9px, #fff 9px 14px);
+}
+
+.times {
+  flex: none;
+  font: 12px/1.5 var(--mono);
+  text-align: right;
+  min-width: 54px;
+}
+.times span { display: block; }
+
+.wave { display: block; width: 100%; cursor: pointer; touch-action: none; }
+.wave.main { height: 76px; }
+
+/* ---------- controls ---------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 16px 4px 4px;
+}
+
+.ctl { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+
+select, input[type=range] { accent-color: var(--accent); }
+
+select {
+  background: var(--panel-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: 13px var(--mono);
+}
+
+input[type=range] { width: 110px; }
+
+/* `flex: 1 0 100%` forces the hint onto its own full-width row inside the wrapping
+   .controls flexbox, so it is read left-to-right from the same edge as everything else
+   instead of being squeezed right-aligned into whatever space was left over.
+   The colour is a deliberate override of `.dim` (hence the doubled class, so it wins on
+   specificity rather than on source order): --dim is ~4.7:1 on the background, which is
+   thin for 11px text that is the only place the keyboard map is written down. #a3a3b2 is
+   ~7.8:1, and the size goes 11px → 12.5px. */
+.hint.dim {
+  flex: 1 0 100%;
+  order: 9;
+  margin: 2px 0 0;
+  font: 12.5px/1.7 var(--mono);
+  color: #a3a3b2;
+  /* Stacked, not side by side. Laid out in a row the two halves ran together into one
+     unreadable sentence — a gap is not a separator when both halves are the same colour
+     and the same monospace face. One instruction per line. */
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.hint strong { color: var(--fg); font-weight: 600; }
+
+.loop-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 11px var(--mono);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px 4px 10px;
+}
+.loop-badge.armed { color: var(--loop); border-color: color-mix(in srgb, var(--loop) 45%, transparent); }
+
+.mini {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font: 10px var(--mono);
+  cursor: pointer;
+}
+.mini:hover { color: var(--fg); border-color: var(--dim); }
+/* A disabled .mini must LOOK disabled. The <select>s beside it get Chrome's UA dimming for
+   free, but a button does not, and .btn[disabled] does not match .mini — so ⇄ sat at full
+   opacity with a pointer cursor and a live hover while doing nothing. Same rule as the
+   [hidden] one: verifying `el.disabled` passes while the user still sees a live control. */
+.mini[disabled] { opacity: .45; cursor: default; }
+.mini[disabled]:hover { color: var(--dim); border-color: var(--line); }
+
+/* ---------- lanes ---------- */
+
+.lanes { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+
+.lane {
+  display: grid;
+  grid-template-columns: 128px 1fr 96px;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  transition: opacity .15s, border-color .15s;
+}
+.lane.muted { opacity: .38; }
+.lane.muted:hover { opacity: .6; }
+
+.lane-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 12px var(--mono);
+  cursor: pointer;
+  user-select: none;
+  overflow: hidden;
+  /* The grid centres its items, which left this only as tall as the text — a ~14px strip
+     in a ~56px lane. Stretch to the full lane height and swallow the lane's left/top/bottom
+     padding, so the whole block up to the number badge toggles the track. The waveform is
+     a separate grid column and keeps its own pointer handlers for seeking. */
+  align-self: stretch;
+  margin: -8px 0 -8px -12px;
+  padding: 8px 10px 8px 12px;
+}
+/* The click target has to *look* like one. It carries its own panel tint and a divider
+   against the waveform, so the boundary between "click here to mute" and "click here to
+   seek" is visible without hovering — hover-only affordance is invisible on touch, and
+   was the thing beta testers did not find. */
+.lane-name {
+  background: var(--panel-2);
+  border-right: 1px solid var(--line);
+  border-radius: 7px 0 0 7px;
+  transition: background .12s;
+}
+.lane-name:hover { background: #2b2b36; }
+.lane-name:active { background: #34343f; }
+.lane-name .dot {
+  flex: none;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.lane-name .kbd {
+  flex: none;
+  font-size: 10px;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: auto;
+}
+.lane-name .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.lane .wave { height: 40px; }
+
+.lane-vol { display: flex; align-items: center; }
+.lane-vol input { width: 100%; }
+
+/* The overview lane has nothing to mute or click-to-solo — it's a read-only combination of
+   whatever the zoomed pane below has selected — so its name isn't a click target like every
+   other lane's. Its wave and vol columns stay the plain .lane grid, unaltered, so its canvas
+   is exactly as wide as every other lane's and the playhead lines up at the same x. */
+.lane.overview .lane-name { cursor: default; }
+.lane.overview .lane-name:hover { background: var(--panel-2); }
+
+/* The caption + Clear button under the drums lane, naming the current BPM-detection range.
+   grid-column: 1 / -1 spans the .lane grid the same way .note-range-hint already does. */
+.tempo-range-hint {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 11px var(--mono);
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+.status {
+  margin-top: 20px;
+  font: 12px var(--mono);
+  color: var(--dim);
+  white-space: pre-wrap;
+}
+.status.err { color: #ff6b81; }
+
+@media (max-width: 640px) {
+  .lane { grid-template-columns: 96px 1fr; }
+  .lane-vol { display: none; }
+  /* The keyboard map is meaningless without a keyboard; the tap hint is the one thing a
+     first-time user on a phone actually needs. Only the keys half goes. */
+  .hint-keys { display: none; }
+}
+
+/* ---- separation panel ---- */
+.sep {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; margin: 0 0 14px;
+  background: #141419; border: 1px solid #23232b; border-radius: 10px;
+}
+.sep-row { display: flex; align-items: center; gap: 12px; }
+.sep-bar { height: 6px; background: #23232b; border-radius: 3px; overflow: hidden; }
+.sep-bar > div { height: 100%; width: 0; background: #ff9f1c; transition: width .2s linear; }
+
+/* The ribbon reuses the lane grid exactly — 128px / 1fr / 96px — so its canvas starts and
+   ends on the same pixels as every waveform above it. A lane that computes its own
+   time-to-x mapping drifts from the others the moment the window is resized. */
+/* BOTH panes, not just .ribbon. The zoom pane's class is .ribbon-zoom, a different class,
+   so it was missing position:relative — and its absolutely positioned grip resolved against
+   the page instead, landing 93px below its own lane and on top of the notes lane. The
+   handle was invisible where it belonged and active where it did not. */
+.lane.ribbon,
+.lane.ribbon-zoom { position: relative; padding-bottom: 14px; }
+/* Height is set on the canvas by renderRibbon, not here — it is drag state, not style. */
+.lane.ribbon .lane-name .dot { background: #6fbf8e; }
+
+/* The drag grip. 10px is comfortably above the ~7px minimum for a pointer target while
+   staying visually quiet; ns-resize is the affordance doing the real work. */
+.ribbon-grip {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 10px;
+  cursor: ns-resize; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.ribbon-grip::after {
+  content: ''; width: 34px; height: 3px; border-radius: 2px;
+  background: #3a3a47; transition: background .15s;
+}
+.ribbon-grip:hover::after { background: #55556a; }
+
+/* The label used to sit inline with the seconds readout and zoom buttons in the same
+   128px column as every other lane's name, which truncated "局部放大" to an ellipsis the
+   moment there was more than one CJK character's worth of room. Spanning the full lane
+   width and stacking the label above a second row fixes that AND gives the lane selector
+   below room to hold six-plus chips without crowding. zCanvas is pinned back to column 2
+   (see .lane.ribbon-zoom .wave below) since it would otherwise auto-place into column 1
+   behind this now-full-width row — see the comment above .lane.ribbon,.lane.ribbon-zoom. */
+.lane.ribbon-zoom .lane-name {
+  grid-column: 1 / -1;
+  cursor: default;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  /* The base .lane-name's negative margins/tint/divider exist to make a CLICKABLE 128px
+     column read as a click target reaching the lane's own edges — see its comment. This
+     header is neither 128px wide nor clickable now, so undo all of it back to a plain
+     block that sits in its grid cell like any other lane content. */
+  margin: 0;
+  padding: 0;
+  background: none;
+  border-right: none;
+  border-radius: 0;
+}
+.lane.ribbon-zoom .lane-name:hover { background: none; }
+.lane.ribbon-zoom .wave { grid-column: 2; }
+
+/* The title stays grouped with what it names — the seconds readout and zoom buttons —
+   on one row; the lane selector is a visually distinct row below, so it reads as its own
+   control rather than a caption for the title above it. */
+.zoom-top-row { display: flex; align-items: center; gap: 10px; }
+.zoom-lane-sel { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 1px; }
+.zoom-chip { display: inline-flex; align-items: center; gap: 3px; }
+/* A colour alone doesn't say which stem a dot is — see the chip's own label span. The dot
+   still carries the stem's colour (via --chip-color) so it reads at a glance once learned. */
+.zoom-chip-select {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: transparent; border: none; padding: 0; cursor: pointer;
+  font: 10px var(--mono); color: var(--dim);
+}
+.zoom-chip-select:hover { color: var(--fg); }
+.zoom-chip-select.on { color: var(--chip-color); }
+.zoom-chip-dot {
+  width: 8px; height: 8px; flex: none;
+  border: 1.5px solid var(--chip-color); border-radius: 50%;
+  background: transparent;
+}
+.zoom-chip-select.on .zoom-chip-dot { background: var(--chip-color); }
+.zoom-chip-mute {
+  background: transparent; border: none; padding: 0; line-height: 1;
+  font: 11px var(--mono); color: var(--dim); cursor: pointer;
+}
+.zoom-chip-mute:hover { color: var(--fg); }
+/* Same "the mute is a decision the user made or did not" language as ribbonMuted — a
+   struck-through note glyph reads as "silenced" without needing a second icon. */
+.zoom-chip-mute.muted { text-decoration: line-through; opacity: .55; }
+.zoom-notes-chip { font: 10px var(--mono); padding: 2px 8px; }
+.zoom-notes-chip.active { border-color: var(--loop); color: var(--loop); }
+.zoom-sub-btn { padding: 2px 6px; }
+.zoom-sub-btn.active { border-color: var(--loop); color: var(--loop); }
+
+.zoom-secs-group { display: flex; align-items: center; flex: none; }
+/* grab, not ns-resize: this pane pans horizontally and zooms on the wheel. */
+.zoomwave { cursor: grab; touch-action: none; }
+.zoomwave:active { cursor: grabbing; }
+.zoomwave.editing { cursor: pointer; }
+.zoomwave.editing:active { cursor: pointer; }
+.zoom-secs { color: var(--dim); font-weight: 400; font-variant-numeric: tabular-nums; }
+.zoom-btns { display: inline-flex; gap: 4px; margin-left: 8px; }
+.zoom-btn {
+  font: 600 12px var(--mono); line-height: 1;
+  width: 22px; height: 22px; padding: 0;
+  background: #2a2a35; color: var(--text);
+  border: 1px solid var(--line); border-radius: 5px; cursor: pointer;
+}
+.zoom-btn:hover { background: #343442; }
+.zoom-btn:focus-visible { outline: 2px solid #9ad; outline-offset: 1px; }
+.btn.ghost { background: #2a2a35; color: var(--text); border: 1px solid var(--line); }
+.btn.ghost:hover { background: #343442; }
+
+.notes { margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.notes-panel-label { font: 600 12px var(--mono); color: var(--fg); }
+.notes-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.notes-count { font: 12px var(--mono); color: var(--dim); font-variant-numeric: tabular-nums; }
+.notes-spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: notes-spin 0.7s linear infinite;
+}
+@keyframes notes-spin { to { transform: rotate(360deg); } }
+.notes-ctl { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--dim); }
+.notes-ctl input[type=range] { width: 150px; }
+.notes-val { font-variant-numeric: tabular-nums; min-width: 4.5em; }
+/* A control that qualifies the checkbox above it: indented so the dependency reads, and
+   visibly inert while that checkbox is off rather than silently doing nothing. */
+.notes-sub { margin-left: 22px; }
+/* Blue and grey match the lane's folded/doubtful fills, so the readout and the picture
+   agree without a legend. */
+.notes-stats { font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+.notes-stats .n-fold { color: #6cc5e0; }
+.notes-stats .n-mute { color: #a8a8b8; }
+/* The A-B orange, reused for its established meaning in this app: look at this. Above ~2.5
+   the fold starts accepting octave-plus-a-fifth errors and drawing them as trusted. */
+.notes-val.risky { color: var(--loop); }
+.notes-sub:has(input:disabled) { opacity: .45; }
+.notes-adv summary { font: 12px var(--mono); color: var(--dim); cursor: pointer; }
+.notes-adv[open] summary { margin-bottom: 6px; }
+
+/* ---- note editing (layer 4) ---- */
+.note-range-hint {
+  grid-column: 1 / -1;
+  font: 11px var(--mono);
+  color: var(--dim);
+  margin-top: 2px;
+}
+.note-toolbar {
+  grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  margin-top: 6px;
+}
+.note-tbtn { font: 11px var(--mono); }
+.note-tbtn:disabled { opacity: .4; cursor: default; }
+.note-tbtn-danger { border-color: color-mix(in srgb, #ff6b81 45%, var(--line)); color: #ff9aa8; }
+.note-tbtn-armed { border-color: var(--loop); color: var(--loop); }
+
+.note-fields {
+  grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px;
+  margin-top: 4px;
+}
+.note-field {
+  font: 11px var(--mono);
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  border-radius: 4px;
+  padding: 2px 6px;
+  width: 6.5em;
+}
+.note-field:disabled { opacity: .4; cursor: default; }
+
+.note-field-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  cursor: default;
+}
+.note-field-label {
+  font: 10px var(--mono);
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+}
+.note-field-pitch-group {
+  display: flex;
+  gap: 2px;
+}
+.note-field-select {
+  width: 3.2em;
+  padding: 2px 2px;
+}
+
+/* position: relative so the floating panel below anchors to THIS element, not the page —
+   and so opening it never changes .notes-edit-list's own box height, since the panel is
+   taken out of flow entirely rather than pushing the zoomed pane down. */
+.notes-edit-list { position: relative; }
+.notes-edit-list summary { font: 12px var(--mono); color: var(--dim); cursor: pointer; }
+.notes-edit-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  margin-top: 6px;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+  max-width: min(480px, 90vw);
+  max-height: 320px;
+  overflow-y: auto;
+}
+.edit-rows {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 3px;
+  font: 11px var(--mono); color: var(--dim);
+}
+.edit-row { display: flex; align-items: center; gap: 6px; }
+.edit-warn { color: var(--loop); }
+.edit-remove { font-size: 9px; padding: 1px 5px; }

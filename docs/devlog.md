@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.18.8](#v1188--current-time-code-in-the-overview-and-zoom-lanes-2026-09-02-1514) | The Overview and Zoom lane-name divs now show `current/total` after their label (`0:06.72/3:20`), updated every frame off the same `currentTime()`/`draw()` path as the master transport clock. The Overview lane stacks it under the label instead of inline, since its 128px name column is pinned to every other lane's width for playhead alignment and couldn't grow to fit the extra digits. |
 | [v1.18.7](#v1187--bass-detection-floor-widened-for-down-tuned-and-5-string-basses-2026-09-02-1456) | `BASS_RANGE`'s YIN search floor widened twice on measured real audio: first to catch a half-step-down D#1 a standard-tuning-only floor missed entirely (contour visible, no note), then further for 5-string low-B headroom — the latter's accuracy/decode-cost trade explicitly measured and accepted rather than assumed. New `docs/tuning-cases.md` logs both as a reusable pattern. |
 | [v1.18.5](#v1185--overview-lane-and-a-detection-independent-zoomed-pane-2026-09-02-1404) | A new full-song Overview lane docks above the zoomed pane (itself moved above the vocals lane), combining whichever stems are selected below as plain waveforms — never notes/pitch — with a master-volume mirror in its own volume slot. Both the zoomed pane and the Overview lane are now visible before note detection ever runs; only the per-stem Notes chips and Edit toggle still wait for it. |
 | [v1.18.4](#v1184--fit-the-lane-to-the-melody-off-by-default-2026-09-02-1324) | Both `notes-clip` checkboxes ("Fit the lane to the melody") shipped checked; now default off, still fully interactive if the user wants to tick it. |
@@ -49,6 +50,41 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.18.8 — Current time-code in the Overview and Zoom lanes (2026-09-02 15:14)
+
+**Review:** not yet
+
+**What was built:**
+
+- The Overview lane and the Zoom (zoomed-pane) lane-name divs now show a `current/total`
+  time-code after their existing label, e.g. `Overview 0:06.72/3:20` — reusing the same
+  `currentTime()`/`duration` values the master transport clock (`#t-cur`/`#t-dur`) already
+  reads, updated in the same `draw()` call each frame.
+- Current time carries hundredths (`fmtCs`, a new sibling of `fmt()`/`fmtPrecise()`) so the
+  readout visibly moves during playback instead of looking frozen for most of a second; total
+  duration stays whole-second (`fmt()`), matching the existing transport clock.
+- The Overview lane's name column is a fixed 128px shared with every other lane's, so its
+  canvas lines up pixel-for-pixel with the rest (see the existing comment on
+  `.lane.overview .lane-name`). The hundredths-precision time-code no longer fit beside the
+  label on one line without ellipsis-truncating it (`Overview` → `Ov…`), and the column can't
+  just grow without breaking that alignment — so `.lane.overview .lane-name` switched to a
+  two-line stack (label above, time-code below) instead. The Zoom lane's name div already
+  spans the full lane width as its own row, so it stayed inline with no layout change.
+
+**Key technical learnings:**
+
+- `[gotcha]` A fixed-width lane-name column that must stay pixel-identical across every lane
+  (for playhead alignment) cannot absorb extra inline content by growing — check whether the
+  content that already fits will still fit before adding a sibling next to it, especially once
+  precision increases from whole seconds to hundredths. Stacking vertically was available
+  headroom the row already had; growing the column was not.
+- `[note]` `overflow: hidden` on a flex child gives it an automatic min-width of `0` per the
+  flexbox spec, which is what let `.txt`'s `text-overflow: ellipsis` actually shrink below its
+  content size next to a fixed-width sibling — worth remembering next time something similar
+  needs "shrink this label, not that other element."
 
 ---
 

@@ -17,8 +17,8 @@
  * See docs/superpowers/specs/2026-09-01-bass-notes-design.md. */
 
 import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, stemMismatch, BASS_RANGE }
-  from './lib/pitch.js?v=1.18.0';
-import { scheduleNotes } from './lib/sonify.js?v=1.18.0';
+  from './lib/pitch.js?v=1.18.4';
+import { scheduleNotes } from './lib/sonify.js?v=1.18.4';
 
 const tr = (key, params) => window.SansI18n.t(key, params);
 
@@ -179,7 +179,7 @@ tempoEl.rangeToggle.addEventListener('click', () => {
 tempoEl.redetect.addEventListener('click', () => {
   const drums = currentTempoRangeChannels();
   if (!drums) return;
-  const w = new Worker('./notes.worker.js?v=1.18.0', { type: 'module' });
+  const w = new Worker('./notes.worker.js?v=1.18.4', { type: 'module' });
   tempoEl.redetect.disabled = true;
   w.onmessage = (e) => {
     w.terminate();
@@ -201,9 +201,12 @@ tempoEl.redetect.addEventListener('click', () => {
  * docs/superpowers/specs/2026-09-01-tempo-grid-design.md. */
 window.addEventListener('sansbass:temporange', (e) => { tempoRange = e.detail; });
 
+/* Hidden until a real detection has actually run — showing default 120 BPM controls before
+ * any drums audio has been examined is the same illusion-of-completion problem the shared
+ * Find-notes button and each channel's meta row solve for note counts. Confidence resets to
+ * 0 on every song load (resetTempo()), so this re-hides on its own without extra wiring. */
 function refreshTempo() {
-  const anyMelodic = !!(window.sansBass?.stemBuffer?.('vocals') || window.sansBass?.stemBuffer?.('bass'));
-  tempoEl.panel.hidden = !anyMelodic;
+  tempoEl.panel.hidden = !(tempo.confidence > 0);
   syncTempoControls();
 }
 
@@ -399,12 +402,15 @@ function createNotesChannel(stem, els) {
 
   function reset() {
     if (sonifier) { sonifier.stop(); sonifier = null; }
-    if (worker) { worker.terminate(); worker = null; els.go.disabled = false; }
+    if (worker) { worker.terminate(); worker = null; }
     els.show.hidden = true;
-    els.go.hidden = false;
     frames = null;
     notes = [];
     analysedBuffer = null;
+    // Count, show/hide toggle, 簡譜 and key controls are all meaningless before this channel
+    // has notes — hidden as one row rather than each looking individually inert, same
+    // principle as els.tune below.
+    els.meta.hidden = true;
     els.tune.hidden = true;
     els.count.textContent = '';
     jianpu.auto = true;
@@ -427,7 +433,6 @@ function createNotesChannel(stem, els) {
     const stemAudio = window.sansBass.stemBuffer(stem);
     if (!stemAudio) return;
 
-    els.go.disabled = true;
     window.sansBass.say('notes.working');
 
     const buffer = stemAudio.buffer;
@@ -436,12 +441,11 @@ function createNotesChannel(stem, els) {
 
     const drums = currentTempoRangeChannels();
 
-    worker = new Worker('./notes.worker.js?v=1.18.0', { type: 'module' });
+    worker = new Worker('./notes.worker.js?v=1.18.4', { type: 'module' });
     worker.onmessage = (e) => {
       const m = e.data;
       worker.terminate();
       worker = null;
-      els.go.disabled = false;
       if (m.type === 'error') {
         window.sansBass.say('notes.failed', { message: m.message }, true);
         return;
@@ -452,8 +456,8 @@ function createNotesChannel(stem, els) {
       // (tempo.auto === false) — otherwise running analysis on the second channel silently
       // discards a manual BPM/phase tweak made between the two runs.
       if (m.tempo && tempo.auto) { applyTempoResult(m.tempo); syncTempoControls(); }
+      els.meta.hidden = false;
       els.tune.hidden = false;
-      els.go.hidden = true;
       els.show.hidden = false;
       els.exportBtn.disabled = false;
       els.importBtn.disabled = false;
@@ -464,7 +468,6 @@ function createNotesChannel(stem, els) {
     };
     worker.onerror = (e) => {
       if (worker) { worker.terminate(); worker = null; }
-      els.go.disabled = false;
       window.sansBass.say('notes.failed', { message: e.message || 'worker error' }, true);
     };
     analysedBuffer = buffer;
@@ -475,15 +478,26 @@ function createNotesChannel(stem, els) {
     });
   }
 
-  /* The panel is only meaningful with this stem loaded, and there is no load event to hang
-   * this on — separate.js polls the same way, for the same reason. */
+  /* Hidden until this channel actually has notes, not merely until its stem is loaded —
+   * same principle as the meta/tune rows inside it (and #notes-tempo): an empty panel with
+   * disabled Export/Import/Export-list controls sitting there before Find Notes is pressed
+   * is output before there is any. Checked ahead of the reset() call below so a song/stem
+   * change hides the panel in the same tick frames is cleared, not one poll tick later.
+   * There is no load event to hang this on — separate.js polls the same way, for the same
+   * reason. */
   function refresh() {
     const stemAudio = window.sansBass?.stemBuffer?.(stem);
-    els.panel.hidden = !stemAudio;
     if (frames && (!stemAudio || stemAudio.buffer !== analysedBuffer)) reset();
+    els.panel.hidden = !frames;
   }
 
-  els.go.addEventListener('click', analyse);
+  /* Read by the shared #notes-go-all button (module-level, below) to decide whether this
+   * channel still needs a run and whether one is already in flight — this channel has no
+   * button of its own any more. */
+  function hasStem() { return !!window.sansBass?.stemBuffer?.(stem); }
+  function needsAnalyse() { return hasStem() && !frames; }
+  function busy() { return worker !== null; }
+
   els.min.addEventListener('input', reinterpret);
   els.clip.addEventListener('change', reinterpret);
   els.hmm.addEventListener('change', reinterpret);
@@ -671,14 +685,14 @@ function createNotesChannel(stem, els) {
 
   syncJianpuControls();      // the selectors are inert until 簡譜 is ticked, from the first paint
 
-  return { refresh, reinterpret };
+  return { refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, stem };
 }
 
 // ---------------------------------------------------------------- two instances
 
 channels.push(createNotesChannel('vocals', {
   panel: document.getElementById('notes-vocals'),
-  go: document.getElementById('notes-go-vocals'),
+  meta: document.getElementById('notes-meta-vocals'),
   count: document.getElementById('notes-count-vocals'),
   tune: document.getElementById('notes-tune-vocals'),
   min: document.getElementById('notes-min-vocals'),
@@ -707,7 +721,7 @@ channels.push(createNotesChannel('vocals', {
 
 channels.push(createNotesChannel('bass', {
   panel: document.getElementById('notes-bass'),
-  go: document.getElementById('notes-go-bass'),
+  meta: document.getElementById('notes-meta-bass'),
   count: document.getElementById('notes-count-bass'),
   tune: document.getElementById('notes-tune-bass'),
   min: document.getElementById('notes-min-bass'),
@@ -734,9 +748,45 @@ channels.push(createNotesChannel('bass', {
   keyRel: document.getElementById('notes-key-rel-bass'),
 }));
 
+// ---------------------------------------------------------------- shared: detect button
+//
+// One button for both channels, since detection is the only step that's genuinely
+// per-channel-independent yet always wanted together. Its enabled state is recomputed on
+// the same poll as everything else below, not on a dedicated listener — there is no event
+// for "a stem just became available" any more than there is for the panels themselves.
+
+const goAllSection = document.getElementById('notes-detect');
+const goAllBtn = document.getElementById('notes-go-all');
+const goAllSpinner = document.getElementById('notes-detect-spinner');
+const goAllStatus = document.getElementById('notes-detect-status');
+
+goAllBtn.addEventListener('click', () => {
+  for (const c of channels) if (c.needsAnalyse() && !c.busy()) c.analyse();
+});
+
+/* Two illusions this closes: (1) a bare "disabled" button gives no clue that vocals finished
+ * while bass is still grinding away — busyChannels names exactly which stem(s) are still in
+ * flight, updating as each one lands, so the wait never silently looks finished partway
+ * through. (2) the section disappears entirely once every melodic stem present has been
+ * analysed — there is nothing left this button could ever do for this song, so leaving it
+ * sitting there disabled would itself be a stale-looking leftover. It stays visible+disabled
+ * only for the genuinely permanent case: no melodic stem was ever loaded at all. */
+function syncGoAll() {
+  const anyStem = channels.some((c) => c.hasStem());
+  const busyChannels = channels.filter((c) => c.busy());
+  const anyPending = channels.some((c) => c.needsAnalyse());
+  goAllSection.hidden = anyStem && !anyPending && busyChannels.length === 0;
+  goAllBtn.disabled = busyChannels.length > 0 || !anyPending;
+  goAllSpinner.hidden = busyChannels.length === 0;
+  goAllStatus.textContent = busyChannels.length
+    ? tr('notes.detecting', { stems: busyChannels.map((c) => tr('stem.' + c.stem)).join(', ') })
+    : '';
+}
+
 function refreshAll() {
   refreshTempo();
   for (const c of channels) c.refresh();
+  syncGoAll();
 }
 setInterval(refreshAll, 400);
 refreshAll();

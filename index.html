@@ -8,17 +8,17 @@
      a leading slash. apple-touch-icon must be a PNG — iOS ignores an SVG here — and it is
      180x180 full bleed because iOS applies its own corner mask. theme-color stops Safari
      painting default light chrome above a near-black page. -->
-<link rel="icon" href="icons/icon.svg?v=1.18.0" type="image/svg+xml">
-<link rel="icon" href="icons/favicon-32.png?v=1.18.0" sizes="32x32">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.18.0">
+<link rel="icon" href="icons/icon.svg?v=1.18.4" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png?v=1.18.4" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.18.4">
 <meta name="theme-color" content="#0d0d10">
-<link rel="stylesheet" href="styles.css?v=1.18.0">
+<link rel="stylesheet" href="styles.css?v=1.18.4">
 <!-- i18n loads in <head>, before anything paints, so `lang` and the tab title are already
      right and the DOM walk can run the moment the body exists. init() is called explicitly
      rather than on load, so tests/test.html can read the dictionary without having its own
      title rewritten. The literal English in the markup below is the no-JS fallback and the
      readable source of truth; it matches DICT.en exactly. -->
-<script src="lib/i18n.js?v=1.18.0"></script>
+<script src="lib/i18n.js?v=1.18.4"></script>
 <script>window.SansI18n.init();</script>
 <!-- Anonymous, cookieless usage counts. External, so no ?v= -- and https:// rather than
      the protocol-relative //gc.zgo.at from GoatCounter's docs, because versions.test.js
@@ -34,7 +34,7 @@
        URL the <link rel="icon"> above already fetched, so it costs no extra request.
        alt="" because the <h1> beside it already says the name — the mark is decorative. -->
   <div class="brand">
-    <img class="brand-mark" src="icons/icon.svg?v=1.18.0" alt="" width="26" height="26">
+    <img class="brand-mark" src="icons/icon.svg?v=1.18.4" alt="" width="26" height="26">
     <h1>sans<span>_</span>bass</h1>
   </div>
   <div class="bar-right">
@@ -132,18 +132,35 @@
 
     <!-- Detection is button-triggered, never automatic: the first run is ~7 s of CPU on a
          4-minute track, and unbidden CPU that size is a surprise rather than a convenience.
-         Two independent panels — one per note-capable stem — each gated on its own stem's
-         presence exactly as the single panel was gated before. Edit notes moves to one
-         global toggle beside the zoomed pane's two Notes chips (built by app.js), since only
-         one channel is ever edited at a time; the tempo grid moves to its own shared section
-         below, since it is derived from drums and has never depended on which melodic stem
-         is being read. See docs/superpowers/specs/2026-09-01-bass-notes-design.md. -->
+         One shared button (#notes-go-all) triggers whichever of vocals/bass still needs
+         analysis — a zip with only one melodic stem detects just that one. The section
+         disables (never hides) when no melodic stem was ever loaded — nothing this button
+         could ever do for this song — but once every present stem IS analysed, the whole
+         section hides outright: a leftover disabled button would itself look stale. While
+         busy, a spinner and a "Detecting: <stems>" hint next to it name whichever stem(s)
+         are still in flight, so one channel finishing first is never mistaken for the whole
+         run being done. Two independent panels — one per note-capable stem — otherwise stay
+         separate: each gated on its own stem's presence, with their own count/toggle/tune/
+         edit/export controls all hidden until that channel actually has notes (same
+         illusion-of-completion problem, same fix). Edit notes moves to one global toggle
+         beside the zoomed pane's two Notes chips (built by app.js), since only one channel
+         is ever edited at a time; the tempo grid moves to its own shared section below,
+         hidden the same way until a real detection succeeds, since it is derived from drums
+         and has never depended on which melodic stem is being read. See
+         docs/superpowers/specs/2026-09-01-bass-notes-design.md. -->
+    <section id="notes-detect" class="notes">
+      <div class="notes-row">
+        <button id="notes-go-all" class="btn" data-i18n="notes.find" disabled>Find notes</button>
+        <span id="notes-detect-spinner" class="notes-spinner" hidden></span>
+        <span id="notes-detect-status" class="notes-count"></span>
+      </div>
+    </section>
+
     <section id="notes-vocals" class="notes" hidden>
       <div class="notes-row">
         <strong class="notes-panel-label" data-i18n="stem.vocals">Vocals</strong>
       </div>
-      <div class="notes-row">
-        <button id="notes-go-vocals" class="btn" data-i18n="notes.find">Find notes</button>
+      <div id="notes-meta-vocals" class="notes-row" hidden>
         <span id="notes-count-vocals" class="notes-count"></span>
         <button id="notes-show-vocals" class="btn ghost" data-i18n="notes.hide" hidden>Hide notes</button>
         <label class="notes-ctl">
@@ -170,7 +187,7 @@
         <details class="notes-adv">
           <summary data-i18n="notes.advanced">Advanced</summary>
           <label class="notes-ctl">
-            <input id="notes-clip-vocals" type="checkbox" checked>
+            <input id="notes-clip-vocals" type="checkbox">
             <span data-i18n="notes.clip">Fit the lane to the melody</span>
           </label>
           <label class="notes-ctl">
@@ -217,8 +234,7 @@
       <div class="notes-row">
         <strong class="notes-panel-label" data-i18n="stem.bass">Bass</strong>
       </div>
-      <div class="notes-row">
-        <button id="notes-go-bass" class="btn" data-i18n="notes.find">Find notes</button>
+      <div id="notes-meta-bass" class="notes-row" hidden>
         <span id="notes-count-bass" class="notes-count"></span>
         <button id="notes-show-bass" class="btn ghost" data-i18n="notes.hide" hidden>Hide notes</button>
         <label class="notes-ctl">
@@ -245,7 +261,7 @@
         <details class="notes-adv">
           <summary data-i18n="notes.advanced">Advanced</summary>
           <label class="notes-ctl">
-            <input id="notes-clip-bass" type="checkbox" checked>
+            <input id="notes-clip-bass" type="checkbox">
             <span data-i18n="notes.clip">Fit the lane to the melody</span>
           </label>
           <label class="notes-ctl">
@@ -356,14 +372,14 @@
      Bump the version in ALL of these on release: index.html (15), separate.js (3),
      separate.worker.js (1), notes.js (4), notes.worker.js (2) — 25 in all.
      tests/versions.test.js fails if they drift apart. -->
-<script src="lib/stems.js?v=1.18.0"></script>
-<script src="lib/unzip.js?v=1.18.0"></script>
-<script src="lib/analytics.js?v=1.18.0"></script>
-<script src="lib/platform.js?v=1.18.0"></script>
-<script src="lib/ribbon.js?v=1.18.0"></script>
-<script src="lib/jianpu.js?v=1.18.0"></script>
-<script src="app.js?v=1.18.0"></script>
-<script type="module" src="separate.js?v=1.18.0"></script>
-<script type="module" src="notes.js?v=1.18.0"></script>
+<script src="lib/stems.js?v=1.18.4"></script>
+<script src="lib/unzip.js?v=1.18.4"></script>
+<script src="lib/analytics.js?v=1.18.4"></script>
+<script src="lib/platform.js?v=1.18.4"></script>
+<script src="lib/ribbon.js?v=1.18.4"></script>
+<script src="lib/jianpu.js?v=1.18.4"></script>
+<script src="app.js?v=1.18.4"></script>
+<script type="module" src="separate.js?v=1.18.4"></script>
+<script type="module" src="notes.js?v=1.18.4"></script>
 </body>
 </html>

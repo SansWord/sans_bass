@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.19.0](#v1190--pitch-preserving-playback-speed-control-2026-09-02-1612) | A speed slider (50–150%, step 5, keyboard `[`/`]`/`\`) time-stretches playback without shifting pitch, via a vendored SoundTouchJS DSP core wrapped in a per-stem `AudioWorkletNode`. The native 100% path is byte-for-byte unchanged; crossing the 100% boundary rebuilds the audio graph, staying on one side of it live-rebases with no restart. |
 | [v1.18.8](#v1188--current-time-code-in-the-overview-and-zoom-lanes-2026-09-02-1514) | The Overview and Zoom lane-name divs now show `current/total` after their label (`0:06.72/3:20`), updated every frame off the same `currentTime()`/`draw()` path as the master transport clock. The Overview lane stacks it under the label instead of inline, since its 128px name column is pinned to every other lane's width for playhead alignment and couldn't grow to fit the extra digits. |
 | [v1.18.7](#v1187--bass-detection-floor-widened-for-down-tuned-and-5-string-basses-2026-09-02-1456) | `BASS_RANGE`'s YIN search floor widened twice on measured real audio: first to catch a half-step-down D#1 a standard-tuning-only floor missed entirely (contour visible, no note), then further for 5-string low-B headroom — the latter's accuracy/decode-cost trade explicitly measured and accepted rather than assumed. New `docs/tuning-cases.md` logs both as a reusable pattern. |
 | [v1.18.5](#v1185--overview-lane-and-a-detection-independent-zoomed-pane-2026-09-02-1404) | A new full-song Overview lane docks above the zoomed pane (itself moved above the vocals lane), combining whichever stems are selected below as plain waveforms — never notes/pitch — with a master-volume mirror in its own volume slot. Both the zoomed pane and the Overview lane are now visible before note detection ever runs; only the per-stem Notes chips and Edit toggle still wait for it. |
@@ -50,6 +51,91 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.19.0 — Pitch-preserving playback speed control (2026-09-02 16:12)
+
+**Review:** not yet
+
+**Design docs:**
+- Playback speed: [Spec](superpowers/specs/2026-09-02-playback-speed-design.md) [Plan](superpowers/plans/2026-09-02-playback-speed.md)
+
+**What was built:**
+
+- A speed slider in the controls bar (50–150%, step 5, `#speed`/`#speed-val`), keyboard
+  `[`/`]` (±5%) and `\` (reset to 100%), always resetting to 100% on a fresh song load —
+  never persisted.
+- Two playback paths selected by whether the rate is exactly 100%. At 100%, `play()` builds
+  native `BufferSource`s exactly as before — zero behaviour change, confirmed by browser
+  inspection (`stretchNodes` stays empty, `sources` populated) and by the existing test
+  suite passing unmodified. Away from 100%, each stem gets its own `AudioWorkletNode`
+  ("stretch node") wrapping a vendored, pure-JS SoundTouch DSP core, fed a copy of the
+  stem's decoded PCM and started at the same `t0`/`LOOKAHEAD` scheduling the native path
+  uses, keeping all six stems sample-locked either way.
+- Crossing the 100% ↔ non-100% boundary rebuilds the audio graph (`stop()`→`play()`, same
+  pattern as a loop-bounds change); changing rate while already on one side of it rebases
+  the clock and posts a live `setRate` message to the running nodes instead — verified in
+  the browser that the *same* `AudioWorkletNode` instance persists across a same-side rate
+  change (no rebuild, no `playGen` bump) and no audible restart results.
+- `lib/transport-math.js` (new, classic script) holds the pure rate-clamping and
+  rate-scaled `currentTime()` math, unit-tested directly; `lib/sonify.js`'s `scheduleNotes`
+  gained a `rate` option so the Notes-lane reference tones stay locked to a slowed/sped
+  stem, threaded through from `app.js`'s transport broadcast.
+- SoundTouchJS's DSP core (`SoundTouch`, `SimpleFilter`, and their internal dependencies)
+  is vendored into `lib/vendor/soundtouch-core.js`, excluding its `ScriptProcessorNode`
+  wrapper — `lib/stretch-processor.js` is this project's own replacement, built on
+  `AudioWorkletProcessor`.
+- Manual verification in a real browser (Task 12) went beyond listening: an `AnalyserNode`
+  tapped onto `master` gave an objective frequency-domain comparison, and directly reading
+  `stretchNodes`/`sources`/`ratePercent`/`playGen` from the console gave ground truth for
+  every scripted check — S2–S10 in `docs/behaviour.md` were each confirmed this way, not by
+  eye.
+
+**Key technical learnings:**
+
+- `[gotcha]` The playback-speed design spec and the original plan both stated SoundTouchJS
+  is MIT licensed. It is **LGPL-2.1** — checked against every published npm version
+  (0.1.0–0.3.0) and the upstream `LICENSE` file directly. For this project (already
+  open-source, vendored file committed as plain readable JS) the practical difference is
+  near zero, but the license file and every code comment had to say LGPL-2.1, not MIT.
+  Verify license claims in a design doc against the actual package before vendoring,
+  especially when the doc was written before the code existed.
+- `[gotcha]` SoundTouchJS's `FilterSupport.fillOutputBuffer()` only flushes into the
+  Stretch/RateTransposer pipeline once its raw input FIFO has grown to a fixed ~16384-frame
+  chunk; any remainder short of that threshold is never processed. Measured directly: a
+  1-second test tone at tempo 0.5 produced only a 1.23x length ratio (true asymptotic value
+  ≈2.0), while a 5-second tone reached 1.88x. Any test or expectation of this library's
+  stretch ratio needs several seconds of input before the chunking overhead becomes
+  negligible — a short synthetic clip will systematically look "less stretched than it
+  should be" for a reason that has nothing to do with a bug.
+- `[insight]` Pitch preservation and tempo-ratio accuracy are independent properties of this
+  algorithm and should be verified separately. Even on the 1-second clip where the length
+  ratio was way off, the pitch stayed exactly at the input frequency (zero energy at the
+  octave-down bin) — the chunking loss affects *how much* gets stretched, not *whether* the
+  stretched part keeps its pitch.
+- `[gotcha]` `tests/versions.test.js`'s `LOCAL_VERSIONED` regex only recognises a quoted
+  path immediately preceded by `src`, `href`, `from`, or `Worker(`. Adding `app.js` to its
+  `FILES` array (to catch drift in `audio.audioWorklet.addModule('lib/stretch-processor.js
+  ?v=...')`) accomplished nothing on its own — the regex silently never matched that line at
+  all, so it could drift forever undetected. Had to extend the regex to also catch
+  `addModule(`. Adding a file to a version-drift test's scan list only helps if the
+  test's own pattern can actually see the reference in question — check that, not just the
+  file list.
+- `[note]` `play()` becoming `async` (to `await workletReady` before entering the stretched
+  path) means a synchronous script that calls `stop()`/`play()` several times in a row (a
+  rapid scripted test, or a user hammering the speed slider) can read `playing` as
+  momentarily `false` between the microtask that resolves `workletReady` and its
+  continuation. This is `playGen` doing its job — a stale in-flight `play()` correctly bails
+  when a newer `stop()`/`play()` has superseded it — not a bug, but worth knowing before
+  reading transport state immediately after a scripted rate change.
+- `[note]` Browser-automation `left_click` directly on the play button *did* unlock a
+  suspended `AudioContext` in this session (confirmed: `playing` became `true` and audio was
+  measurably non-silent afterward), which is worth flagging against the existing gotcha in
+  `CLAUDE.md` claiming synthetic clicks silently fail and only a real `space` keypress works.
+  Not re-litigated here since the existing note may reflect a different automation path or
+  an earlier Chrome behaviour — but a real click on the actual button element, not a
+  click-elsewhere-then-keypress, is what worked this time.
 
 ---
 

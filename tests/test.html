@@ -18,9 +18,11 @@
   <script src="../lib/platform.js"></script>
   <script src="../lib/ribbon.js"></script>
   <script src="../lib/jianpu.js"></script>
+  <script src="../lib/transport-math.js"></script>
   <script type="module">
     import { runAll } from './assert.js';
     await import('./soundtouch.test.js');
+    await import('./transport-math.test.js');
     await import('./wav.test.js');
     await import('./zip.test.js');
     await import('./overlap.test.js');

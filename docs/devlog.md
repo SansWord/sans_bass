@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.18.7](#v1187--bass-detection-floor-widened-for-down-tuned-and-5-string-basses-2026-09-02-1456) | `BASS_RANGE`'s YIN search floor widened twice on measured real audio: first to catch a half-step-down D#1 a standard-tuning-only floor missed entirely (contour visible, no note), then further for 5-string low-B headroom — the latter's accuracy/decode-cost trade explicitly measured and accepted rather than assumed. New `docs/tuning-cases.md` logs both as a reusable pattern. |
 | [v1.18.5](#v1185--overview-lane-and-a-detection-independent-zoomed-pane-2026-09-02-1404) | A new full-song Overview lane docks above the zoomed pane (itself moved above the vocals lane), combining whichever stems are selected below as plain waveforms — never notes/pitch — with a master-volume mirror in its own volume slot. Both the zoomed pane and the Overview lane are now visible before note detection ever runs; only the per-stem Notes chips and Edit toggle still wait for it. |
 | [v1.18.4](#v1184--fit-the-lane-to-the-melody-off-by-default-2026-09-02-1324) | Both `notes-clip` checkboxes ("Fit the lane to the melody") shipped checked; now default off, still fully interactive if the user wants to tick it. |
 | [v1.18.3](#v1183--hide-notes-panels-until-that-channel-has-notes-2026-09-02-1309) | `#notes-vocals`/`#notes-bass` were gated on stem presence, so a loaded-but-undetected stem still showed its label plus disabled Export/Import/Export-list controls — the same illusion the meta row, tune row, and tempo panel were already fixed for one level down. Whole panel now hidden until that channel has notes. |
@@ -48,6 +49,76 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.18.7 — Bass detection floor widened for down-tuned and 5-string basses (2026-09-02 14:56)
+
+**Review:** not yet
+
+**What was built:**
+
+- Diagnosed a user report: `6 南國的風`'s bass note detection showed a pitch contour at 1:42
+  and 2:07–2:09 but no note, at a pitch the user identified by ear as D#1. Root cause: YIN's
+  `tauMax` in `BASS_RANGE` (`lib/pitch.js`) was tuned to reach standard open E1 (41.2 Hz) but
+  this band tunes down a half step (Eb standard), putting its lowest string at D#1 (38.9 Hz)
+  — below that floor. YIN doesn't fail as silence there; it locks onto a boundary-clamped
+  ~41 Hz reading (confidence 0.95, ~90 cents off), which paints a plausible contour that
+  never resolves into a note.
+- Fixed by widening `tauMax` from 269 to 300 (a 36.7 Hz / D1 floor), chosen by measuring the
+  real bass stem at several candidate values rather than picking one from arithmetic: 269
+  misses the note, 285 finds it but fragments it near the search edge, 300 resolves it as one
+  clean note, 320 gives an identical result to 300. Cross-checked on a second song's bass stem
+  with no regression.
+- Widened again, on request, to `tauMax: 379, window: 1408` for 5-string bass headroom (low B,
+  30.9 Hz, one semitone of margin) — ahead of any confirmed case, since no 5-string stem
+  exists in this project. Unlike the D#1 fix, this couldn't be validated as a clear
+  improvement on real audio, so it was measured as a **cost** instead: decode time roughly
+  doubles vs. the 300/1024 floor, and re-run against the same two tracks used to validate the
+  D#1 fix (neither containing a B0), octave-outlier time share rises measurably and one
+  track's whole duration-weighted median note shifts down a semitone. Accepted deliberately as
+  a documented trade, not discovered later.
+- New `docs/tuning-cases.md`: a log of cases where a missing/wrong note comes from a
+  music-domain assumption (instrument tuning/range) baked into a detection parameter rather
+  than a coding bug, with guidance for recognising the next one and the measurement
+  methodology to use instead of guessing a new constant.
+- `docs/transcription.md` gets both measurement sweeps (cost table, accuracy table, real
+  bench-page cross-checks); `tests/pitch.test.js` pins D#1 and B0 both resolving correctly
+  within `BASS_RANGE`; version bumped to v1.18.7 across all 25 cache-busted references.
+
+**Key technical learnings:**
+
+- `[insight]` "Pitch contour visible, no note" is the specific signature of a period-search
+  range that's too narrow for the true fundamental — YIN doesn't go silent past its floor, it
+  locks onto a boundary-clamped false reading with deceptively high confidence, which is
+  exactly what a per-frame confidence gate can't catch and exactly why this project draws the
+  contour independently of note segmentation.
+- `[gotcha]` A floor placed *just barely* below the true note (`tauMax: 285` for a 38.9 Hz
+  D#1) is its own failure mode, worse than either clearly-too-narrow or comfortably-wide: the
+  note gets found but fragments into a staircase right at the search edge. "Add a little
+  margin" and "add enough margin" are different, measurably different, outcomes.
+- `[insight]` Decode cost is exactly linear in `tauMax` alone (`window` fixed) because
+  `yinFrame`'s difference-function loop is `O(window × tauMax)` and dominates every other
+  step — confirmed empirically (+11.2% measured vs. +11.5% theoretical for 269→300, holding
+  to +95% measured vs. +100% theoretical at double the range).
+- `[insight]` Widening the search range without widening `window` shrinks periods-per-window
+  back toward the ratio (~1.9) the original `BASS_RANGE`/`window` sweep already identified as
+  the noisiest tried — so a `tauMax` extension is an accuracy question, not just a cost
+  question, unless `window` scales with it. Scaling both compounds cost multiplicatively
+  (`O(window × tauMax)`), which is what made the 5-string extension roughly double decode time
+  rather than merely +37%.
+- `[insight]` Extending a shared detection parameter ahead of a confirmed need has a real,
+  measurable accuracy cost on songs that don't need the extension — not just a hypothetical
+  one. Re-measuring the 5-string-ready floor against the same two tracks (containing no B0 at
+  all) that validated the D#1 fix showed octave-outlier time rising on both and one track's
+  duration-weighted median note shifting a full semitone. Proving a fix helps (real audio,
+  before/after) and proving a speculative extension doesn't obviously hurt are different
+  exercises, and this project's own bass-range history now has one clean example of each.
+- `[note]` `lib/pitch.js`'s pure, DOM-free design (Float32Arrays in, data out) made all of
+  this measurable from plain Node against `ffmpeg`-decoded copies of the real stems already in
+  the repo — no browser harness needed for the sweep itself, only for final cross-checks
+  against the in-browser bench page (`tests/notes.html?stem=bass&tauMin=...&tauMax=...`) and
+  the unit-test suite.
 
 ---
 

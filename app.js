@@ -103,6 +103,10 @@ let offset = 0;            // playhead position when stopped, seconds
 let startedAt = 0;         // audio.currentTime at which playback began
 let playing = false;
 let sources = [];
+let stretchNodes = [];     // AudioWorkletNodes, one per stem — populated only while
+                            // ratePercent !== 100 and playing; empty otherwise
+let ratePercent = 100;     // 50-150, step 5; never persisted — see loadFiles/loadSeparated
+let playGen = 0;           // bumped by play()/stop() so a stale in-flight play() can bail
 let scrubbing = false;
 let raf = 0;
 let loopA = null;          // A-B repeat start, seconds (null = unset)
@@ -1955,9 +1959,37 @@ function currentTime() {
   return Math.min(duration, offset + elapsed);
 }
 
-function play() {
+/** One AudioWorkletNode per stem, fed a COPY of its decoded PCM (the worklet cannot read
+ *  the main-thread AudioBuffer directly — see the design spec's "Memory cost" section) and
+ *  started at the same t0/LOOKAHEAD scheduling the native path uses, so every stretch node
+ *  stays sample-locked to its siblings the same way native BufferSources do today. */
+function createStretchNode(t, willLoop, t0) {
+  const node = new AudioWorkletNode(audio, 'stretch-processor', {
+    numberOfInputs: 0,
+    numberOfOutputs: 1,
+    outputChannelCount: [t.buffer.numberOfChannels],
+  });
+  const channels = [];
+  for (let ch = 0; ch < t.buffer.numberOfChannels; ch++) {
+    channels.push(new Float32Array(t.buffer.getChannelData(ch)));
+  }
+  node.port.postMessage({ type: 'load', channels }, channels.map(c => c.buffer));
+  node.port.postMessage({
+    type: 'start',
+    t0,
+    offsetSample: Math.round(offset * audio.sampleRate),
+    loopASample: willLoop ? Math.round(loopA * audio.sampleRate) : null,
+    loopBSample: willLoop ? Math.round(loopB * audio.sampleRate) : null,
+    rate: ratePercent / 100,
+  });
+  node.connect(t.gain);
+  return node;
+}
+
+async function play() {
   if (!tracks.length) return;
   ensureAudio();
+  const myGen = ++playGen;
 
   const looping = loopOn();
   if (looping) {
@@ -1968,32 +2000,55 @@ function play() {
     offset = 0;
   }
 
+  const stretched = ratePercent !== 100;
+  if (stretched) {
+    try { await workletReady; } catch (err) {
+      console.error('sans_bass: stretch worklet failed to load', err);
+      return;
+    }
+    if (myGen !== playGen) return;   // stopped or replaced while the module was loading
+  }
+
   const t0 = audio.currentTime + LOOKAHEAD;
   const longest = tracks.reduce((a, b) => (b.buffer.duration > a.buffer.duration ? b : a));
 
-  sources = tracks.map(t => {
-    if (offset >= t.buffer.duration) return null;   // this stem already ended
-    const src = audio.createBufferSource();
-    src.buffer = t.buffer;
-    src.connect(t.gain);
+  if (stretched) {
+    stretchNodes = tracks.map(t => {
+      if (offset >= t.buffer.duration) return null;
+      const willLoop = looping && t.buffer.duration >= loopB;
+      const node = createStretchNode(t, willLoop, t0);
+      if (t === longest && !willLoop) {
+        node.port.onmessage = (e) => { if (e.data.type === 'ended' && playing) stop(false); };
+      }
+      return node;
+    }).filter(Boolean);
+    sources = [];
+  } else {
+    sources = tracks.map(t => {
+      if (offset >= t.buffer.duration) return null;   // this stem already ended
+      const src = audio.createBufferSource();
+      src.buffer = t.buffer;
+      src.connect(t.gain);
 
-    // Loop on the audio thread rather than in JS: sample-accurate, identical across
-    // every stem, and it keeps running when the tab is in the background.
-    // A stem shorter than loopEnd would wrap at its own end and drift out of sync,
-    // so it is left unlooped and simply falls silent instead.
-    if (looping && t.buffer.duration >= loopB) {
-      src.loop = true;
-      src.loopStart = loopA;
-      src.loopEnd = loopB;
-    }
+      // Loop on the audio thread rather than in JS: sample-accurate, identical across
+      // every stem, and it keeps running when the tab is in the background.
+      // A stem shorter than loopEnd would wrap at its own end and drift out of sync,
+      // so it is left unlooped and simply falls silent instead.
+      if (looping && t.buffer.duration >= loopB) {
+        src.loop = true;
+        src.loopStart = loopA;
+        src.loopEnd = loopB;
+      }
 
-    // End of song is detected on the audio graph, not in the animation loop:
-    // rAF is paused in background tabs, so the loop can't be trusted for transport.
-    // A looping source never ends, so this only ever fires when not looping.
-    if (t === longest && !src.loop) src.onended = () => { if (playing) stop(false); };
-    src.start(t0, offset);
-    return src;
-  }).filter(Boolean);
+      // End of song is detected on the audio graph, not in the animation loop:
+      // rAF is paused in background tabs, so the loop can't be trusted for transport.
+      // A looping source never ends, so this only ever fires when not looping.
+      if (t === longest && !src.loop) src.onended = () => { if (playing) stop(false); };
+      src.start(t0, offset);
+      return src;
+    }).filter(Boolean);
+    stretchNodes = [];
+  }
 
   startedAt = t0;
   playing = true;
@@ -2021,9 +2076,12 @@ function announceTransport(t0) {
 
 function stop(keepPosition) {
   if (playing) offset = currentTime();
+  playGen++;   // invalidate any play() still awaiting the worklet module
   // Detach onended first so our own stop() doesn't re-enter through it.
   sources.forEach(s => { s.onended = null; try { s.stop(); } catch (_) {} s.disconnect(); });
   sources = [];
+  stretchNodes.forEach(n => { n.port.onmessage = null; n.disconnect(); });
+  stretchNodes = [];
   playing = false;
   el.play.classList.remove('playing');
   cancelAnimationFrame(raf);

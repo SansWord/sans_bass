@@ -1951,12 +1951,10 @@ function currentTime() {
   if (!playing) return offset;
   const elapsed = audio.currentTime - startedAt;
   if (elapsed <= 0) return offset;
-  if (loopOn()) {
-    // play() snaps offset into [A,B), so this stays positive and wraps cleanly.
-    const span = loopB - loopA;
-    return loopA + ((offset - loopA + elapsed) % span);
-  }
-  return Math.min(duration, offset + elapsed);
+  return window.SansTransportMath.currentTimeAtRate({
+    offset, elapsed, ratePercent,
+    loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null, duration,
+  });
 }
 
 /** One AudioWorkletNode per stem, fed a COPY of its decoded PCM (the worklet cannot read

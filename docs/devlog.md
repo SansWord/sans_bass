@@ -14,6 +14,10 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.18.4](#v1184--fit-the-lane-to-the-melody-off-by-default-2026-09-02-1324) | Both `notes-clip` checkboxes ("Fit the lane to the melody") shipped checked; now default off, still fully interactive if the user wants to tick it. |
+| [v1.18.3](#v1183--hide-notes-panels-until-that-channel-has-notes-2026-09-02-1309) | `#notes-vocals`/`#notes-bass` were gated on stem presence, so a loaded-but-undetected stem still showed its label plus disabled Export/Import/Export-list controls — the same illusion the meta row, tune row, and tempo panel were already fixed for one level down. Whole panel now hidden until that channel has notes. |
+| [v1.18.2](#v1182--closing-the-detection-illusion-of-completion-gap-2026-09-02-1301) | A spinner + "Detecting: vocals, bass…" hint next to the shared Find-notes button names exactly which channel(s) are still running, so vocals landing first is never mistaken for the whole run being done. Each panel's count/toggle/簡譜/key row and the tempo grid panel now stay hidden until they actually have something to show, instead of appearing empty/default the moment a stem loads. The shared button hides outright once every present stem is analysed. |
+| [v1.18.1](#v1181--one-shared-find-notes-button-2026-09-02-1244) | The two per-panel Find-notes buttons become one shared button that detects whichever of vocals/bass still needs it — a single-melodic-stem zip detects just that stem, and the button disables (not hides) once nothing is pending. |
 | [v1.18.0](#v1180--independent-vocalsbass-note-channels-2026-09-02-0954) | A second, fully independent note-detection channel for the bass stem, alongside the existing vocals one: two per-stem panels, two lanes that can be found/shown/muted/edited independently and play simultaneously, and one shared zoomed pane whose two mutually-exclusive "Notes" chips pick which channel it displays — switching never loses the other channel's edits. Bass plays back in a new duller, longer-sustaining timbre distinct from vocals' piano tone. |
 | [v1.17.2](#v1172--sub-beat-dotted-lines-in-the-zoomed-pane-2026-09-01-2258) | Two toggle buttons, ½ and ¼, beside the zoomed pane's zoom controls draw dotted half-/quarter-beat lines — off by default, zoomed pane only. ¼ implies ½: clicking ¼ also switches ½ on, and turning ½ off also turns ¼ off. |
 | [v1.17.1](#v1171--zoomed-pane-lane-selector-2026-09-01-1840) | The zoomed pane gets a labelled lane selector — any combination of stem waveforms, gray while the detected-notes overlay is shown and colourful when it isn't — plus a per-lane mute glyph (stems and the notes synth alike), an always-on beat grid, and a fixed truncated "局部放大" label. |
@@ -45,6 +49,135 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.18.4 — "Fit the lane to the melody" off by default (2026-09-02 13:24)
+
+**Review:** not yet
+
+**What was built:**
+
+- `#notes-clip-vocals`/`#notes-clip-bass` ("Fit the lane to the melody" / 音域貼合旋律) both
+  shipped with the HTML `checked` attribute; removed from both, so the lane now shows its
+  full natural range on first detection and clipping to the melody is an explicit opt-in the
+  user can still tick — the checkbox's own enabled/disabled state is untouched, just its
+  default value.
+- `docs/behaviour.md` N9 rewritten to state the new off-by-default and how to observe it;
+  N35 no longer calls clip-ticked "the default" since it now requires an explicit tick to
+  reach the state that row's measured counts (12 gray / 4 orange) describe.
+
+## v1.18.3 — Hide notes panels until that channel has notes (2026-09-02 13:09)
+
+**Review:** not yet
+
+**What was built:**
+
+- `#notes-vocals`/`#notes-bass` were gated on `stemBuffer(stem)` presence in `refresh()`, not
+  on whether that channel actually had notes — so a loaded-but-not-yet-analysed stem still
+  showed its panel label plus disabled Export edits/Import edits/Export list controls, one
+  level further out than the meta row, tune row, and tempo panel v1.18.2 already fixed for
+  the same reason. `refresh()` now sets `els.panel.hidden = !frames` instead of `!stemAudio`.
+- The `reset()`-triggering check moved ahead of the `els.panel.hidden` assignment within
+  `refresh()`, so a song/stem change hides the panel in the same poll tick `frames` is
+  cleared rather than one 400 ms tick later (the previous ordering would have briefly shown
+  a panel with stale content otherwise, now that the panel's own visibility depends on the
+  same `frames` value `reset()` nulls).
+- `docs/behaviour.md` N1 rewritten for the new has-notes gate (previously documented as
+  stem-presence); N22a's reference to it corrected to match.
+
+**Key technical learnings:**
+
+- `[insight]` The three-layer nature of this fix (meta row → tune row → whole panel, over
+  two sessions) came from following user-reported symptoms outward one screenshot at a time
+  rather than reasoning "hide everything empty" up front. In hindsight the whole panel was
+  always the right unit to gate — the inner rows only needed their own hidden state for the
+  `reset()`-before-next-poll-tick gap (see above), which the panel-level gate doesn't remove.
+
+## v1.18.2 — Closing the detection illusion-of-completion gap (2026-09-02 13:01)
+
+**Review:** not yet
+
+**What was built:**
+
+- A dedicated spinner (`#notes-detect-spinner`) and a "Detecting: <stems>" hint
+  (`#notes-detect-status`) sit next to the shared Find-notes button, separate from the
+  existing shared `#status` line `analyse()` already used. `syncGoAll()` computes the text
+  from exactly which channels' `busy()` is currently true, so it narrows from "Detecting:
+  Vocals, Bass…" to "Detecting: Bass…" the moment vocals lands, rather than clearing to
+  nothing (the old `#status`-based message did, since each channel's own `say('')` on
+  success stomped the shared line regardless of whether the other channel was still running).
+- Each panel's count/toggle/簡譜/key row (`#notes-meta-vocals`/`-bass`, new ids) is now hidden
+  in `reset()` and revealed in `analyse()`'s success handler — the same `hidden` toggle its
+  advanced tune row already used, just extended to cover the row above it. An empty note
+  count and disabled key selectors sitting there from the moment a stem loads looked like
+  output before there was any.
+- `refreshTempo()`'s gate changed from "any melodic stem loaded" to `tempo.confidence > 0`:
+  the tempo grid panel no longer shows a default-120-BPM, fully-interactive-looking control
+  set before a real detection has ever run against the drums stem. `resetTempo()` already
+  zeroes `confidence` on song load, so this re-hides for free on every new song with no new
+  wiring. Trade-off, called out rather than silently accepted: **Select BPM range** can no
+  longer be pre-armed before the very first detection, since the whole panel it lives in is
+  now hidden until then — narrowing the range is still available immediately after that first
+  run, for every re-detect after.
+- `#notes-detect` (the shared button's own section) now has three states instead of two:
+  disabled+visible when no melodic stem was ever loaded (nothing this song will ever need it
+  for), enabled+visible while at least one present stem still needs analysis, and hidden
+  outright once every present stem has notes — a leftover disabled button once nothing is
+  left to do would itself have been the same kind of stale-looking leftover this whole change
+  set out to remove.
+- `docs/behaviour.md` updated: N3 (spinner + per-stem hint), N22/N22a (three-state section,
+  hide-on-complete), new N22b (meta row hiding), T1/T2 (tempo panel hidden-until-detected),
+  T8 (range-select precondition change).
+
+**Key technical learnings:**
+
+- `[insight]` The illusion wasn't really about the shared button's `disabled` state — that
+  was already correct. It was about every OTHER piece of UI (the per-channel status line, the
+  meta row, the tempo panel) either going quiet or looking populated before its own real
+  output existed. Fixing "is the button disabled" would have missed the actual complaint;
+  the fix had to follow the same "hidden until it has something real to show" rule through
+  every element that could independently create the impression of being finished.
+- `[note]` Reusing the existing shared `#status` line for the "which stem" hint would have
+  needed guarding against the per-channel success-path `say('')` clearing it mid-run — a
+  dedicated element next to the button sidesteps that class of bug entirely rather than
+  patching around it.
+
+## v1.18.1 — One shared Find-notes button (2026-09-02 12:44)
+
+**Review:** not yet
+
+**What was built:**
+
+- The two per-panel Find-notes buttons (`#notes-go-vocals`, `#notes-go-bass`) are replaced by
+  one shared `#notes-go-all` button, placed above both panels rather than inside either. Clicking
+  it runs `analyse()` only on whichever channel(s) still need it (have a stem, no notes yet), so
+  a zip with just one melodic stem detects only that one and leaves the other panel — which
+  never renders in the first place, per its own stem-presence gate — untouched.
+- Each channel now exposes `analyse`/`needsAnalyse`/`busy` from `createNotesChannel()`'s return
+  object instead of driving a per-channel go button's `hidden`/`disabled` directly; `analyse()`
+  and `reset()` lost every `els.go.*` line, since there is no longer a DOM element to own that
+  state, and `worker !== null` stands in for the busy flag it used to track via the button.
+- The shared button's own enabled state is recomputed on the existing 400 ms `refreshAll()`
+  poll (`syncGoAll()`), the same "no load/analysis-done event to hang this on" pattern the
+  per-panel `refresh()` and `separate.js` already use. It is **disabled**, not hidden, whenever
+  no melodic stem is loaded at all, both present stems are already analysed, or a worker is
+  currently running — staying visible and legible even when there is nothing to detect, rather
+  than vanishing the way the panels themselves do.
+- `docs/behaviour.md` N3/N22 updated for the new element id and button-sharing semantics; N22a
+  added to document the two corner cases directly: a single-melodic-stem zip leaves the button
+  enabled and detects only that stem, a zip with neither vocals nor bass disables it immediately
+  on load with no click required to observe it.
+
+**Key technical learnings:**
+
+- `[note]` The per-channel go button's `hidden`/`disabled` toggling was pure UI bookkeeping —
+  the real state (`frames`, `worker`) already lived in each channel's closure. Exposing that
+  state as getters (`needsAnalyse`, `busy`) instead of reading it back off a DOM element made
+  the shared button a small, independent addition rather than a rewrite of `analyse()`/`reset()`.
+- `[note]` Auto-triggering detection right after in-browser separation was considered and
+  explicitly rejected: separation is already the heaviest thing the app does (a 285 MB ONNX
+  model), and stacking ~7 s of worker CPU per melodic stem immediately after it would be
+  unbidden CPU exactly the size the button-triggered design in v1.10.0 was written to avoid.
+  Left manual.
 
 ## v1.18.0 — Independent vocals/bass note channels (2026-09-02 09:54)
 

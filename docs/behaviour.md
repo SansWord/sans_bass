@@ -56,10 +56,62 @@ window.__fake.onmessage({ data: { type: 'result', stems } });   // lands the res
 
 Build `stems` as six `{left, right}` Float32Array pairs at 44100. Synthesise input audio
 as a WAV `File` and feed it through `#file-input` with a `DataTransfer` — one file only, the
-input has no `multiple`. To load a set of stems instead, zip them with `buildZip` from
-`lib/zip.js` and feed the same input a `.zip` Blob; there is one picker for both and
-`app.js` dispatches on the extension. Note `#file-input` clears its own `value` after every
-change, so re-feeding the same `File` fires again rather than being swallowed.
+input has no `multiple`. To load a set of stems instead of faking a separation result, use
+`loadStemsZip()` below; there is one picker for both and `app.js` dispatches on the
+extension.
+
+### Synthesising stems on the fly
+
+No fixture files are committed for this. Most rows need a different stem combination
+(vocals-only, bass-only, both, ± drums, …), so a folder of pre-built `.zip`s either stays
+incomplete or grows into a large parallel matrix — and a checked-in binary fixture can drift
+silently out of sync with `encodeWav`/`buildZip`'s actual current output, with nothing to
+catch it the way `versions.test.js` catches a stale `?v=`. This recipe has no such file to go
+stale: it always calls the real encoder fresh. Paste it once per page load, then call
+`loadStemsZip()` for whatever row is being exercised:
+
+```js
+function sine(freq, seconds, sr = 44100) {
+  const n = Math.floor(seconds * sr);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = 0.3 * Math.sin(2 * Math.PI * freq * i / sr);
+  return out;
+}
+
+/** A synthetic stems .zip Blob, built straight in the page. `stems` is `{name: freqHz}` —
+ *  e.g. `{ vocals: 440, bass: 110, drums: 80 }` — each becoming `<name>.wav`, mono duplicated
+ *  to stereo, `seconds` long (default 3; use longer for tempo detection, which needs several
+ *  beats). Reads the app's own current `?v=` off an already-loaded script tag, so it never
+ *  needs a hand-maintained version number that could go stale against this doc. */
+async function buildStemsZip(stems, seconds = 3) {
+  const v = document.querySelector('script[src^="app.js"]').src.split('?v=')[1];
+  const { encodeWav } = await import(`/lib/wav.js?v=${v}`);
+  const { buildZip } = await import(`/lib/zip.js?v=${v}`);
+  const entries = Object.entries(stems).map(([name, freq]) => {
+    const ch = sine(freq, seconds);
+    return { name: `${name}.wav`, bytes: encodeWav(ch, ch, 44100) };
+  });
+  return buildZip(entries);
+}
+
+/** Builds the zip above and feeds it through the real picker, exactly like a user drop. */
+async function loadStemsZip(stems, seconds) {
+  const blob = await buildStemsZip(stems, seconds);
+  const file = new File([blob], 'synthetic.zip', { type: 'application/zip' });
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const input = document.getElementById('file-input');
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+```
+
+`loadStemsZip({ vocals: 440, bass: 110 })` loads a two-melodic-stem song in one call; drop a
+key to omit that stem (`loadStemsZip({ bass: 110, drums: 80 })` has no vocals, for exercising
+N22a). `#file-input` clears its own `value` after every change, so a second call fires again
+rather than being swallowed — but reload the page between unrelated scenarios rather than
+relying on that, since `buildUI()` doesn't reset everything a fresh load does (tempo range,
+edit history, etc. — see the songload reset rows).
 
 ### Observing audio rather than parameters
 
@@ -219,15 +271,15 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 
 | # | Expected | How to observe |
 |---|---|---|
-| N1 | Each panel appears only when its own stem is loaded — `#notes-vocals` needs a vocals stem, `#notes-bass` needs a bass stem, independently of each other. A song with only one of the two shows only that one panel, exactly as today's vocals-only behaviour does when no vocals stem exists. | Computed `display` of `#notes-vocals` and `#notes-bass`. Never `.hidden` — `.notes` sets `display: flex`, so only the global `[hidden] { display: none !important }` keeps the attribute working. |
+| N1 | Each panel appears only once that channel actually **has notes** — not merely once its stem is loaded, same principle as the meta/tune rows inside it (N22b) and `#notes-tempo` (T1). `#notes-vocals` needs vocals notes, `#notes-bass` needs bass notes, independently of each other. A song with only one melodic stem never shows the other panel at all, before or after Find Notes; a stem that IS loaded still shows nothing — label, Export/Import, Export list, all of it — until its own detection completes. | Computed `display` of `#notes-vocals` and `#notes-bass`. Never `.hidden` — `.notes` sets `display: flex`, so only the global `[hidden] { display: none !important }` keeps the attribute working. Load a two-melodic-stem zip: both hidden right after `buildUI()`, before Find Notes; each becomes visible independently once that channel's `#notes-count-*` populates. |
 | N2 | Detection never starts by itself, for either channel. It costs ~7 s of CPU on a cold first run, which is a surprise rather than a convenience. | Load a stems zip with both stems, wait 10 s: every `.lane.ribbon` (`document.querySelectorAll('.lane.ribbon')`) is still `hidden`. |
-| N3 | While analysing: **Find notes** disabled, one status message, no progress bar. `f0Track` reports no progress, and a bar that jumps 0 → 100 is worse than none. | `#notes-go-vocals.disabled` (or the `-bass` equivalent), `#status.textContent`. |
+| N3 | While analysing: the shared **Find notes** button (`#notes-go-all`) disabled, a spinner, and a "Detecting: …" hint next to it naming exactly which stem(s) are still in flight — not a generic message, and not the old shared `#status` line, so one channel finishing first is never mistaken for the whole run being done. No progress bar: `f0Track` reports no progress, and a bar that jumps 0 → 100 is worse than none. | `#notes-go-all.disabled`, `#notes-detect-spinner` computed `display`, `#notes-detect-status.textContent`. With both vocals and bass pending: text names both; once vocals lands, it narrows to naming bass alone while `#notes-go-all` stays disabled and the spinner keeps spinning. |
 | N4 | On success the status line goes **empty** — the lane appearing is the confirmation. | `#status.textContent === ''`. |
 | N5 | Each stem's own notes lane sits directly under that stem's own waveform lane — a bass-notes lane under the bass waveform, a vocals-notes lane under the vocals waveform. The one shared zoomed pane docks above whichever comes first, vocals-priority: DOM order there is `[vocals waveform, .ribbon-zoom, vocals .ribbon]`, with the bass `.ribbon` lane elsewhere in `#lanes`, directly under the bass waveform lane. | With both stems loaded: `document.querySelector('.lane.ribbon-zoom').nextElementSibling` is the vocals `.lane.ribbon`, and that lane's previous sibling is the vocals waveform lane. Separately, `document.querySelectorAll('.lane.ribbon')[1]` (bass)'s previous sibling is the bass waveform lane, with no `.ribbon-zoom` anywhere near it. |
 | N6 | The ribbon is on the same time grid as every waveform: its canvas is the same CSS width, and it reflows with them on resize. | Compare `getBoundingClientRect().width` against a `.lane:not(.ribbon) canvas.wave`, before and after a resize. Must match both times. |
 | N7 | Clicking the ribbon seeks, like any other lane. | Click at 50% of its width; `#t-cur` must read half the track length. |
 | N8 | Moving **Shortest note** changes the note count **without re-running analysis**. | Time it: the count must change in tens of milliseconds, not seconds. That the slider moved is not evidence of anything — read `#notes-count-vocals` (or `-bass`). Measured on `6 南國的風`: 120 ms → 228 notes, 200 ms → 99, 80 ms → 437, each in 11–15 ms. |
-| N9 | Unticking **Fit the lane to the melody** widens the lane's vertical range. | `SansRibbon.pitchRange(notes, {clip:false})` must span more than with `clip:true`. |
+| N9 | **Fit the lane to the melody** is **off by default** — ticking it narrows the lane's vertical range to the melody, rather than the reverse. | `#notes-clip-vocals`/`-bass.checked` is `false` right after Find Notes, before either checkbox is ever touched. `SansRibbon.pitchRange(notes, {clip:false})` must span more than with `clip:true`. |
 | N10 | A note outside the clipped range is drawn at the lane edge in the A–B orange, never dropped. A hidden note would be a silent lie. | Load a track with octave errors; orange marks appear on the edge. |
 | N10a | Clip is **display only**. It feeds `pitchRange()` and nothing else: it is not passed to `interpret()`, so the note list is identical either way, and a clipped note still *sounds* at its detected pitch. | Toggle it: `#notes-count-vocals` (or `-bass`) does not change, and the payload's `notes` array is unchanged. It rides in the `setNotes` payload, never in `params`. |
 | N11 | The contour breaks at every unvoiced run and never bridges one, in both panes. | The lane uses `SansRibbon.contourColumns`, which returns `null` for a column holding no voiced frame — assert a null between two non-null columns. The zoomed pane breaks its polyline inline; observe it by rendering a window containing a rest and checking the line does not cross it. |
@@ -241,7 +293,9 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N19 | The wheel zooms the pane about the cursor, between 2 s and 60 s, and the width survives a reload. | Scroll on `.zoomwave`; `.zoom-secs` changes and `localStorage['sans_bass.zoomSeconds']` is written. |
 | N20 | At whole-song width the lane draws the contour as a per-pixel band, not a polyline. A polyline there joins pitches ~26 frames apart and buries the notes under vertical strokes. | Compare: `SansRibbon.contourColumns` is what the lane uses; the zoomed pane draws the line directly. |
 | N21 | Note names are labelled on every semitone at ≥7 px per semitone, fall back to C only between 6 and 7 px, and disappear entirely below 6 px. | Shrink the lane to its 96 px minimum: over a typical ~27-semitone range that is ~3.5 px per semitone, so **no** labels remain. C-only needs the narrow 6–7 px band. |
-| N22 | Once notes are found in a panel, its own **Find notes** disappears and a show/hide toggle takes its place — the same swap the separation panel does with Separate → Save, independently per panel. Loading a new song brings it back for both. | Computed `display` of `#notes-go-vocals` / `#notes-show-vocals` (and the `-bass` equivalents). |
+| N22 | One shared **Find notes** button (`#notes-go-all`), not one per panel: clicking it runs analysis on every channel that still needs it (has a stem, no notes yet) and leaves the rest alone. Once notes are found in a panel, that panel's own show/hide toggle appears — the same swap the separation panel does with Separate → Save. Once **every** melodic stem present has been analysed, the whole `#notes-detect` section hides outright (N22a) rather than sitting there disabled — nothing it could still do for this song. Loading a new song brings the section and both toggles back. | Computed `display` of `#notes-show-vocals` / `#notes-show-bass`; computed `display` of `#notes-detect` after analysing only one of two loaded stems (still visible) vs. after both (hidden). |
+| N22a | `#notes-detect` has three states, not two: **disabled** (visible) when no melodic stem was ever loaded — nothing this button could ever do for this song, so it stays legible rather than vanishing; **enabled** when at least one present stem still needs analysis; **hidden** once every present stem has been analysed. A zip with only a bass stem (no vocals) leaves it enabled and, clicked, analyses bass only — `#notes-vocals` stays hidden throughout, per its own has-notes gate (N1), and is never touched; once that bass run lands, the section hides (there is no vocals left to wait for). A zip with **neither** melodic stem disables it immediately on load, with no click needed to observe it, and it never hides since there is nothing to ever finish. | Load a bass-only zip: `#notes-detect` visible, `#notes-go-all.disabled` is `false`, `#notes-vocals.hidden` is `true`; click it, wait for `#notes-count-bass` to populate: `#notes-detect`'s computed `display` becomes `none`. Load a zip with neither vocals nor bass (e.g. drums+guitar+piano+other only): `#notes-detect` stays visible with `#notes-go-all.disabled` `true` right after `buildUI()`, before any click, and stays that way indefinitely. |
+| N22b | Each panel's count/toggle/簡譜/key row (`#notes-meta-vocals` / `-bass`) is hidden until that channel actually has notes, same as its advanced tune row (`#notes-tune-vocals` / `-bass`) already was — an empty count and disabled key selectors sitting there from the moment the stem loads would look like output before there is any. | Load a zip with vocals+bass: immediately after `buildUI()`, `#notes-meta-vocals` and `#notes-meta-bass` are both hidden (computed `display: none`); after **Find notes**, each becomes visible independently, in whichever order that channel's analysis actually lands. |
 | N23 | Hiding a lane also **mutes** it, independently of the other lane. A pane you cannot see must not still be sounding, because nothing on screen would stop it. | Unmute vocals, then Hide it: `window.sansBass.ribbonMuted('vocals')` becomes `true`; bass is unaffected. |
 | N24 | Showing a lane again does **not** unmute it. The mute is a separate decision, per lane. | Hide then Show: still muted. |
 | N25 | Seeking anywhere brings the zoomed window with it, but only when the playhead has left the window — clicking *inside* the zoom pane does not yank the view sideways. | Seek from the main overview; the playhead is drawn at the centre of `.zoomwave`. Then click inside the pane; the window does not recentre. |
@@ -254,7 +308,7 @@ analysis is immutable, interpretation is re-derived, and the two must stay separ
 | N32 | An unknown interpreter name degrades to `threshold-v1` rather than failing. | `interpret(track, { interpreter: 'nonesuch-v9', params: {} })` returns notes. So does a track carrying no `candidates` — an analysis from before they existed still opens. |
 | N33 | **Fix octave outliers** never changes the note count. It corrects pitches and marks what it will not correct; it adds and removes nothing. | Tick it: `#notes-count-vocals` (or `-bass`) does not move. Verified on four tracks × both interpreters — 187/187, 313/313, 270/270, 342/342 and the `hmm-v1` equivalents. This is the strongest single check on the feature; a moved count is a real bug. |
 | N34 | It is **off** by default. | Load a song, run detection: `#notes-fold-vocals.checked` (or `-bass`) is `false`, and no note carries a `fix` field at all (test `!('fix' in n)`, not `!n.fix`). |
-| N35 | A folded note draws **blue**, a doubtful one **gray** — but only while the note is inside the lane's vertical range. **Out-of-band beats provenance:** a note you cannot see at all is the more urgent fact, so it stays orange at the edge whatever its `fix`. | Pin the scale state before asserting a colour, the way N9 does. With **Fit the lane to the melody** ticked (the default) on `ng_kipin`, 12 of 16 doubtful notes draw gray and 4 draw orange — so a row asserting gray unconditionally would be flaky. Read `canvas.__layers`, **not** the composited canvas: `renderRibbon` only ever draws to the layers and `paint()` composites them, so sampling the visible canvas at frac 0 sees the idle layer alone. |
+| N35 | A folded note draws **blue**, a doubtful one **gray** — but only while the note is inside the lane's vertical range. **Out-of-band beats provenance:** a note you cannot see at all is the more urgent fact, so it stays orange at the edge whatever its `fix`. | Pin the scale state before asserting a colour, the way N9 does. With **Fit the lane to the melody** ticked on `ng_kipin`, 12 of 16 doubtful notes draw gray and 4 draw orange — so a row asserting gray unconditionally would be flaky. Read `canvas.__layers`, **not** the composited canvas: `renderRibbon` only ever draws to the layers and `paint()` composites them, so sampling the visible canvas at frac 0 sees the idle layer alone. |
 | N36 | A **doubtful note makes no sound** but stays visible. | Count `OscillatorNode.prototype.start` calls, or better, render offline and measure RMS in the note's window — `tests/sonify.test.js` does the latter. Check with an A–B loop set too: `scheduleNotes` has two collection loops and only one runs without a loop. |
 | N37 | The silence in N36 is **not negligible**: at the shipped `confidentWithin` of 1.5, doubtful notes are **7.5–8.1% of note time**, roughly one note in ten on the worst track. That is the deliberate cost of never claiming a pitch we cannot justify. | Measured on `ng_kipin` (7.5%) and `9 繼續向前行` (8.1%). The earlier figure of 1.6% was taken at `confidentWithin: 5`, before that value was found to fold octave-plus-a-fifth errors. |
 | N38 | Folding **never changes pitch class**, so the detected key is unaffected. | `notesToChroma(notes)` is byte-identical with and without `fold: true`. This is what makes changing the note list safe, and it holds because every shift is a whole number of octaves. |
@@ -297,14 +351,14 @@ UI on the drums stem's own lane. Design:
 
 | # | Expected | How to observe |
 |---|---|---|
-| T1 | The tempo row is disabled (except the checkbox) until a drums stem is loaded. | With only vocals + another stem (no drums), `#notes-tempo-bpm.disabled` etc. are `true`; `#notes-tempo-on.disabled` is `false`. |
-| T2 | Running **Find notes** with a drums stem present detects tempo in the same pass — no separate button press needed. | After Go, `#notes-tempo-status` shows a BPM and confidence percentage rather than "No tempo detected yet". |
+| T1 | `#notes-tempo` itself is hidden — not merely disabled — until a real detection has actually produced a confident result (`tempo.confidence > 0`), same principle as the notes panels: default-120 BPM controls sitting there before any drums audio has been examined would be output before there is any. Resets to hidden on every song load (`resetTempo()` zeroes `confidence`). | Load vocals+bass+drums: `#notes-tempo.hidden` is `true` immediately after `buildUI()`. It stays hidden if the zip has no drums stem at all, indefinitely — there is nothing it could ever detect. |
+| T2 | Running **Find notes** with a drums stem present detects tempo in the same pass — no separate button press needed — and that is also the moment `#notes-tempo` first becomes visible (T1), already populated rather than appearing empty first. | After Go, `#notes-tempo.hidden` flips to `false` and `#notes-tempo-status` shows a BPM and confidence percentage. |
 | T3 | The grid is **on** by default once detected. | `#notes-tempo-on.checked` is `true` after Go; beat ticks are visible on `.lane.ribbon`'s canvas. |
 | T4 | Toggling **Show tempo grid** off removes the grid from both panes without touching the notes. | Untick it: `canvas.__layers.active` loses the vertical tick pixels; `#notes-count-vocals` (or `-bass`) is unchanged. |
 | T5 | Editing BPM, phase, or beats-per-bar updates the grid **live, with no re-analysis**. | Time it: changing `#notes-tempo-bpm` must re-space the grid within tens of milliseconds, not seconds — same class of check as N8. |
 | T6 | **×½ / ×2** halve/double the BPM field and the grid re-spaces to match. | Click each; `#notes-tempo-bpm.value` halves/doubles and the on-canvas beat spacing visibly changes. |
 | T7 | The grid **never changes the note list**. This is the design's central non-goal. | `#notes-count-vocals` (or `-bass`) and the payload's `notes` array are byte-identical with the grid on, off, or with BPM/phase edited. |
-| T8 | **Select BPM range** arms a drag surface across the **whole** drums lane, distinct from the note-editing range-select's bottom-strip-only band. | Toggle it on: the drums lane's canvas tints faintly across its full height, not just a bottom strip. |
+| T8 | **Select BPM range** arms a drag surface across the **whole** drums lane, distinct from the note-editing range-select's bottom-strip-only band. Reachable only after the panel's first appearance (T1) — a range can no longer be pre-selected before ever running detection once, only narrowed afterward and re-detected (T12). | Toggle it on: the drums lane's canvas tints faintly across its full height, not just a bottom strip. |
 | T9 | Dragging on the armed drums lane commits a selection and updates the caption underneath it; the caption reads "whole song" when nothing is selected. | Drag, release: caption text changes to a `mm:ss–mm:ss` range; **Clear** becomes enabled. |
 | T10 | **Clear** reverts to the whole song, both in the caption and in what a subsequent Re-detect analyses. | Click Clear: caption returns to "whole song"; `#notes-tempo-range` button.mini (Clear) becomes disabled again. |
 | T11 | Selecting a range does **not** itself trigger detection. | Drag a selection without pressing Re-detect: `#notes-tempo-status` and the drawn grid are unchanged. |

@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.17.2](#v1172--sub-beat-dotted-lines-in-the-zoomed-pane-2026-09-01-2258) | Two toggle buttons, ½ and ¼, beside the zoomed pane's zoom controls draw dotted half-/quarter-beat lines — off by default, zoomed pane only. ¼ implies ½: clicking ¼ also switches ½ on, and turning ½ off also turns ¼ off. |
 | [v1.17.1](#v1171--zoomed-pane-lane-selector-2026-09-01-1840) | The zoomed pane gets a labelled lane selector — any combination of stem waveforms, gray while the detected-notes overlay is shown and colourful when it isn't — plus a per-lane mute glyph (stems and the notes synth alike), an always-on beat grid, and a fixed truncated "局部放大" label. |
 | [v1.17.0](#v1170--tempo-grid-2026-09-01-1650) | Detects BPM/phase from the drums stem (onset envelope + autocorrelation, bundled into the existing vocals analysis pass) and draws a correctable beat/bar grid over the notes lane, the zoomed pane, and now — faintly, bars only — each stem lane's own waveform. Drag-to-select on the drums lane narrows the audio the detector looks at; tempo round-trips through the edits export/import JSON. Purely visual: a direct regression test guards that it never touches `interpret()` or the note list. |
 | [v1.16.5](#v1165--簡譜-note-list-markdown-export-2026-09-01-1258) | A second, human-readable export from the Notes panel: **Export list** downloads the current 簡譜 reading as a Markdown file, chunked into fixed-length timecoded blocks by note start time — separate from the JSON edits round-trip. |
@@ -43,6 +44,47 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.17.2 — Sub-beat dotted lines in the zoomed pane (2026-09-01 22:58)
+
+**Review:** not yet
+
+**What was built:**
+
+- Two toggle buttons, ½ and ¼, beside the zoomed pane's zoom in/out controls — off by default —
+  draw dotted lines at the half- and quarter-beat points of the tempo grid, in the zoomed pane
+  only. The whole-song ribbon and each stem lane's own grid stay bars/beats only, matching
+  their existing "fine ticks are clutter at that width" design.
+- ¼ draws all three quarter-beat points per beat (which visually includes the half-beat point,
+  drawn fainter); ½ draws just the half-beat point, in a slightly stronger dash, layered on top.
+- ¼ implies ½: clicking ¼ on also switches ½ on, since the quarter grid already draws the
+  half-beat point; turning ½ off also turns ¼ off. ½ alone is a valid, reachable state.
+- `SansRibbon.subdivisionTimes(tempo, duration, divisionsPerBeat)` added to `lib/ribbon.js`,
+  parallel to the existing `beatTimes` — same phase-normalisation math, on-beat points excluded
+  so a beat line and a subdivision line never land on the same x.
+- Toggle state is not persisted, same as the zoomed pane's lane selection: it resets on every
+  page load.
+
+**Key technical learnings:**
+
+- `[note]` The zoomed pane already redraws live every frame (`renderZoom`, called from
+  `draw()`), unlike the cached idle/active layers the whole-song ribbon uses — so the toggle
+  needed no cache-invalidation path, just a state flag read at render time. Its click handlers
+  do need to call `draw()` themselves, though: no toggle handler in `app.js` gets a free redraw,
+  and the first version of this feature shipped internally without that call, so clicking the
+  buttons silently did nothing until the next unrelated redraw happened to fire.
+- `[gotcha]` Verifying a ~0.07-alpha dotted line by eye in a compressed screenshot is
+  unreliable — it's genuinely subtle by design. Sampling `getImageData` column sums at the
+  computed sub-beat x-coordinates and comparing against a flat neighbourhood caught the missing
+  `draw()` call above; the screenshot alone did not.
+
+**Process learnings:**
+
+- `[note]` Loading a fixture through the app's real "one audio file or one zip" entry point
+  needed vocals+drums stems (a lone file collapses to the `mix` stem, per `assignStems`), which
+  meant building a small silent-WAV zip rather than uploading the repo's existing test fixture
+  (over the browser-upload size cap). `window.sansBass.setNotes()` then injected a synthetic
+  tempo/notes payload directly, without waiting on the notes-detection worker.
 
 ## v1.17.1 — Zoomed-pane lane selector (2026-09-01 18:40)
 

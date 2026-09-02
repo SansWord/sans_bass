@@ -104,6 +104,90 @@ tried; 768/1024/1536 all land in a tight plateau; 2048 gives no further improvem
 more than doubling decode cost over 1024. **`window: 1024` ships** — one period-count step
 above the noisiest setting, without paying for width that measurably buys nothing.
 
+### The `tauMax` floor was tuned to standard E1 — it didn't anticipate down-tuning
+
+`tauMax: 269` was chosen to reach open E1 (41.2 Hz), the lowest note on a standard-tuned
+4-string bass — see the comment in `lib/pitch.js`. But a band that tunes its instruments down
+a half step (Eb/D# standard, a common rock/metal choice) puts its lowest string at **D#1**
+(38.9 Hz), below that floor. On `6 南國的風`'s real bass stem, `tauMax: 269` doesn't drop the
+note as silence — it locks onto a boundary-clamped ~41 Hz reading (confidence 0.95, but ~90
+cents off true pitch), which paints a plausible-looking but wrong contour and never
+accumulates into a clean note. This is a **domain-knowledge gap, not a bug**: the code has no
+way to know an instrument's tuning without a floor wide enough to cover the tunings that
+actually occur. See `docs/tuning-cases.md` for how to recognise and extend for the next one.
+
+Re-measured on the same two tracks with `window: 1024` held fixed:
+
+| `tauMax` | floor | voiced % | notes (hmm-v1) | octave outliers (hmm-v1) | D#1 at 1:42 / 2:07–2:09 |
+|---|---|---|---|---|---|
+| 269 (E1, shipped through v1.18.5) | 41.0 Hz | 86.0% | 314 | 5 | missing (chopped into A1/C2/G#1 fragments) |
+| 285 (between D#1 and E1) | 38.7 Hz | 86.8% | — | — | present but fragmented into 3 short pieces — too close to the search edge to be stable |
+| **300 (D1, shipped from v1.18.6)** | **36.7 Hz** | **86.9%** | **330** | **7** | **one clean sustained note in both places** |
+| 320 (D1 with extra margin) | 34.5 Hz | 86.9% | — | — | identical to 300 — no further gain |
+
+Cross-checked on `9 繼續向前行`'s bass stem: `tauMax: 300` does not regress — octave-outlier
+duration share actually falls slightly (7.5% → 6.9%) alongside a small voiced-coverage gain
+(88.9% → 89.6%). `tauMax: 300` shipped in v1.18.6 — a whole tone of margin below E1, enough
+to catch a half-step-down tuning without chasing the search range arbitrarily low: 320 costs
+more decode time for a result identical to 300, the same "one step past the noisy edge, no
+further" pattern as the original `window` sweep above. Superseded in v1.18.7 — see below.
+
+### Widened again for 5-string headroom, ahead of a confirmed case — with a measured cost
+
+`tauMax: 300` covers the down-tuned 4-string case above, but a 5-string bass's low B string
+(B0, 30.9 Hz standard) sits below it. No 5-string stem exists in this project to prove the
+benefit on real audio the way D#1 was proven, so this widening was accepted on cost grounds
+and one specific risk, not on a repeat of the same measured-improvement methodology.
+
+Extending `tauMax` alone is linear in cost — `yinFrame`'s difference-function loop
+(`lib/pitch.js`) is `O(window × tauMax)`, and that term dominates every other step in the
+function, so time scales linearly in `tauMax` for fixed `window`. Benchmarked directly
+(median of 7 runs, `6 南國的風`'s decimated bass audio):
+
+| `tauMax` | window | periods/window | decode time vs 269/1024 baseline |
+|---|---|---|---|
+| 269 (old) | 1024 | 3.81 | baseline |
+| 300 (v1.18.6) | 1024 | 3.41 | +11.2% |
+| 357 (B0 exact) | 1024 | 2.87 | +29.3% |
+| 379 (B0 + 1 semitone margin) | 1024 | 2.70 | +36.9% |
+
+But `tauMax` alone isn't the whole story: periods/window falls toward the 512/269 ≈ 1.9 ratio
+the original `window` sweep found to be the noisiest tried. Holding the ratio back near ~3.7
+(matching the vocal range's own) means widening `window` too, which compounds the cost
+multiplicatively:
+
+| `tauMax` | `window` | ratio | decode time vs baseline |
+|---|---|---|---|
+| 357 | 1280 | 3.59 | +62.6% |
+| **379** | **1408** | **3.72** | **+88.6%** |
+| 357 | 1536 | 4.30 | +93.4% |
+
+**`tauMax: 379, window: 1408` ships from v1.18.7** — B0 with a semitone of margin, at the
+same ratio the vocal range and the original bass floor both use. In absolute terms this is
+still small (~1.1 s warm becomes ~2 s, ~7 s cold becomes ~13 s, on a background worker), but
+it is not free, and the honest risk is accuracy on songs that never go anywhere near B0.
+
+Re-measured against the same two tracks used to validate `tauMax: 300`, **neither of which
+contains a B0** — this is the actual cost of the extension, not a hypothetical:
+
+| | 南國的風 (300/1024) | 南國的風 (379/1408) | 繼續向前行 (300/1024) | 繼續向前行 (379/1408) |
+|---|---|---|---|---|
+| notes (hmm-v1) | 363 | 359 | 317 | 325 |
+| voiced % | 86.9 | 87.7 | 89.6 | 89.8 |
+| octave-outlier time % | 2.8 | **3.4** | 6.9 | **7.2** |
+| notes touching w/ <50 ms gap | 302 | 306 | 288 | **303** |
+| duration-weighted median note | A#1 | A#1 | B1 | **A#1** |
+
+The D#1 case from the first widening does not regress — both 1:42 and 2:07–2:09 still
+resolve as one clean note under 379/1408. But octave-outlier share rises measurably on both
+tracks, near-zero-gap fragmentation ticks up, and on `9 繼續向前行` the whole distribution's
+duration-weighted median shifts down a semitone (B1 → A#1) — a small systematic pull toward
+lower readings, not just edge noise on isolated frames. This was accepted as a deliberate
+trade for 5-string headroom rather than discovered after the fact; if a future song shows
+this trade going the wrong way, the fix is a per-song override, not reverting the shared
+default. See `docs/tuning-cases.md` for the reasoning and what to do if a real 5-string track
+shows up.
+
 ### The floor on `minDurationMs`
 
 The hard limit is the analysis frame hop, **11.61 ms** — a note cannot be shorter than one

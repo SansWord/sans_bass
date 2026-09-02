@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.18.2](#v1182--closing-the-detection-illusion-of-completion-gap-2026-09-02-1301) | A spinner + "Detecting: vocals, bass…" hint next to the shared Find-notes button names exactly which channel(s) are still running, so vocals landing first is never mistaken for the whole run being done. Each panel's count/toggle/簡譜/key row and the tempo grid panel now stay hidden until they actually have something to show, instead of appearing empty/default the moment a stem loads. The shared button hides outright once every present stem is analysed. |
 | [v1.18.1](#v1181--one-shared-find-notes-button-2026-09-02-1244) | The two per-panel Find-notes buttons become one shared button that detects whichever of vocals/bass still needs it — a single-melodic-stem zip detects just that stem, and the button disables (not hides) once nothing is pending. |
 | [v1.18.0](#v1180--independent-vocalsbass-note-channels-2026-09-02-0954) | A second, fully independent note-detection channel for the bass stem, alongside the existing vocals one: two per-stem panels, two lanes that can be found/shown/muted/edited independently and play simultaneously, and one shared zoomed pane whose two mutually-exclusive "Notes" chips pick which channel it displays — switching never loses the other channel's edits. Bass plays back in a new duller, longer-sustaining timbre distinct from vocals' piano tone. |
 | [v1.17.2](#v1172--sub-beat-dotted-lines-in-the-zoomed-pane-2026-09-01-2258) | Two toggle buttons, ½ and ¼, beside the zoomed pane's zoom controls draw dotted half-/quarter-beat lines — off by default, zoomed pane only. ¼ implies ½: clicking ¼ also switches ½ on, and turning ½ off also turns ¼ off. |
@@ -46,6 +47,55 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.18.2 — Closing the detection illusion-of-completion gap (2026-09-02 13:01)
+
+**Review:** not yet
+
+**What was built:**
+
+- A dedicated spinner (`#notes-detect-spinner`) and a "Detecting: <stems>" hint
+  (`#notes-detect-status`) sit next to the shared Find-notes button, separate from the
+  existing shared `#status` line `analyse()` already used. `syncGoAll()` computes the text
+  from exactly which channels' `busy()` is currently true, so it narrows from "Detecting:
+  Vocals, Bass…" to "Detecting: Bass…" the moment vocals lands, rather than clearing to
+  nothing (the old `#status`-based message did, since each channel's own `say('')` on
+  success stomped the shared line regardless of whether the other channel was still running).
+- Each panel's count/toggle/簡譜/key row (`#notes-meta-vocals`/`-bass`, new ids) is now hidden
+  in `reset()` and revealed in `analyse()`'s success handler — the same `hidden` toggle its
+  advanced tune row already used, just extended to cover the row above it. An empty note
+  count and disabled key selectors sitting there from the moment a stem loads looked like
+  output before there was any.
+- `refreshTempo()`'s gate changed from "any melodic stem loaded" to `tempo.confidence > 0`:
+  the tempo grid panel no longer shows a default-120-BPM, fully-interactive-looking control
+  set before a real detection has ever run against the drums stem. `resetTempo()` already
+  zeroes `confidence` on song load, so this re-hides for free on every new song with no new
+  wiring. Trade-off, called out rather than silently accepted: **Select BPM range** can no
+  longer be pre-armed before the very first detection, since the whole panel it lives in is
+  now hidden until then — narrowing the range is still available immediately after that first
+  run, for every re-detect after.
+- `#notes-detect` (the shared button's own section) now has three states instead of two:
+  disabled+visible when no melodic stem was ever loaded (nothing this song will ever need it
+  for), enabled+visible while at least one present stem still needs analysis, and hidden
+  outright once every present stem has notes — a leftover disabled button once nothing is
+  left to do would itself have been the same kind of stale-looking leftover this whole change
+  set out to remove.
+- `docs/behaviour.md` updated: N3 (spinner + per-stem hint), N22/N22a (three-state section,
+  hide-on-complete), new N22b (meta row hiding), T1/T2 (tempo panel hidden-until-detected),
+  T8 (range-select precondition change).
+
+**Key technical learnings:**
+
+- `[insight]` The illusion wasn't really about the shared button's `disabled` state — that
+  was already correct. It was about every OTHER piece of UI (the per-channel status line, the
+  meta row, the tempo panel) either going quiet or looking populated before its own real
+  output existed. Fixing "is the button disabled" would have missed the actual complaint;
+  the fix had to follow the same "hidden until it has something real to show" rule through
+  every element that could independently create the impression of being finished.
+- `[note]` Reusing the existing shared `#status` line for the "which stem" hint would have
+  needed guarding against the per-channel success-path `say('')` clearing it mid-run — a
+  dedicated element next to the button sidesteps that class of bug entirely rather than
+  patching around it.
 
 ## v1.18.1 — One shared Find-notes button (2026-09-02 12:44)
 

@@ -56,10 +56,62 @@ window.__fake.onmessage({ data: { type: 'result', stems } });   // lands the res
 
 Build `stems` as six `{left, right}` Float32Array pairs at 44100. Synthesise input audio
 as a WAV `File` and feed it through `#file-input` with a `DataTransfer` — one file only, the
-input has no `multiple`. To load a set of stems instead, zip them with `buildZip` from
-`lib/zip.js` and feed the same input a `.zip` Blob; there is one picker for both and
-`app.js` dispatches on the extension. Note `#file-input` clears its own `value` after every
-change, so re-feeding the same `File` fires again rather than being swallowed.
+input has no `multiple`. To load a set of stems instead of faking a separation result, use
+`loadStemsZip()` below; there is one picker for both and `app.js` dispatches on the
+extension.
+
+### Synthesising stems on the fly
+
+No fixture files are committed for this. Most rows need a different stem combination
+(vocals-only, bass-only, both, ± drums, …), so a folder of pre-built `.zip`s either stays
+incomplete or grows into a large parallel matrix — and a checked-in binary fixture can drift
+silently out of sync with `encodeWav`/`buildZip`'s actual current output, with nothing to
+catch it the way `versions.test.js` catches a stale `?v=`. This recipe has no such file to go
+stale: it always calls the real encoder fresh. Paste it once per page load, then call
+`loadStemsZip()` for whatever row is being exercised:
+
+```js
+function sine(freq, seconds, sr = 44100) {
+  const n = Math.floor(seconds * sr);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = 0.3 * Math.sin(2 * Math.PI * freq * i / sr);
+  return out;
+}
+
+/** A synthetic stems .zip Blob, built straight in the page. `stems` is `{name: freqHz}` —
+ *  e.g. `{ vocals: 440, bass: 110, drums: 80 }` — each becoming `<name>.wav`, mono duplicated
+ *  to stereo, `seconds` long (default 3; use longer for tempo detection, which needs several
+ *  beats). Reads the app's own current `?v=` off an already-loaded script tag, so it never
+ *  needs a hand-maintained version number that could go stale against this doc. */
+async function buildStemsZip(stems, seconds = 3) {
+  const v = document.querySelector('script[src^="app.js"]').src.split('?v=')[1];
+  const { encodeWav } = await import(`/lib/wav.js?v=${v}`);
+  const { buildZip } = await import(`/lib/zip.js?v=${v}`);
+  const entries = Object.entries(stems).map(([name, freq]) => {
+    const ch = sine(freq, seconds);
+    return { name: `${name}.wav`, bytes: encodeWav(ch, ch, 44100) };
+  });
+  return buildZip(entries);
+}
+
+/** Builds the zip above and feeds it through the real picker, exactly like a user drop. */
+async function loadStemsZip(stems, seconds) {
+  const blob = await buildStemsZip(stems, seconds);
+  const file = new File([blob], 'synthetic.zip', { type: 'application/zip' });
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const input = document.getElementById('file-input');
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+```
+
+`loadStemsZip({ vocals: 440, bass: 110 })` loads a two-melodic-stem song in one call; drop a
+key to omit that stem (`loadStemsZip({ bass: 110, drums: 80 })` has no vocals, for exercising
+N22a). `#file-input` clears its own `value` after every change, so a second call fires again
+rather than being swallowed — but reload the page between unrelated scenarios rather than
+relying on that, since `buildUI()` doesn't reset everything a fresh load does (tempo range,
+edit history, etc. — see the songload reset rows).
 
 ### Observing audio rather than parameters
 

@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.18.3](#v1183--hide-notes-panels-until-that-channel-has-notes-2026-09-02-1309) | `#notes-vocals`/`#notes-bass` were gated on stem presence, so a loaded-but-undetected stem still showed its label plus disabled Export/Import/Export-list controls — the same illusion the meta row, tune row, and tempo panel were already fixed for one level down. Whole panel now hidden until that channel has notes. |
 | [v1.18.2](#v1182--closing-the-detection-illusion-of-completion-gap-2026-09-02-1301) | A spinner + "Detecting: vocals, bass…" hint next to the shared Find-notes button names exactly which channel(s) are still running, so vocals landing first is never mistaken for the whole run being done. Each panel's count/toggle/簡譜/key row and the tempo grid panel now stay hidden until they actually have something to show, instead of appearing empty/default the moment a stem loads. The shared button hides outright once every present stem is analysed. |
 | [v1.18.1](#v1181--one-shared-find-notes-button-2026-09-02-1244) | The two per-panel Find-notes buttons become one shared button that detects whichever of vocals/bass still needs it — a single-melodic-stem zip detects just that stem, and the button disables (not hides) once nothing is pending. |
 | [v1.18.0](#v1180--independent-vocalsbass-note-channels-2026-09-02-0954) | A second, fully independent note-detection channel for the bass stem, alongside the existing vocals one: two per-stem panels, two lanes that can be found/shown/muted/edited independently and play simultaneously, and one shared zoomed pane whose two mutually-exclusive "Notes" chips pick which channel it displays — switching never loses the other channel's edits. Bass plays back in a new duller, longer-sustaining timbre distinct from vocals' piano tone. |
@@ -47,6 +48,33 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.18.3 — Hide notes panels until that channel has notes (2026-09-02 13:09)
+
+**Review:** not yet
+
+**What was built:**
+
+- `#notes-vocals`/`#notes-bass` were gated on `stemBuffer(stem)` presence in `refresh()`, not
+  on whether that channel actually had notes — so a loaded-but-not-yet-analysed stem still
+  showed its panel label plus disabled Export edits/Import edits/Export list controls, one
+  level further out than the meta row, tune row, and tempo panel v1.18.2 already fixed for
+  the same reason. `refresh()` now sets `els.panel.hidden = !frames` instead of `!stemAudio`.
+- The `reset()`-triggering check moved ahead of the `els.panel.hidden` assignment within
+  `refresh()`, so a song/stem change hides the panel in the same poll tick `frames` is
+  cleared rather than one 400 ms tick later (the previous ordering would have briefly shown
+  a panel with stale content otherwise, now that the panel's own visibility depends on the
+  same `frames` value `reset()` nulls).
+- `docs/behaviour.md` N1 rewritten for the new has-notes gate (previously documented as
+  stem-presence); N22a's reference to it corrected to match.
+
+**Key technical learnings:**
+
+- `[insight]` The three-layer nature of this fix (meta row → tune row → whole panel, over
+  two sessions) came from following user-reported symptoms outward one screenshot at a time
+  rather than reasoning "hide everything empty" up front. In hindsight the whole panel was
+  always the right unit to gate — the inner rows only needed their own hidden state for the
+  `reset()`-before-next-poll-tick gap (see above), which the panel-level gate doesn't remove.
 
 ## v1.18.2 — Closing the detection illusion-of-completion gap (2026-09-02 13:01)
 

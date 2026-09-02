@@ -38,6 +38,15 @@ test('sonify: every timbre builds a PeriodicWave', () => {
   }
 });
 
+test('sonify: TIMBRES.bass is distinct from TIMBRES.piano and TIMBRES.guitar', () => {
+  assert(TIMBRES.bass, 'a bass timbre exists');
+  assert(TIMBRES.bass.decay > TIMBRES.piano.decay, 'bass sustains longer than piano — a plucked-string feel, not a pluck-and-stop');
+  assert(TIMBRES.bass.partials.length < TIMBRES.guitar.partials.length,
+    'bass carries fewer harmonics than guitar, for a duller tone');
+  assert(JSON.stringify(TIMBRES.bass.partials) !== JSON.stringify(TIMBRES.piano.partials),
+    'bass and piano do not share a harmonic spectrum');
+});
+
 // Observe the audio, not the parameters: render offline and look at the samples.
 test('sonify: a scheduled note sounds at its own start time and not before', async () => {
   const ctx = new OfflineAudioContext(1, SR * 2, SR);

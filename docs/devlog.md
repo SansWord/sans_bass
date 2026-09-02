@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.18.0](#v1180--independent-vocalsbass-note-channels-2026-09-02-0954) | A second, fully independent note-detection channel for the bass stem, alongside the existing vocals one: two per-stem panels, two lanes that can be found/shown/muted/edited independently and play simultaneously, and one shared zoomed pane whose two mutually-exclusive "Notes" chips pick which channel it displays — switching never loses the other channel's edits. Bass plays back in a new duller, longer-sustaining timbre distinct from vocals' piano tone. |
 | [v1.17.2](#v1172--sub-beat-dotted-lines-in-the-zoomed-pane-2026-09-01-2258) | Two toggle buttons, ½ and ¼, beside the zoomed pane's zoom controls draw dotted half-/quarter-beat lines — off by default, zoomed pane only. ¼ implies ½: clicking ¼ also switches ½ on, and turning ½ off also turns ¼ off. |
 | [v1.17.1](#v1171--zoomed-pane-lane-selector-2026-09-01-1840) | The zoomed pane gets a labelled lane selector — any combination of stem waveforms, gray while the detected-notes overlay is shown and colourful when it isn't — plus a per-lane mute glyph (stems and the notes synth alike), an always-on beat grid, and a fixed truncated "局部放大" label. |
 | [v1.17.0](#v1170--tempo-grid-2026-09-01-1650) | Detects BPM/phase from the drums stem (onset envelope + autocorrelation, bundled into the existing vocals analysis pass) and draws a correctable beat/bar grid over the notes lane, the zoomed pane, and now — faintly, bars only — each stem lane's own waveform. Drag-to-select on the drums lane narrows the audio the detector looks at; tempo round-trips through the edits export/import JSON. Purely visual: a direct regression test guards that it never touches `interpret()` or the note list. |
@@ -44,6 +45,117 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.18.0 — Independent vocals/bass note channels (2026-09-02 09:54)
+
+**Review:** complete
+
+**Design docs:**
+- Bass notes: [Spec](superpowers/specs/2026-09-01-bass-notes-design.md) [Plan](superpowers/plans/2026-09-01-bass-notes.md)
+
+**What was built:**
+
+- A second note-detection channel for the **bass** stem, independent of vocals end to end:
+  `notes.js` is now a two-instance factory (`createNotesChannel(stem, els)`), each instance
+  holding its own `frames`/`notes`/`editGroups`/interpretation params, and `index.html` carries
+  two duplicated panels (`#notes-vocals`, `#notes-bass`), each gated on its own stem's presence
+  exactly as the single panel was gated before.
+- Two independent full-song lanes (`noteLanes.vocals`, `noteLanes.bass`), each with its own gain
+  node, mute/visible/volume/height state and `localStorage` keys, inserted under that stem's own
+  waveform lane. Both can be found, shown, muted, and played back simultaneously — no
+  exclusivity between them.
+- The zoomed pane stays singular but gains a **two-chip Notes selector** ("Vocals notes" /
+  "Bass notes"), mutually exclusive on selection (picking one clears the other) but independent
+  on mute. Selection is claimed automatically by whichever channel finishes analysis first;
+  finding notes on the other channel afterward does not steal it away. Deselecting the active
+  chip removes the pitch overlay but leaves the pane open, still showing plain waveforms and the
+  beat grid.
+- The **Edit notes** toggle moved out of both panels into one global control beside the two
+  chips — it is enabled only once the selected chip's channel has notes, and switching chips
+  while ticked turns editing off rather than leaving it silently pointed at the wrong channel.
+  Edits are held independently per channel's own `editGroups`, so switching away and back never
+  loses them.
+- `BASS_RANGE` (`tauMin: 27, tauMax: 269`, ~41–408 Hz) added to `lib/pitch.js` for low-register
+  YIN detection, threaded through `notes.worker.js`'s `analyse` message as an optional `range`
+  field; vocals keeps sending nothing and falls back to the existing `YIN_DEFAULTS`.
+- A `bass` entry in `lib/sonify.js`'s `TIMBRES` — fewer, duller partials and a longer decay than
+  `piano` — so bass notes sound distinct from vocals' tone by construction. Each channel's
+  `resync()` passes its own fixed timbre; not user-selectable.
+- Exported edits JSON gains a `"stem"` field; filenames become `<song>-vocals-edits.json` /
+  `<song>-bass-edits.json`. Importing a file into the panel it wasn't made for shows a
+  non-blocking mismatch warning (`stemMismatch()` in `lib/pitch.js`) rather than refusing the
+  import.
+- `docs/behaviour.md` gained rows N18/N23/N56-N56d/N59/N61 documenting the two-channel lane and
+  zoomed-pane behaviour, and every new/changed string landed in both `lib/i18n.js` locales.
+- A final whole-branch review (after all 11 tasks individually passed their own review) found
+  and fixed one Critical bug — shared tempo state was never reset between song loads, so a
+  second song silently inherited the first song's `tempoRange`/BPM/phase — plus five Important
+  fixes: a manual-tempo overwrite guard when the second channel's detection completes, the
+  zoomed pane no longer keeps showing a channel's pitch overlay after that channel's lane is
+  hidden, ~20 stale DOM-id references in `docs/behaviour.md` were corrected (including one row
+  describing an element that had been deleted outright), the global Edit-notes checkbox got its
+  `id` back, and both full-song note lanes now carry a stem-qualified label instead of an
+  identical unlabelled "Notes" on both.
+
+**Key technical learnings:**
+
+- `[insight]` Making `notes.js` a closure factory instead of a flat module with module-level
+  state turned out to require touching almost nothing pitch/detection-specific — the whole
+  YIN → segment → edit → sonify pipeline had no vocals assumption baked in except one
+  `stemBuffer('vocals')` call and the panel copy. The actual mechanical surface was entirely in
+  `app.js`'s per-stem lane/gain/mute bookkeeping, exactly as the design spec's own Risks section
+  predicted.
+- `[insight]` The `zoomNotesStem` mutual-exclusion pattern (`null | 'vocals' | 'bass'`, one
+  value never a set) plus a first-to-finish-wins claim rule is a clean way to gate a broadcast
+  event to exactly one of several listeners without adding a lock or a queue — clicking a chip
+  is the only thing that ever changes the pointer, and every other piece of code (Edit notes
+  toggle, `renderZoom()`) just reads it.
+- `[note]` The zoomed-pane-stays-open-on-chip-deselection design (N59) holds because the beat/bar
+  grid is read from `anyRibbon()` rather than the current selection — it's a tempo reference for
+  whatever waveform is on screen, not something owned by the pitch view, so it has no reason to
+  vanish just because nothing is selected.
+- `[note]` Measured against real bass stems (`6 南國的風`, `9 繼續向前行`), widening the search
+  range is what fixes bass detection, not the analysis window: `YIN_DEFAULTS`' vocal range
+  applied to bass gets only 37% voiced coverage and a systematic +21.4-cent sharp bias (locking
+  onto a harmonic), while `BASS_RANGE` at the *same* 512-sample window jumps to 86% voiced and
+  −5.7 cents. Window size on top of `BASS_RANGE` is a smaller, non-monotonic effect — 512 shows
+  the most octave outliers of any width tried, 768/1024/1536 sit in a tight plateau, and 2048
+  buys nothing over 1024 while more than doubling decode cost. `window: 1024` shipped.
+- `[gotcha]` `index.html`'s own bump-reminder comment claimed `notes.js` had 3 versioned
+  references and `notes.worker.js` had 1, both stale by the time this branch's version bump
+  landed — `notes.js` actually had 4 (the re-detect-tempo worker call added since the comment
+  was last counted) and `notes.worker.js` had 2 (a `lib/tempo.js` import that predates this
+  plan entirely). `tests/versions.test.js` checks that every `?v=` occurrence actually moved,
+  not that the comment's arithmetic is right, so a hand-maintained count next to correct code
+  can drift silently for more than one release before anyone re-adds up the references by hand.
+- `[note]` Confirming the vocals-piano vs. bass-timbre split by ear isn't possible from this
+  environment. Monkey-patching `AudioContext.prototype.createPeriodicWave` and triggering a
+  reschedule (a seek) during real playback captured the exact partial-amplitude arrays passed
+  for each channel — one matching `TIMBRES.bass`'s `[1, 0.35, 0.12, 0.05]` spec, the other a
+  longer piano-shaped array — which is about as close to "hearing" the distinction as static
+  code inspection can get without literal audio output.
+- `[note]` `ribbonVisible` is genuinely `localStorage`-persisted per stem (unlike
+  `zoomNotesStem`/`zoomLaneSel`, which reset every load) — hiding the bass lane in one part of
+  a verification pass and reloading the page later in the same pass left it hidden on the next
+  load, which is correct behaviour but worth remembering when a lane doesn't appear as expected
+  after a reload during manual testing.
+- `[gotcha]` Pulling per-song state up from a single-instance module to shared, module-level
+  scope (tempo, in this case) is not the same edit as pulling it into a factory closure —
+  nothing forces you to re-home the OLD owner's teardown path. The pre-refactor `reset()`
+  zeroed `tempo`/`tempoRange`/`tempoRangeArmed` on every new song load; the post-refactor
+  per-channel `reset()` simply had nowhere obvious to put those lines once tempo moved out of
+  its closure, so they were silently dropped. Every per-task review (each seeing only that
+  task's own diff) passed, because no single task's diff contained both the old `reset()` and
+  the new one to compare — only the whole-branch review, with the full history in view, caught
+  that a second song load was silently inheriting the first song's tempo window. Any "pull X up
+  to shared scope" refactor needs an explicit line-by-line diff of the old owner's reset/
+  teardown path against the new one, not just a check that the moved state initializes
+  correctly on first use.
+- `[insight]` A scoped final review that explicitly tells the reviewer "here are the N findings
+  the earlier task reviews already ruled on, don't re-flag them" is what makes a broad
+  whole-branch pass worth running at all — without that framing, a reviewer re-litigates
+  already-settled calls (like Task 5's intentional markup duplication) instead of spending its
+  budget on the cross-task interactions no single task's diff could reveal.
 
 ## v1.17.2 — Sub-beat dotted lines in the zoomed pane (2026-09-01 22:58)
 

@@ -80,6 +80,30 @@ not.
 `driftCents` reads as inert because the drift rule needs three *consecutive* frames past the
 threshold, and vibrato oscillates — it rarely stays on one side that long.
 
+### `BASS_RANGE`: search range dominates, window is a smaller, non-monotonic effect
+
+Measured on `6 南國的風`'s bass stem (233 s) and cross-checked on `9 繼續向前行`'s (250 s).
+`YIN_DEFAULTS` (`tauMin: 10, tauMax: 138` — the vocal range) applied to a bass stem is not a
+smaller version of the same signal: `tauMax` cannot represent most bass fundamentals at all.
+
+| range | window | voiced % | notes (threshold-v1) | octave outliers | mean deviation |
+|---|---|---|---|---|---|
+| `YIN_DEFAULTS` (vocal) | 512 | 37% | 159 | 3 | **+21.4 cents** |
+| `BASS_RANGE` (`tauMin:27,tauMax:269`) | 512 | 86% | 338 | 8 | −5.7 cents |
+| `BASS_RANGE` | 768 | 86% | 318 | 5 | −6.8 cents |
+| `BASS_RANGE` | **1024 (shipped)** | 86% | 313 | 6 | −6.7 cents |
+| `BASS_RANGE` | 1536 | 87% | 312 | 4 | −6.1 cents |
+| `BASS_RANGE` | 2048 | 87% | 319 | 8 | −6.7 cents |
+
+Widening `tauMin`/`tauMax` alone (independent of `window`) is what fixes voiced coverage —
+it jumps from 37% to 86% at the *same* 512-sample window, and the vocal range's mean
+deviation (+21.4 cents, a systematic sharp bias from locking onto a harmonic) collapses to
+within a few cents of true pitch. `window`'s own effect is smaller and non-monotonic: 512
+samples (~1.9 periods of the lowest bass note) shows the most octave outliers of any width
+tried; 768/1024/1536 all land in a tight plateau; 2048 gives no further improvement while
+more than doubling decode cost over 1024. **`window: 1024` ships** — one period-count step
+above the noisiest setting, without paying for width that measurably buys nothing.
+
 ### The floor on `minDurationMs`
 
 The hard limit is the analysis frame hop, **11.61 ms** — a note cannot be shorter than one

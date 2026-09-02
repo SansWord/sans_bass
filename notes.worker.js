@@ -12,8 +12,8 @@
  * See docs/transcription.md for the layer model this implements, and
  * docs/superpowers/specs/2026-09-01-tempo-grid-design.md for the tempo half. */
 
-import { decimate, f0Track } from './lib/pitch.js?v=1.17.2';
-import { onsetEnvelope, estimateTempo } from './lib/tempo.js?v=1.17.2';
+import { decimate, f0Track } from './lib/pitch.js?v=1.18.0';
+import { onsetEnvelope, estimateTempo } from './lib/tempo.js?v=1.18.0';
 
 function computeTempo(channels, sampleRate) {
   const { env, hopSeconds } = onsetEnvelope(channels, sampleRate);
@@ -27,7 +27,7 @@ self.onmessage = (e) => {
     if (m.type === 'analyse') {
       if (!m.channels || !m.channels.length) throw new Error('no audio channels supplied');
       const dec = decimate(m.channels, m.sampleRate);
-      const track = f0Track(dec.samples, dec.sampleRate);
+      const track = f0Track(dec.samples, dec.sampleRate, m.range || {});
       const tempo = m.drums ? computeTempo(m.drums.channels, m.drums.sampleRate) : null;
       /* Transferring OUT is safe: these arrays were allocated here and nothing else holds
        * them. Transferring IN would not be — see the note in tests/notes.test.js.

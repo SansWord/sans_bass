@@ -8,17 +8,17 @@
      a leading slash. apple-touch-icon must be a PNG — iOS ignores an SVG here — and it is
      180x180 full bleed because iOS applies its own corner mask. theme-color stops Safari
      painting default light chrome above a near-black page. -->
-<link rel="icon" href="icons/icon.svg?v=1.17.2" type="image/svg+xml">
-<link rel="icon" href="icons/favicon-32.png?v=1.17.2" sizes="32x32">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.17.2">
+<link rel="icon" href="icons/icon.svg?v=1.18.0" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png?v=1.18.0" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.18.0">
 <meta name="theme-color" content="#0d0d10">
-<link rel="stylesheet" href="styles.css?v=1.17.2">
+<link rel="stylesheet" href="styles.css?v=1.18.0">
 <!-- i18n loads in <head>, before anything paints, so `lang` and the tab title are already
      right and the DOM walk can run the moment the body exists. init() is called explicitly
      rather than on load, so tests/test.html can read the dictionary without having its own
      title rewritten. The literal English in the markup below is the no-JS fallback and the
      readable source of truth; it matches DICT.en exactly. -->
-<script src="lib/i18n.js?v=1.17.2"></script>
+<script src="lib/i18n.js?v=1.18.0"></script>
 <script>window.SansI18n.init();</script>
 <!-- Anonymous, cookieless usage counts. External, so no ?v= -- and https:// rather than
      the protocol-relative //gc.zgo.at from GoatCounter's docs, because versions.test.js
@@ -34,7 +34,7 @@
        URL the <link rel="icon"> above already fetched, so it costs no extra request.
        alt="" because the <h1> beside it already says the name — the mark is decorative. -->
   <div class="brand">
-    <img class="brand-mark" src="icons/icon.svg?v=1.17.2" alt="" width="26" height="26">
+    <img class="brand-mark" src="icons/icon.svg?v=1.18.0" alt="" width="26" height="26">
     <h1>sans<span>_</span>bass</h1>
   </div>
   <div class="bar-right">
@@ -131,32 +131,168 @@
     </section>
 
     <!-- Detection is button-triggered, never automatic: the first run is ~7 s of CPU on a
-         4-minute track, and unbidden CPU that size is a surprise rather than a convenience. -->
-    <section id="notes" class="notes" hidden>
+         4-minute track, and unbidden CPU that size is a surprise rather than a convenience.
+         Two independent panels — one per note-capable stem — each gated on its own stem's
+         presence exactly as the single panel was gated before. Edit notes moves to one
+         global toggle beside the zoomed pane's two Notes chips (built by app.js), since only
+         one channel is ever edited at a time; the tempo grid moves to its own shared section
+         below, since it is derived from drums and has never depended on which melodic stem
+         is being read. See docs/superpowers/specs/2026-09-01-bass-notes-design.md. -->
+    <section id="notes-vocals" class="notes" hidden>
       <div class="notes-row">
-        <button id="notes-go" class="btn" data-i18n="notes.find">Find notes</button>
-        <span id="notes-count" class="notes-count"></span>
-        <button id="notes-show" class="btn ghost" data-i18n="notes.hide" hidden>Hide notes</button>
+        <strong class="notes-panel-label" data-i18n="stem.vocals">Vocals</strong>
+      </div>
+      <div class="notes-row">
+        <button id="notes-go-vocals" class="btn" data-i18n="notes.find">Find notes</button>
+        <span id="notes-count-vocals" class="notes-count"></span>
+        <button id="notes-show-vocals" class="btn ghost" data-i18n="notes.hide" hidden>Hide notes</button>
         <label class="notes-ctl">
-          <input id="notes-edit" type="checkbox" disabled>
-          <span data-i18n="notes.edit">Edit notes</span>
-        </label>
-        <label class="notes-ctl">
-          <input id="notes-jianpu" type="checkbox">
+          <input id="notes-jianpu-vocals" type="checkbox">
           <span data-i18n="notes.jianpu">簡譜</span>
         </label>
         <span class="notes-ctl notes-key">
           <span data-i18n="notes.keyIs">1 =</span>
-          <select id="notes-key-tonic" disabled></select>
-          <select id="notes-key-mode" disabled>
+          <select id="notes-key-tonic-vocals" disabled></select>
+          <select id="notes-key-mode-vocals" disabled>
             <option value="major" data-i18n="notes.major">major</option>
             <option value="minor" data-i18n="notes.minor">minor</option>
           </select>
-          <button id="notes-key-rel" class="mini" type="button" disabled
+          <button id="notes-key-rel-vocals" class="mini" type="button" disabled
                   data-i18n-attr="title:notes.relativeTip">⇄</button>
         </span>
       </div>
-      <div id="notes-tempo" class="notes-row">
+      <div id="notes-tune-vocals" class="notes-row" hidden>
+        <label class="notes-ctl">
+          <span data-i18n="notes.shortest">Shortest note</span>
+          <input id="notes-min-vocals" type="range" min="20" max="300" step="5" value="120">
+          <output id="notes-min-out-vocals" class="notes-val">120 ms</output>
+        </label>
+        <details class="notes-adv">
+          <summary data-i18n="notes.advanced">Advanced</summary>
+          <label class="notes-ctl">
+            <input id="notes-clip-vocals" type="checkbox" checked>
+            <span data-i18n="notes.clip">Fit the lane to the melody</span>
+          </label>
+          <label class="notes-ctl">
+            <input id="notes-hmm-vocals" type="checkbox" checked>
+            <span data-i18n="notes.hmm">Whole-phrase detection</span>
+          </label>
+          <div class="notes-ctl">
+            <label class="notes-ctl">
+              <input id="notes-fold-vocals" type="checkbox">
+              <span data-i18n="notes.fold">Fix octave outliers</span>
+            </label>
+            <span id="notes-fold-stats-vocals" class="notes-stats" hidden></span>
+          </div>
+          <label class="notes-ctl notes-sub">
+            <span data-i18n="notes.foldTol">Fold tolerance</span>
+            <input id="notes-fold-tol-vocals" type="range" min="0.5" max="8" step="0.25" value="1.5" disabled>
+            <output id="notes-fold-tol-out-vocals" class="notes-val">1.5 semitones</output>
+          </label>
+        </details>
+      </div>
+      <details id="notes-edits-vocals" class="notes-edit-list" hidden>
+        <summary id="notes-edits-summary-vocals"></summary>
+        <div class="notes-row notes-edit-panel">
+          <button id="notes-edit-undo-vocals" class="mini" type="button" disabled
+                  data-i18n-attr="title:notes.editUndoTip">&#8630;</button>
+          <ol id="notes-edit-rows-vocals" class="edit-rows"></ol>
+        </div>
+      </details>
+      <div id="notes-io-vocals" class="notes-row">
+        <button id="notes-export-vocals" class="mini" type="button" disabled data-i18n="notes.export">Export edits</button>
+        <button id="notes-import-vocals" class="mini" type="button" disabled data-i18n="notes.import">Import edits</button>
+        <input id="notes-import-file-vocals" type="file" accept="application/json,.json" hidden>
+      </div>
+      <div id="notes-list-io-vocals" class="notes-row">
+        <label class="notes-ctl">
+          <span data-i18n="notes.listSecs">Seconds per line</span>
+          <input id="notes-list-secs-vocals" type="number" min="3" max="60" step="1" value="10">
+        </label>
+        <button id="notes-list-export-vocals" class="mini" type="button" disabled data-i18n="notes.exportList">Export list</button>
+      </div>
+    </section>
+
+    <section id="notes-bass" class="notes" hidden>
+      <div class="notes-row">
+        <strong class="notes-panel-label" data-i18n="stem.bass">Bass</strong>
+      </div>
+      <div class="notes-row">
+        <button id="notes-go-bass" class="btn" data-i18n="notes.find">Find notes</button>
+        <span id="notes-count-bass" class="notes-count"></span>
+        <button id="notes-show-bass" class="btn ghost" data-i18n="notes.hide" hidden>Hide notes</button>
+        <label class="notes-ctl">
+          <input id="notes-jianpu-bass" type="checkbox">
+          <span data-i18n="notes.jianpu">簡譜</span>
+        </label>
+        <span class="notes-ctl notes-key">
+          <span data-i18n="notes.keyIs">1 =</span>
+          <select id="notes-key-tonic-bass" disabled></select>
+          <select id="notes-key-mode-bass" disabled>
+            <option value="major" data-i18n="notes.major">major</option>
+            <option value="minor" data-i18n="notes.minor">minor</option>
+          </select>
+          <button id="notes-key-rel-bass" class="mini" type="button" disabled
+                  data-i18n-attr="title:notes.relativeTip">⇄</button>
+        </span>
+      </div>
+      <div id="notes-tune-bass" class="notes-row" hidden>
+        <label class="notes-ctl">
+          <span data-i18n="notes.shortest">Shortest note</span>
+          <input id="notes-min-bass" type="range" min="20" max="300" step="5" value="120">
+          <output id="notes-min-out-bass" class="notes-val">120 ms</output>
+        </label>
+        <details class="notes-adv">
+          <summary data-i18n="notes.advanced">Advanced</summary>
+          <label class="notes-ctl">
+            <input id="notes-clip-bass" type="checkbox" checked>
+            <span data-i18n="notes.clip">Fit the lane to the melody</span>
+          </label>
+          <label class="notes-ctl">
+            <input id="notes-hmm-bass" type="checkbox" checked>
+            <span data-i18n="notes.hmm">Whole-phrase detection</span>
+          </label>
+          <div class="notes-ctl">
+            <label class="notes-ctl">
+              <input id="notes-fold-bass" type="checkbox">
+              <span data-i18n="notes.fold">Fix octave outliers</span>
+            </label>
+            <span id="notes-fold-stats-bass" class="notes-stats" hidden></span>
+          </div>
+          <label class="notes-ctl notes-sub">
+            <span data-i18n="notes.foldTol">Fold tolerance</span>
+            <input id="notes-fold-tol-bass" type="range" min="0.5" max="8" step="0.25" value="1.5" disabled>
+            <output id="notes-fold-tol-out-bass" class="notes-val">1.5 semitones</output>
+          </label>
+        </details>
+      </div>
+      <details id="notes-edits-bass" class="notes-edit-list" hidden>
+        <summary id="notes-edits-summary-bass"></summary>
+        <div class="notes-row notes-edit-panel">
+          <button id="notes-edit-undo-bass" class="mini" type="button" disabled
+                  data-i18n-attr="title:notes.editUndoTip">&#8630;</button>
+          <ol id="notes-edit-rows-bass" class="edit-rows"></ol>
+        </div>
+      </details>
+      <div id="notes-io-bass" class="notes-row">
+        <button id="notes-export-bass" class="mini" type="button" disabled data-i18n="notes.export">Export edits</button>
+        <button id="notes-import-bass" class="mini" type="button" disabled data-i18n="notes.import">Import edits</button>
+        <input id="notes-import-file-bass" type="file" accept="application/json,.json" hidden>
+      </div>
+      <div id="notes-list-io-bass" class="notes-row">
+        <label class="notes-ctl">
+          <span data-i18n="notes.listSecs">Seconds per line</span>
+          <input id="notes-list-secs-bass" type="number" min="3" max="60" step="1" value="10">
+        </label>
+        <button id="notes-list-export-bass" class="mini" type="button" disabled data-i18n="notes.exportList">Export list</button>
+      </div>
+    </section>
+
+    <!-- Shared: tempo is derived from the drums stem and has never depended on which melodic
+         stem is being read, so it lives once regardless of how many note panels exist above.
+         Ids are unchanged from the single-panel version. -->
+    <section id="notes-tempo" class="notes" hidden>
+      <div class="notes-row">
         <label class="notes-ctl">
           <input id="notes-tempo-on" type="checkbox" checked>
           <span data-i18n="notes.tempoOn">Show tempo grid</span>
@@ -194,76 +330,6 @@
                 data-i18n="notes.tempoRedetect">Re-detect tempo</button>
         <span id="notes-tempo-status" class="notes-stats"></span>
       </div>
-      <div id="notes-tune" class="notes-row" hidden>
-        <label class="notes-ctl">
-          <span data-i18n="notes.shortest">Shortest note</span>
-          <input id="notes-min" type="range" min="20" max="300" step="5" value="120">
-          <output id="notes-min-out" class="notes-val">120 ms</output>
-        </label>
-        <details class="notes-adv">
-          <summary data-i18n="notes.advanced">Advanced</summary>
-          <label class="notes-ctl">
-            <input id="notes-clip" type="checkbox" checked>
-            <span data-i18n="notes.clip">Fit the lane to the melody</span>
-          </label>
-          <!-- On by default since v1.14.0. It was shipped off and marked experimental in
-               v1.12.0 because its one regression was octave-UP errors; octave folding
-               (v1.13.0) is the pass that fixes exactly those, so the tradeoff that kept it
-               off no longer stands. Unticking still gives the old threshold-v1 output. -->
-          <label class="notes-ctl">
-            <input id="notes-hmm" type="checkbox" checked>
-            <span data-i18n="notes.hmm">Whole-phrase detection</span>
-          </label>
-          <!-- The count sits OUTSIDE the label on purpose: inside it, clicking the number
-               would toggle the checkbox, which is not what a readout should do. -->
-          <div class="notes-ctl">
-            <label class="notes-ctl">
-              <input id="notes-fold" type="checkbox">
-              <span data-i18n="notes.fold">Fix octave outliers</span>
-            </label>
-            <span id="notes-fold-stats" class="notes-stats" hidden></span>
-          </div>
-          <!-- Only meaningful while the box above is ticked, so notes.js disables it when it
-               is not. Runs to 8 so the whole range can be explored, but notes.js marks the
-               readout from 2.5 up: an octave-plus-a-fifth error lands ~4.98 semitones out, so
-               past there the fold starts trusting corrections it cannot justify. -->
-          <label class="notes-ctl notes-sub">
-            <span data-i18n="notes.foldTol">Fold tolerance</span>
-            <input id="notes-fold-tol" type="range" min="0.5" max="8" step="0.25" value="1.5" disabled>
-            <output id="notes-fold-tol-out" class="notes-val">1.5 semitones</output>
-          </label>
-        </details>
-      </div>
-      <!-- Collapsed by default (no `open` attribute) so a long editing session doesn't push
-           the zoomed pane further down the page on every new edit; the browser keeps whatever
-           open/closed state the user leaves it in across re-renders, since renderEditList()
-           only replaces #notes-edit-rows' children, never this element's `open`. When open,
-           the row below floats (position: absolute — see styles.css) so it overlays the page
-           instead of displacing it, and a pointerdown outside #notes-edits closes it again
-           (see the listener in notes.js). -->
-      <details id="notes-edits" class="notes-edit-list" hidden>
-        <summary id="notes-edits-summary"></summary>
-        <div class="notes-row notes-edit-panel">
-          <button id="notes-edit-undo" class="mini" type="button" disabled
-                  data-i18n-attr="title:notes.editUndoTip">&#8630;</button>
-          <ol id="notes-edit-rows" class="edit-rows"></ol>
-        </div>
-      </details>
-      <div id="notes-io" class="notes-row">
-        <button id="notes-export" class="mini" type="button" disabled data-i18n="notes.export">Export edits</button>
-        <button id="notes-import" class="mini" type="button" disabled data-i18n="notes.import">Import edits</button>
-        <input id="notes-import-file" type="file" accept="application/json,.json" hidden>
-      </div>
-      <!-- A separate export from the JSON edits row above: this one is a human-readable
-           簡譜 note list, not a round-trippable edit history. Disabled together with the key
-           selectors in syncJianpuControls() — a number list means nothing without a key. -->
-      <div id="notes-list-io" class="notes-row">
-        <label class="notes-ctl">
-          <span data-i18n="notes.listSecs">Seconds per line</span>
-          <input id="notes-list-secs" type="number" min="3" max="60" step="1" value="10">
-        </label>
-        <button id="notes-list-export" class="mini" type="button" disabled data-i18n="notes.exportList">Export list</button>
-      </div>
     </section>
 
     <div id="lanes" class="lanes"></div>
@@ -288,16 +354,16 @@
      degraded page, it is a dead one: app.js throws on the first element index.html no longer
      has and every listener below it — drag & drop included — never registers.
      Bump the version in ALL of these on release: index.html (15), separate.js (3),
-     separate.worker.js (1), notes.js (3), notes.worker.js (1) — 23 in all.
+     separate.worker.js (1), notes.js (4), notes.worker.js (2) — 25 in all.
      tests/versions.test.js fails if they drift apart. -->
-<script src="lib/stems.js?v=1.17.2"></script>
-<script src="lib/unzip.js?v=1.17.2"></script>
-<script src="lib/analytics.js?v=1.17.2"></script>
-<script src="lib/platform.js?v=1.17.2"></script>
-<script src="lib/ribbon.js?v=1.17.2"></script>
-<script src="lib/jianpu.js?v=1.17.2"></script>
-<script src="app.js?v=1.17.2"></script>
-<script type="module" src="separate.js?v=1.17.2"></script>
-<script type="module" src="notes.js?v=1.17.2"></script>
+<script src="lib/stems.js?v=1.18.0"></script>
+<script src="lib/unzip.js?v=1.18.0"></script>
+<script src="lib/analytics.js?v=1.18.0"></script>
+<script src="lib/platform.js?v=1.18.0"></script>
+<script src="lib/ribbon.js?v=1.18.0"></script>
+<script src="lib/jianpu.js?v=1.18.0"></script>
+<script src="app.js?v=1.18.0"></script>
+<script type="module" src="separate.js?v=1.18.0"></script>
+<script type="module" src="notes.js?v=1.18.0"></script>
 </body>
 </html>

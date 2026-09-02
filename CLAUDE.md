@@ -168,10 +168,10 @@ out of the project; never commit them.
   degraded page — the old script throws on an element the new markup dropped, and because
   `app.js` wires everything from one flat run of top-level statements, every listener *below*
   the throw silently never registers. Bump the version in `index.html` (15), `separate.js` (3),
-  `separate.worker.js` (1), `notes.js` (3) and `notes.worker.js` (1) — 23 in all;
+  `separate.worker.js` (1), `notes.js` (4) and `notes.worker.js` (2) — 25 in all;
   `tests/versions.test.js` fails if they drift — and it
   covers `.png` and `.svg` as well as `.js`/`.css`, so the icons are included. Currently
-  `v1.16.4`.
+  `v1.18.5`.
 - **Separation is desktop-only, and that is not fixable from this repo.** On iOS the first
   `session.run()` kills the tab; the accumulators, the 285 MB model, the memory floor,
   WebGPU and asyncify were each ruled out by measurement, and `N_SAMPLES = 343980` is baked

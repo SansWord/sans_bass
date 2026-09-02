@@ -235,6 +235,7 @@ The button and the `0` key are the same action.
 | S8 | Sonify reference tones (Notes lane) stay locked to the (possibly slowed/sped) stems. | With a Notes lane active, play at 70%: the tone timing tracks the slowed audio rather than the original tempo. |
 | S9 | A time-stretched A–B loop can have a faint discontinuity at the seam — accepted, not fixed by this feature. Native 100% looping is unaffected. | Loop tightly at a non-100% rate and listen at the wrap point; a native 100% loop over the same points stays glitch-free. |
 | S10 | Returning to 100% falls back to native playback with no lingering artifacts. | Play at 70%, then reset to 100% mid-playback: sounds identical to a song that was never rate-changed. |
+| S11 | The current speed is shown next to every time-code — the main transport, and the Overview/Zoom lanes when present — always visible, not just away from 100%. | `#t-speed` reads e.g. `70%`; the Overview/Zoom `.time-code` text ends `· 70%`. Updates live while playing and immediately on a paused rate change. |
 
 ## Separation panel
 

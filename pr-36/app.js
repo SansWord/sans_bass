@@ -120,7 +120,7 @@ const el = {
   dropzone: $('dropzone'), player: $('player'), status: $('status'),
   fileInput: $('file-input'),
   play: $('play'), title: $('title'), mainWave: $('main-wave'),
-  tCur: $('t-cur'), tDur: $('t-dur'), mode: $('mode'),
+  tCur: $('t-cur'), tDur: $('t-dur'), tSpeed: $('t-speed'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
   speed: $('speed'), speedVal: $('speed-val'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
@@ -1729,7 +1729,10 @@ function draw() {
     const lane = noteLanes[stem];
     if (lane && lane.ribbon) paint(lane.el.canvas, frac);
   }
-  const timeCode = `${fmtCs(t)}/${fmt(duration)}`;
+  // Shown next to every time-code (main transport, Overview lane, Zoom lane) so the
+  // current rate stays visible without looking back at the speed slider.
+  const speedTag = `${ratePercent}%`;
+  const timeCode = `${fmtCs(t)}/${fmt(duration)} · ${speedTag}`;
   if (overviewEl) { paint(overviewEl.canvas, frac); overviewEl.time.textContent = timeCode; }
   if (zoomEl) {
     // Follow while playing; when stopped the window is wherever it was dragged to.
@@ -1740,6 +1743,7 @@ function draw() {
   }
   if (editMode) syncEditToolbar();
   el.tCur.textContent = fmt(t);
+  if (el.tSpeed) el.tSpeed.textContent = speedTag;
 }
 
 /** Keeps the toolbar's enabled state in sync with the current selection. Called from draw(),
@@ -2182,6 +2186,7 @@ function setRate(newPercent) {
   if (!playing) {
     ratePercent = clamped;
     syncSpeedUI();
+    draw();   // the time-code speed tag is stale otherwise until the next play()
     return;
   }
 

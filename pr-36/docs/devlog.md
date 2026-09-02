@@ -82,6 +82,12 @@ Running log of what was built and what was learned building it.
   rate-scaled `currentTime()` math, unit-tested directly; `lib/sonify.js`'s `scheduleNotes`
   gained a `rate` option so the Notes-lane reference tones stay locked to a slowed/sped
   stem, threaded through from `app.js`'s transport broadcast.
+- The current speed now shows next to every time-code — a new `#t-speed` span in the main
+  transport, and appended to the same `timeCode` string the Overview/Zoom lanes already
+  built for their `current/total` display (`fmtCs(t)/fmt(duration) · ${ratePercent}%`) — so
+  it's visible without looking back at the slider. Always shown, not just away from 100%,
+  matching how `#t-dur` is always shown. `setRate()`'s paused branch now also calls `draw()`,
+  since nothing else would refresh these read-outs while stopped.
 - SoundTouchJS's DSP core (`SoundTouch`, `SimpleFilter`, and their internal dependencies)
   is vendored into `lib/vendor/soundtouch-core.js`, excluding its `ScriptProcessorNode`
   wrapper — `lib/stretch-processor.js` is this project's own replacement, built on

@@ -109,6 +109,7 @@ let loopA = null;          // A-B repeat start, seconds (null = unset)
 let loopB = null;          // A-B repeat end, seconds
 let muteSnapshot = null;   // lane mutes to return to when "unmute all" is undone
 const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
+let workletReady = null;   // Promise: resolves once lib/stretch-processor.js is registered
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -177,6 +178,7 @@ function ensureAudio() {
     master.connect(audio.destination);
     // Each stem's synthesised-notes gain node is created per lane, in buildUI() — no lane
     // exists yet the first time ensureAudio() runs, before any song is loaded.
+    workletReady = audio.audioWorklet.addModule('lib/stretch-processor.js?v=1.19.0');
   }
   if (audio.state === 'suspended') audio.resume();
   return audio;

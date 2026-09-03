@@ -31,6 +31,23 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   self-contained `(function (global) {...})(window)` IIFEs assigning `window.SansX`, not a
   real ES module graph with `import`/`export` — only the `<script>` tag's loading mechanism
   did.
+- **A module's public surface is its `export`s — a `window.SansX` global is a bridge, never
+  a default.** Every ESM file in this repo (`lib/pitch.js`, `lib/wav.js`, `lib/zip.js`,
+  `lib/overlap.js`, `lib/sonify.js`, `lib/tempo.js`, and, once converted, the files above)
+  exports what it wants read; it does not also assign a global on the chance something might
+  want one later — that is designing for a hypothetical future consumer, the same thing this
+  project's conventions already rule out for features. The one exception is a **documented,
+  named bridge** for a specific consumer that genuinely cannot `import` yet — e.g.
+  `lib/pitch.js`'s `window.SansPitch = { parseNoteName }`, which exists only because
+  (pre-conversion) `app.js` was a classic script and could not import an ES module; the
+  comment there says exactly which caller it is for. Never add a global "for consistency
+  with the other files" or "in case something needs it" — if a real consumer shows up later,
+  adding the export back is a one-line, fully reversible change. See
+  [`docs/superpowers/specs/2026-09-02-esm-modules-design.md`](superpowers/specs/2026-09-02-esm-modules-design.md)
+  for how this principle applies to converting `app.js` and the `lib/*.js` files above: four
+  of them (`i18n.js`, `platform.js`, `analytics.js`, `jianpu.js`) keep a narrow bridge
+  because `separate.js`/`notes.js` still read them via `window`; the rest don't, because
+  nothing outside this project's own module graph reads them.
 - **Nothing leaves the machine.** No audio egress ever. No uploads of user content. One
   cookieless, anonymous usage beacon (GoatCounter) reports **event names only** — never
   audio, never filenames, never song titles. Every event name is a compile-time constant

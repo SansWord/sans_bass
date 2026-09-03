@@ -8,23 +8,29 @@
      a leading slash. apple-touch-icon must be a PNG — iOS ignores an SVG here — and it is
      180x180 full bleed because iOS applies its own corner mask. theme-color stops Safari
      painting default light chrome above a near-black page. -->
-<link rel="icon" href="icons/icon.svg?v=1.19.0" type="image/svg+xml">
-<link rel="icon" href="icons/favicon-32.png?v=1.19.0" sizes="32x32">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.19.0">
+<link rel="icon" href="./assets/icon-CNNK3h42.svg" type="image/svg+xml">
+<link rel="icon" href="./assets/favicon-32-D9nVlJ2I.png" sizes="32x32">
+<link rel="apple-touch-icon" href="./assets/apple-touch-icon-BWNmolE4.png">
 <meta name="theme-color" content="#0d0d10">
-<link rel="stylesheet" href="styles.css?v=1.19.0">
 <!-- i18n loads in <head>, before anything paints, so `lang` and the tab title are already
      right and the DOM walk can run the moment the body exists. init() is called explicitly
      rather than on load, so tests/test.html can read the dictionary without having its own
      title rewritten. The literal English in the markup below is the no-JS fallback and the
      readable source of truth; it matches DICT.en exactly. -->
-<script src="lib/i18n.js?v=1.19.0"></script>
-<script>window.SansI18n.init();</script>
-<!-- Anonymous, cookieless usage counts. External, so no ?v= -- and https:// rather than
-     the protocol-relative //gc.zgo.at from GoatCounter's docs, because versions.test.js
-     only skips external URLs that start with "http". -->
+<!-- Anonymous, cookieless usage counts. External, so Vite leaves the URL alone — and
+     https:// rather than the protocol-relative //gc.zgo.at from GoatCounter's docs, to
+     keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
+  <script type="module" crossorigin src="./assets/main-DKGAuILL.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
+  <link rel="modulepreload" crossorigin href="./assets/transport-math-BjHBQHqq.js">
+  <link rel="modulepreload" crossorigin href="./assets/ribbon-C_45RmF1.js">
+  <link rel="modulepreload" crossorigin href="./assets/wav-BWfpFjQM.js">
+  <link rel="modulepreload" crossorigin href="./assets/zip-C6HNq5Vh.js">
+  <link rel="modulepreload" crossorigin href="./assets/pitch-DDgXI8FM.js">
+  <link rel="modulepreload" crossorigin href="./assets/sonify-gJKWSQwY.js">
+  <link rel="stylesheet" crossorigin href="./assets/main-BwB0ktrd.css">
 </head>
 <body>
 
@@ -34,7 +40,7 @@
        URL the <link rel="icon"> above already fetched, so it costs no extra request.
        alt="" because the <h1> beside it already says the name — the mark is decorative. -->
   <div class="brand">
-    <img class="brand-mark" src="icons/icon.svg?v=1.19.0" alt="" width="26" height="26">
+    <img class="brand-mark" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20180%20180'%20width='180'%20height='180'%20role='img'%20aria-label='sans_bass'%3e%3c!--%20Six%20lanes,%20in%20lane%20order,%20in%20the%20exact%20stem%20colours%20from%20lib/stems.js%20—%20except%20the%20bass,%20which%20is%20flattened%20to%20a%20grey%20stub.%20That%20gap%20is%20the%20whole%20idea:%20the%20app%20is%20for%20playing%20the%20bass%20part%20yourself,%20so%20the%20icon%20is%20the%20song%20sans%20bass.%20Full%20bleed%20on%20purpose.%20iOS%20applies%20its%20own%20corner%20mask%20to%20a%20home-screen%20icon,%20and%20artwork%20that%20arrives%20pre-rounded%20shows%20a%20visible%20double%20radius.%20--%3e%3crect%20width='180'%20height='180'%20fill='%230d0d10'/%3e%3crect%20x='22'%20y='70'%20width='16'%20height='40'%20rx='8'%20fill='%23ff2e63'/%3e%3c!--%20vocals%20--%3e%3crect%20x='46'%20y='42'%20width='16'%20height='96'%20rx='8'%20fill='%23ffb703'/%3e%3c!--%20guitar%20--%3e%3crect%20x='70'%20y='82'%20width='16'%20height='16'%20rx='8'%20fill='%233a3a44'/%3e%3c!--%20bass%20—%20flattened%20--%3e%3crect%20x='94'%20y='38'%20width='16'%20height='104'%20rx='8'%20fill='%234cc9f0'/%3e%3c!--%20drums%20--%3e%3crect%20x='118'%20y='56'%20width='16'%20height='68'%20rx='8'%20fill='%23b388ff'/%3e%3c!--%20piano%20--%3e%3crect%20x='142'%20y='73'%20width='16'%20height='34'%20rx='8'%20fill='%238d99ae'/%3e%3c!--%20other%20--%3e%3c/svg%3e" alt="" width="26" height="26">
     <h1>sans<span>_</span>bass</h1>
   </div>
   <div class="bar-right">
@@ -371,23 +377,5 @@
   </div>
 </div>
 
-<!-- ?v= is a cache buster, and it is load-bearing. GitHub Pages serves every file with
-     max-age=600 and no way to change that, so after a deploy a returning visitor can hold a
-     stale app.js against a fresh index.html for ten minutes. That combination is not a
-     degraded page, it is a dead one: app.js throws on the first element index.html no longer
-     has and every listener below it — drag & drop included — never registers.
-     Bump the version in ALL of these on release: index.html (15), separate.js (3),
-     separate.worker.js (1), notes.js (4), notes.worker.js (2) — 25 in all.
-     tests/versions.test.js fails if they drift apart. -->
-<script src="lib/stems.js?v=1.19.0"></script>
-<script src="lib/unzip.js?v=1.19.0"></script>
-<script src="lib/analytics.js?v=1.19.0"></script>
-<script src="lib/platform.js?v=1.19.0"></script>
-<script src="lib/ribbon.js?v=1.19.0"></script>
-<script src="lib/jianpu.js?v=1.19.0"></script>
-<script src="lib/transport-math.js?v=1.19.0"></script>
-<script src="app.js?v=1.19.0"></script>
-<script type="module" src="separate.js?v=1.19.0"></script>
-<script type="module" src="notes.js?v=1.19.0"></script>
 </body>
 </html>

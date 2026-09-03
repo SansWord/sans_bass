@@ -83,9 +83,11 @@ copied into `dist/`), which 404s in the built output. That was the plan's own to
 and it materialized on the first real build.
 
 **Still wanted:** the ONNX runtime and separation model stay CDN/runtime-fetched by design
-(out of scope for this migration — see its spec's non-goals); converting `app.js` and the
-classic-script `lib/*.js` files to a real ES module graph (actual `import`/`export`, not
-just the `type="module"` loading mechanism) is still separate, deferred work.
+(out of scope for this migration — see its spec's non-goals).
+
+**Also built in v1.21.0** — [spec](superpowers/specs/2026-09-02-esm-modules-design.md),
+[plan](superpowers/plans/2026-09-02-esm-modules.md): `app.js` and the `lib/*.js` files
+converted to a real ES module graph (actual `import`/`export`), closing the item above.
 
 ## Paste a YouTube link, extract the audio for separation
 

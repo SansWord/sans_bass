@@ -22,15 +22,29 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   build` for `dist/`, both CI workflows build before publishing. The player core is
   `index.html`, `styles.css`, `app.js` plus `lib/stems.js` and `lib/unzip.js`. Vanilla JS
   stays the default for code this project writes — React/Vue/etc. are still out. `file://`
-  support was dropped in v1.5.0. `app.js` and every classic-script `lib/*.js` file
-  (`stems.js`, `i18n.js`, `platform.js`, `unzip.js`, `ribbon.js`, `jianpu.js`,
-  `transport-math.js`, `analytics.js`) load with `type="module"` now — Vite's HTML plugin
-  only bundles and content-hashes a `<script>` tag that carries that attribute; a plain
-  classic `<script src>` is left completely untouched and never copied into `dist/`, so it
-  404s in the built output. None of their source changed to make this work — they're still
-  self-contained `(function (global) {...})(window)` IIFEs assigning `window.SansX`, not a
-  real ES module graph with `import`/`export` — only the `<script>` tag's loading mechanism
-  did.
+  support was dropped in v1.5.0. `app.js` and every `lib/*.js` file (`stems.js`, `i18n.js`,
+  `platform.js`, `unzip.js`, `ribbon.js`, `jianpu.js`, `transport-math.js`, `analytics.js`)
+  are real ES modules as of v1.21.0 — actual `import`/`export`, not just the
+  `type="module"` loading mechanism the npm + Vite migration (v1.20.0) switched them to. See
+  the next bullet for the `window.SansX` bridge four of them still carry.
+- **A module's public surface is its `export`s — a `window.SansX` global is a bridge, never
+  a default.** Every ESM file in this repo (`lib/pitch.js`, `lib/wav.js`, `lib/zip.js`,
+  `lib/overlap.js`, `lib/sonify.js`, `lib/tempo.js`, `app.js`, and every `lib/*.js` file)
+  exports what it wants read; it does not also assign a global on the chance something might
+  want one later — that is designing for a hypothetical future consumer, the same thing this
+  project's conventions already rule out for features. The one exception is a **documented,
+  named bridge** for a specific consumer that genuinely cannot `import` yet — e.g.
+  `lib/pitch.js`'s `window.SansPitch = { parseNoteName }`, needed because `separate.js` is an
+  ES module and cannot share scope with `app.js`; the comment there says exactly which caller
+  it is for. `lib/i18n.js`, `lib/platform.js`, `lib/analytics.js` and `lib/jianpu.js` carry
+  the same kind of bridge, because `separate.js`/`notes.js` (already ESM, out of scope for
+  the v1.21.0 conversion) still read them via `window`; `lib/stems.js`, `lib/unzip.js`,
+  `lib/ribbon.js` and `lib/transport-math.js` do not, because nothing outside this project's
+  own module graph reads them. See
+  [`docs/superpowers/specs/2026-09-02-esm-modules-design.md`](superpowers/specs/2026-09-02-esm-modules-design.md)
+  for the full design. Never add a global "for consistency with the other files" or "in case
+  something needs it" — if a real consumer shows up later, adding the export back is a
+  one-line, fully reversible change.
 - **Nothing leaves the machine.** No audio egress ever. No uploads of user content. One
   cookieless, anonymous usage beacon (GoatCounter) reports **event names only** — never
   audio, never filenames, never song titles. Every event name is a compile-time constant
@@ -65,9 +79,9 @@ A-B repeat / routing / input).
   The worker owns ONNX Runtime and `htdemucs_6s`; `lib/overlap.js` plans the segments;
   `lib/wav.js` and `lib/zip.js` handle saving. It loads as a plain
   `<script type="module">`; the conditional injection that guarded `file://` went with
-  `file://` support in v1.5.0. `app.js` stays a classic script, and `lib/stems.js`,
-  `lib/i18n.js` and `lib/platform.js` are classic too so both they and the tests can use
-  them. Since v1.8.0 the whole panel is **gated to desktop** — see the handheld gotcha below.
+  `file://` support in v1.5.0. `app.js` and `lib/stems.js`/`lib/i18n.js`/`lib/platform.js`
+  are real ES modules too (since v1.21.0), imported directly by app.js and the tests alike.
+  Since v1.8.0 the whole panel is **gated to desktop** — see the handheld gotcha below.
 - **Stem identity comes from the filename** (`detectStem`). Demucs' output names land in the
   right lanes untouched. The `mix` pattern is deliberately narrow (`\bmix\b|\bfull\b|…`) —
   a false positive there suppresses every other track.
@@ -82,17 +96,19 @@ A-B repeat / routing / input).
 ## Repo layout
 
 ```
-index.html  styles.css  app.js     the player (classic scripts)
-lib/stems.js                       stem identity, classic script, shared with the tests
-lib/unzip.js                       zip reading, classic script — window.SansUnzip.extract
-lib/i18n.js                        zh-TW/en dictionary + runtime, classic script
-lib/platform.js                    isHandheld() device predicate, classic script
+index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
+lib/stems.js                       stem identity — ESM, no window bridge
+lib/unzip.js                       zip reading — ESM, no window bridge
+lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, window.SansI18n
+                                   bridge for separate.js/notes.js
+lib/platform.js                    isHandheld() device predicate — ESM, window.SansPlatform
+                                   bridge for separate.js
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
 lib/pitch.js                       ESM — YIN, candidates, Viterbi decoding, segmentation,
                                    octave folding, key
 lib/sonify.js                      ESM — plays detected notes back as tones
-lib/ribbon.js                      ribbon geometry, classic script — window.SansRibbon
-lib/jianpu.js                      簡譜 degrees, classic script — window.SansJianpu
+lib/ribbon.js                      ribbon geometry — ESM, no window bridge
+lib/jianpu.js                      簡譜 degrees — ESM, window.SansJianpu bridge for notes.js
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 notes.js  notes.worker.js          ESM — notes panel and the analysis worker
 tests/test.html                    units      → window.__testResults
@@ -254,6 +270,17 @@ out of the project; never commit them.
   through a change before it reaches the published site — and `main` publishes to the root
   the moment it moves. A design-only session branches too; the spec is reviewed the same way
   the code is.
+- **Executing a plan ends with the Deployment smoke test against a real deploy, twice —
+  not just local verification.** Once the PR is open and `pr-preview.yml` succeeds, run
+  [`docs/behaviour.md`](docs/behaviour.md)'s Deployment smoke test section against
+  `https://sansword.github.io/sans_bass/pr-<N>/`; once merged and `deploy-main.yml`
+  succeeds, run it again against `https://sansword.github.io/sans_bass/`. Check each
+  workflow's *conclusion*, not just that it ran (see the gotcha below — a cancelled run
+  reports no failure anywhere). This catches what only a real HTTPS deploy exposes —
+  cross-origin fetches (the ONNX runtime, the model), WebGPU, Cache Storage — on top of,
+  not instead of, `npm run dev` / `npm run build` + `npm run preview` during the work
+  itself. A plan can note these as its own final steps, but the routine holds regardless of
+  whether the plan spells it out.
 - **Tests are browser pages, not a runner.** `tests/test.html` for units (read
   `window.__testResults`), `tests/parity.html` for separation accuracy against the native
   stems in the repo (read `window.__parity`). Both need `npm run dev` (or `npm run build`

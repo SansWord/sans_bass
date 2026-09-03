@@ -1,5 +1,5 @@
 import { test, assert, assertEq } from './assert.js';
-const { detectStem, assignStems, hasMixPlusStems } = window.SansStems;
+import { detectStem, assignStems, hasMixPlusStems } from '../lib/stems.js';
 
 const names = (items) => items.map((i) => i.stem);
 

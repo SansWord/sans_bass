@@ -1,8 +1,8 @@
 import { test, assert, assertEq } from './assert.js';
 import { buildZip } from '../lib/zip.js';
+import { extract } from '../lib/unzip.js';
 
 const enc = new TextEncoder();
-const { extract } = window.SansUnzip;
 
 test('unzip: round-trips a stored entry built by lib/zip.js', async () => {
   const payload = enc.encode('hello bass');

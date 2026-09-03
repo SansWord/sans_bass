@@ -1,5 +1,8 @@
 import { test, assert, assertEq } from './assert.js';
-const I18N = window.SansI18n;
+import * as SansI18n from '../lib/i18n.js';
+import * as SansStems from '../lib/stems.js';
+
+const I18N = SansI18n;
 
 test('i18n: t() looks up the active locale', () => {
   I18N.setLocale('en', { persist: false });
@@ -156,14 +159,14 @@ test('i18n: translating labels never renames a stem', () => {
   I18N.setLocale('zh-TW', { persist: false });
   assertEq(I18N.t('stem.bass'), '貝斯', 'the display label really is translated');
 
-  assertEq(window.SansStems.STEMS.bass.label, 'Bass',
+  assertEq(SansStems.STEMS.bass.label, 'Bass',
     'lib/stems.js keeps the English label as the stable identity');
 
   // No `stem:` hint on the way in — that is what makes detectStem do the work. Passing the
   // id in would have assignStems echo it straight back (lib/stems.js: `item.stem ??
   // detectStem(item.name)`), and the assertion could not fail whatever the dictionary did.
   const ids = ['vocals', 'guitar', 'bass', 'drums', 'piano', 'other'];
-  const out = window.SansStems.assignStems(ids.map((s) => ({ name: `${s}.wav` })));
+  const out = SansStems.assignStems(ids.map((s) => ({ name: `${s}.wav` })));
   assertEq(out.map((o) => o.stem).join(','), ids.join(','),
     'English stem filenames still resolve to stem ids under zh-TW');
   assertEq(out.map((o) => `song/${o.stem}.wav`)[2], 'song/bass.wav',
@@ -175,9 +178,17 @@ test('i18n: translating labels never renames a stem', () => {
   // that build the names (app.js loadSeparated, separate.js's zip entries) are covered by
   // docs/behaviour.md N7.
   for (const name of ['貝斯.wav', '人聲.wav', '鼓組.wav']) {
-    assertEq(window.SansStems.detectStem(name), null,
+    assertEq(SansStems.detectStem(name), null,
       `a translated filename (${name}) is not recognised as a stem`);
   }
 
   I18N.setLocale('en', { persist: false });
+});
+
+test('i18n: window.SansI18n bridge still matches the real exports (regression: separate.js/notes.js read this)', () => {
+  assertEq(Object.keys(window.SansI18n).sort().join(','), Object.keys(SansI18n).sort().join(','),
+    'bridge exposes exactly the real exports, nothing more or less');
+  for (const k of Object.keys(SansI18n)) {
+    assert(window.SansI18n[k] === SansI18n[k], `window.SansI18n.${k} is the same binding`);
+  }
 });

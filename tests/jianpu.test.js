@@ -1,6 +1,7 @@
 import { test, assert, assertEq } from './assert.js';
+import * as SansJianpu from '../lib/jianpu.js';
 
-const J = () => window.SansJianpu;
+const J = () => SansJianpu;
 
 // midi 60 is C4, so `pc` here doubles as a MIDI number in octave 4.
 const C4 = 60;
@@ -107,4 +108,12 @@ test('jianpu: degreeToken keeps the accidental between the octave marks and the 
   assertEq(J().degreeToken(C4 + 3, 0, 'major', ref), 'b3', 'flat degree, reference octave');
   assertEq(J().degreeToken(C4 + 3 + 12, 0, 'major', ref), "b3'", 'flat degree, one octave up');
   assertEq(J().degreeToken(C4 + 3 - 12, 0, 'major', ref), ',b3', 'flat degree, one octave down');
+});
+
+test('jianpu: window.SansJianpu bridge still matches the real exports (regression: notes.js reads this)', () => {
+  assertEq(Object.keys(window.SansJianpu).sort().join(','), Object.keys(SansJianpu).sort().join(','),
+    'bridge exposes exactly the real exports, nothing more or less');
+  for (const k of Object.keys(SansJianpu)) {
+    assert(window.SansJianpu[k] === SansJianpu[k], `window.SansJianpu.${k} is the same binding`);
+  }
 });

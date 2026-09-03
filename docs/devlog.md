@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.22.0](#v1220--snap-note-drag-to-the-tempo-grid-2026-09-03-0014) | Dragging a note's edge (resize) or body (move) in the zoomed pane now snaps to the beat grid whenever it's on, at the finest resolution the ½/¼ toggles have enabled — a move preserves duration exactly, a resize snaps only the edge being dragged. New `lib/ribbon.js` function `snapToGrid` answers the nearest grid line in O(1), cheap enough for every `pointermove`. |
 | [v1.21.1](#v1211--drop-the-last-windowsansx-bridges-2026-09-02-2331) | `separate.js` and `notes.js` converted from reading `window.SansI18n`/`SansPlatform`/`SansAnalytics`/`SansJianpu` to importing `lib/i18n.js`/`platform.js`/`analytics.js`/`jianpu.js` directly, closing the item v1.21.0 deliberately left open. All five remaining `window.SansX` bridges deleted, including `window.SansPitch` — whose real (and only) reader turned out to be `app.js`, not `notes.js` as its own comment claimed. No `lib/*.js` file in this repo carries a `window` bridge any more. |
 | [Meta](#meta--migrate-unit-tests-to-vitest-gate-on-ci-2026-09-02-2256) | `tests/test.html` (a browser page read via `window.__testResults`) is gone; `npm test` runs the same 271 tests via Vitest, split into three tiers (plain Node, jsdom, headless Chromium) by what each file actually needs, gated on every PR by a new `test.yml` CI workflow. No browser tool needed to check results anymore. |
 | [v1.21.0](#v1210--esm-modules-2026-09-02-2205) | `app.js` and the 8 classic-script `lib/*.js` files (`stems.js`, `i18n.js`, `platform.js`, `unzip.js`, `ribbon.js`, `jianpu.js`, `transport-math.js`, `analytics.js`) became real ES modules with `import`/`export`, closing the item the npm + Vite migration (v1.20.0) deliberately deferred. Four of them (`i18n.js`, `platform.js`, `analytics.js`, `jianpu.js`) keep a documented `window.SansX` bridge for `separate.js`/`notes.js`, which are already ESM and out of scope; the other four lose the global entirely. `index.html` needed zero changes — module singletons mean app.js importing the same files its own `<script>` tags load causes no duplicate evaluation, and execution order is spec-guaranteed rather than a document-order coincidence. |
@@ -58,6 +59,53 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.22.0 — Snap note drag to the tempo grid (2026-09-03 00:14)
+
+**Review:** not yet
+
+**What was built:**
+- Dragging a note's edge (resize) or body (move) in the zoomed pane snaps to the tempo
+  grid whenever it's on — at the finest resolution the existing ½/¼ sub-beat toggles have
+  enabled (quarter if ¼ is on, half if only ½ is on, else the plain beat).
+- A move snaps its start to the grid and carries the exact same offset into its end, so the
+  note's duration is preserved rather than each edge snapping independently and distorting
+  it. A resize snaps only the edge actually being dragged; the other stays put.
+- The ◀t/▶t toolbar time-nudge buttons are unaffected — confirmed with the user up front
+  that "note-nudging" in the request meant the drag gesture, not that fixed 0.1s step.
+- New `lib/ribbon.js` export `snapToGrid(tempo, t, divisionsPerBeat)`: the nearest grid
+  line to an arbitrary time, in O(1) — sharing `beatTimes`/`subdivisionTimes`' phase
+  normalisation, but answering one point instead of walking the whole song, since a drag
+  calls it on every `pointermove`.
+
+**Key technical learnings:**
+- `[insight]` Verifying a canvas drag through browser automation doesn't need pixel-perfect
+  clicking. Dispatching real `PointerEvent`s directly on the canvas element with `clientX`/
+  `clientY` computed from `getBoundingClientRect()` sidesteps the screenshot-vs-CSS-pixel
+  scaling mismatch entirely (the automated browser's screenshot pixels and its DOM CSS
+  pixels are on different scales — `window.innerWidth` vs the screenshot's reported width
+  gave the conversion factor, but dispatching in CSS space skips needing it). A drag whose
+  target is a *snapped* value is even more forgiving: the exact input pixel only needs to
+  land close enough to grab the right edge and roughly the right neighbourhood — the
+  snapped output is deterministic regardless of small aim error, which is what actually
+  proved the feature rather than the click precision.
+- `[gotcha]` The tempo panel has two different "half" controls that look related but
+  aren't: `#notes-tempo-half` halves the detected BPM value, while the ½ sub-beat grid
+  toggle is a separate dynamically-created button (`.zoom-sub-btn`, text `½`) beside the
+  zoom controls. Clicking the wrong one silently halved the session's BPM instead of
+  enabling the finer grid, and the resulting snap targets still looked plausible (both a
+  0.5s beat-grid snap at 120 BPM and a 1.0s beat-grid snap at 60 BPM can land on the same
+  value for a given drag) until a delta was chosen specifically to disagree between the
+  two resolutions.
+- `[note]` A synthetic drums stem needs actual rhythmic pulses to get a non-zero tempo
+  confidence — a plain continuous sine wave (fine for a bass note under test) analyses to
+  0% confidence and the tempo panel stays hidden. A short burst of decaying noise repeated
+  every beat period was enough to detect 120 BPM at ~94% confidence.
+- `[note]` `buildStemsZip`'s dev-only recipe in `docs/behaviour.md` (importing
+  `/lib/wav.js`/`/lib/zip.js` by path) 404s against a built/deployed site, since Vite hashes
+  those filenames — expected, and the doc already says so. Verifying against the real PR
+  preview needed a same-purpose inline WAV/ZIP encoder instead, kept out of the shipped
+  code.
 
 ## v1.21.1 — Drop the last window.SansX bridges (2026-09-02 23:31)
 

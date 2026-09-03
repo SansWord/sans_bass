@@ -185,7 +185,7 @@ function ensureAudio() {
     master.connect(audio.destination);
     // Each stem's synthesised-notes gain node is created per lane, in buildUI() — no lane
     // exists yet the first time ensureAudio() runs, before any song is loaded.
-    workletReady = audio.audioWorklet.addModule('lib/stretch-processor.js?v=1.19.0');
+    workletReady = audio.audioWorklet.addModule(new URL('./lib/stretch-processor.js', import.meta.url));
   }
   if (audio.state === 'suspended') audio.resume();
   return audio;

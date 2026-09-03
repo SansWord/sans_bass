@@ -322,8 +322,7 @@ function createNotesChannel(stem, els) {
   /** `group.label`, when set, is an i18n KEY (not pre-translated text) supplied by the
    *  dispatcher — e.g. the Snap-range/Whole-song button labels its batch 'notes.editSnapLabel'
    *  so the row reads "Snap to grid" instead of falling through to the generic multi-edit
-   *  "Split" label below. Session-local only: exportEntry() doesn't carry it, so a re-imported
-   *  Snap batch shows the generic label again — cosmetic only, doesn't affect replay. */
+   *  "Split" label below. exportEntry()/importEntry() carry it through re-import too. */
   function groupLabel(group) {
     if (group.label) return tr(group.label);
     return group.edits.length > 1 ? tr('notes.editSplitLabel') : editTypeLabel(group.edits[0]);
@@ -637,7 +636,11 @@ function createNotesChannel(stem, els) {
       ...currentParams(),
       clip: els.clip.checked,
       jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
-      edits: editGroups.map((g) => g.edits),
+      edits: editGroups.map((g) => ({
+        edits: g.edits,
+        ...(g.label ? { label: g.label } : {}),
+        ...(g.timeLabel ? { timeLabel: g.timeLabel } : {}),
+      })),
     };
   }
 
@@ -659,7 +662,9 @@ function createNotesChannel(stem, els) {
       jianpu.mode = entry.jianpu.mode || 'major';
       els.jianpu.checked = jianpu.on;
     }
-    editGroups = (entry.edits || []).map((edits) => ({ id: nextEditId++, edits }));
+    editGroups = (entry.edits || []).map((g) => (
+      { id: nextEditId++, edits: g.edits, label: g.label, timeLabel: g.timeLabel }
+    ));
     syncJianpuControls();
   }
 

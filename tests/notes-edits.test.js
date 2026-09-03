@@ -3,7 +3,7 @@ import { NOTES_EDITS_VERSION, buildEditsPayload, planImport } from '../lib/notes
 
 // ---------------------------------------------------------------- buildEditsPayload
 
-test('notes-edits: buildEditsPayload writes version 2 with stems keyed by id', () => {
+test('notes-edits: buildEditsPayload writes the current version with stems keyed by id', () => {
   const payload = buildEditsPayload({
     song: 'My Song',
     tempo: { on: true, bpmValue: 120, phaseMs: 0, beatsPerBar: 4 },
@@ -25,11 +25,11 @@ test('notes-edits: buildEditsPayload omits song when none is given', () => {
   assert(!('song' in payload), 'no song field when the caller has no mix loaded');
 });
 
-// ---------------------------------------------------------------- planImport: v2 (current format)
+// ---------------------------------------------------------------- planImport: current format
 
-test('notes-edits: planImport routes a v2 file\'s stems into apply/skipped by what is loaded', () => {
+test('notes-edits: planImport routes a current-format file\'s stems into apply/skipped by what is loaded', () => {
   const data = {
-    version: 2,
+    version: NOTES_EDITS_VERSION,
     song: 'My Song',
     tempo: { bpmValue: 120 },
     tempoRange: null,
@@ -39,7 +39,7 @@ test('notes-edits: planImport routes a v2 file\'s stems into apply/skipped by wh
     },
   };
   const plan = planImport(data, ['vocals', 'bass']);
-  assert(plan.ok, 'a well-formed v2 file parses');
+  assert(plan.ok, 'a well-formed current-format file parses');
   assertEq(plan.apply.length, 1, 'only the loaded stem is queued to apply');
   assertEq(plan.apply[0].stem, 'vocals');
   assertEq(plan.skipped.length, 1, 'the not-loaded stem is reported as skipped, not silently dropped');
@@ -47,13 +47,15 @@ test('notes-edits: planImport routes a v2 file\'s stems into apply/skipped by wh
 });
 
 test('notes-edits: planImport carries shared tempo/tempoRange with explicit presence flags', () => {
-  const withRange = planImport({ version: 2, tempo: { bpmValue: 90 }, tempoRange: { from: 1, to: 2 }, stems: {} }, []);
+  const withRange = planImport(
+    { version: NOTES_EDITS_VERSION, tempo: { bpmValue: 90 }, tempoRange: { from: 1, to: 2 }, stems: {} }, [],
+  );
   assert(withRange.hasTempo, 'tempo key was present');
   assertEq(withRange.tempo.bpmValue, 90);
   assert(withRange.hasTempoRange, 'tempoRange key was present, even though non-null');
   assertEq(withRange.tempoRange.from, 1);
 
-  const withoutRange = planImport({ version: 2, stems: {} }, []);
+  const withoutRange = planImport({ version: NOTES_EDITS_VERSION, stems: {} }, []);
   assert(!withoutRange.hasTempo, 'no tempo key at all means no opinion, not "clear it"');
   assert(!withoutRange.hasTempoRange, 'no tempoRange key at all means no opinion, not "clear it"');
 });
@@ -63,7 +65,10 @@ test('notes-edits: planImport carries shared tempo/tempoRange with explicit pres
 test('notes-edits: planImport rejects a file that is not a note-edits file at all', () => {
   assertEq(planImport({ hello: 'world' }, ['vocals']).ok, false);
   assertEq(planImport(null, ['vocals']).ok, false);
-  assertEq(planImport({ version: 2, stems: [] }, ['vocals']).ok, false, 'stems must be a keyed object, not an array');
+  assertEq(
+    planImport({ version: NOTES_EDITS_VERSION, stems: [] }, ['vocals']).ok, false,
+    'stems must be a keyed object, not an array',
+  );
 });
 
 test('notes-edits: planImport rejects an old single-stem v1 file — no back-compat', () => {
@@ -81,5 +86,17 @@ test('notes-edits: planImport rejects an old single-stem v1 file — no back-com
   };
   const plan = planImport(oldFile, ['vocals', 'bass']);
   assert(!plan.ok, 'a pre-shared-button single-stem file is just not a recognized format');
+  assertEq(plan.reason, 'invalid');
+});
+
+test('notes-edits: planImport rejects a v2 file (bare edit-array entries, no label/timeLabel) — no back-compat', () => {
+  const v2File = {
+    version: 2,
+    tempo: { bpmValue: 120 },
+    tempoRange: null,
+    stems: { vocals: { edits: [[{ type: 'timeAdjust', at: 1, dStart: 0, dEnd: 0, midi: 60 }]] } },
+  };
+  const plan = planImport(v2File, ['vocals']);
+  assert(!plan.ok, 'a pre-label-carrying v2 file is just not a recognized format');
   assertEq(plan.reason, 'invalid');
 });

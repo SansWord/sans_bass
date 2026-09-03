@@ -239,6 +239,19 @@ out of the project; never commit them.
 - **Check a workflow's *conclusion*, not that it ran.** Two workflows sharing a concurrency
   group let GitHub cancel one as "pending"; the v1.2.0 merge deployed nothing and reported
   no failure anywhere. Same rule as audio here: observe the outcome, not the parameters.
+- **Before testing ANYTHING against a real deploy — smoke test or otherwise — check the
+  page's own `#build-sha` corner badge first**, not just that the workflow's conclusion was
+  `success`. GitHub Pages pins `index.html` itself to `Cache-Control: max-age=600`
+  independent of the content-hashed asset names, and a v1.24.0 verification session was
+  fooled by exactly this: `deploy-main.yml` had already succeeded, but the loaded page kept
+  serving the previous build's `main-*.js` and silently reproduced the pre-fix bug, looking
+  like a real regression. Compare `#build-sha`'s text against the commit you expect —
+  `git rev-parse --short HEAD` on `main` for a production check, or
+  `gh pr view <N> --json mergeCommit --jq .mergeCommit.oid` for a PR preview (its badge is
+  GitHub's synthetic merge-commit SHA, not the branch's own tip — see the v1.25.0 devlog
+  entry). On a mismatch, reload with a cache-busting query string or a fresh tab and check
+  again before concluding anything — a `deploy-main.yml`/`pr-preview.yml` success does not
+  by itself mean the browser in front of you is showing that build yet.
 - **`rsync -a` skips a changed file of the same size** (it compares size + mtime). The deploy
   workflows use `-c`. Without it the site serves stale content and nothing errors.
 - **Demucs setup:** Python 3.12 (no PyTorch wheels for 3.14), install `numpy` explicitly
@@ -279,7 +292,10 @@ out of the project; never commit them.
   `https://sansword.github.io/sans_bass/pr-<N>/`; once merged and `deploy-main.yml`
   succeeds, run it again against `https://sansword.github.io/sans_bass/`. Check each
   workflow's *conclusion*, not just that it ran (see the gotcha below — a cancelled run
-  reports no failure anywhere). This catches what only a real HTTPS deploy exposes —
+  reports no failure anywhere) — **and check `#build-sha` against the expected commit
+  before the smoke test's own step 1** (see the `#build-sha` gotcha below); a workflow
+  succeeding does not mean the page you're about to test is that build yet. This catches
+  what only a real HTTPS deploy exposes —
   cross-origin fetches (the ONNX runtime, the model), WebGPU, Cache Storage — on top of,
   not instead of, `npm run dev` / `npm run build` + `npm run preview` during the work
   itself. A plan can note these as its own final steps, but the routine holds regardless of

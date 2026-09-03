@@ -20,6 +20,31 @@ the latter also covering resize) because a pitch move and a time move want diffe
 分割 turned out not to need its own type at all: a split is just a time-adjust (shrink) plus
 an add (the new tail note), authored together as one edit-list entry.
 
+## Self-cleaning orphaned edits
+
+Wanted: automatically drop an edit-list entry once it's orphaned, instead of leaving it as
+inert dead weight (flagged with ⚠, skipped at apply time, but still sitting in `editGroups`
+and in any exported file) until the user manually clicks its ✕. Came up while designing the
+Snap-to-grid feature (see note editing above) — a snap batch anchored to a note that a later
+edit-deletion moves out from under it becomes exactly this kind of orphan.
+
+**The risk that has to be settled first.** `reinterpret()` runs live, on every keystroke/drag
+tick — dragging `minDurationMs`, toggling fold, changing the interpreter. An edit can
+legitimately go in and out of orphan status as a parameter is scrubbed through a range, then
+resolve again once it settles. Auto-deleting the moment an edit is *seen* orphaned would
+permanently destroy a hand edit the user never meant to discard — the exact failure mode the
+edit layer exists to prevent (it is "the one layer with no upstream to recover from," per
+[the note-editing spec](superpowers/specs/2026-08-31-note-editing-design.md)). Worse, there is
+no undo path for it: `Cmd/Ctrl+Z` only pops the most-recently-*added* group, so a removal
+that cascades to orphan (and auto-delete) a second edit can't be recovered at all.
+
+**Open question before design.** Whether to solve the actual complaint (clutter, not
+correctness — orphaned entries are already harmless) with something lower-risk instead: an
+explicit **"Remove orphaned"** button (reviewable, user-initiated, only shown when something
+is currently orphaned) or an **export-time-only filter** (never touches live `editGroups`, so
+nothing in the session is destroyed). Either gets most of the benefit without the
+transient-deletion risk true auto-cleaning carries.
+
 ## Automatic octave folding
 
 **Built — v1.13.0.** [Spec](superpowers/specs/2026-08-31-octave-fold-design.md),

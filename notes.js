@@ -38,6 +38,14 @@ const STEM_RANGE = { vocals: undefined, bass: BASS_RANGE };   // undefined -> th
  * imply it is meant to be translated, which it deliberately never is. */
 const STEM_WORD = { vocals: 'Vocals', bass: 'Bass' };
 
+/** The current local time as `YYYY_MM_DD_HH_MM`, for stamping an export filename so a
+ *  repeated export of the same song/stem doesn't silently overwrite the last download. */
+function exportTimestamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}_${p(d.getMonth() + 1)}_${p(d.getDate())}_${p(d.getHours())}_${p(d.getMinutes())}`;
+}
+
 /** Escapes text dropped into the self-contained 簡譜 export — a song/mix name can carry
  *  arbitrary characters (it comes from a ripped filename), and that export is an HTML
  *  document rather than markdown now, so it needs the same care as any other HTML output. */
@@ -694,7 +702,7 @@ function createNotesChannel(stem, els) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${mix ? mix.name : 'song'}-${stem}-notes.html`;
+    a.download = `sans_bass_${mix ? mix.name : 'song'}_${stem}_notes_${exportTimestamp()}.html`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   });
@@ -866,7 +874,7 @@ window.addEventListener('sansbass:exportedits', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${mix ? mix.name : 'song'}-notes-edits.json`;
+  a.download = `sans_bass_${mix ? mix.name : 'song'}_notes_edits_${exportTimestamp()}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 });

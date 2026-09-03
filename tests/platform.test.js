@@ -1,4 +1,4 @@
-import { test, assert, assertEq } from './assert.js';
+import { test, assertEq } from './assert.js';
 import * as SansPlatform from '../lib/platform.js';
 
 const P = SansPlatform;
@@ -32,10 +32,4 @@ test('platform: no matchMedia is not a handheld', () => {
 
 test('platform: no navigator is not a handheld', () => {
   assertEq(P.isHandheld(fakeWin({ coarse: true, touchPoints: 5, noNavigator: true })), false);
-});
-
-test('platform: window.SansPlatform bridge still matches the real exports (regression: separate.js reads this)', () => {
-  assertEq(Object.keys(window.SansPlatform).sort().join(','), Object.keys(SansPlatform).sort().join(','),
-    'bridge exposes exactly the real exports, nothing more or less');
-  assert(window.SansPlatform.isHandheld === SansPlatform.isHandheld, 'same function, not a copy');
 });

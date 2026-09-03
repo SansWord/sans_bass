@@ -19,8 +19,10 @@
 import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, stemMismatch, BASS_RANGE }
   from './lib/pitch.js';
 import { scheduleNotes } from './lib/sonify.js';
+import * as SansI18n from './lib/i18n.js';
+import * as SansJianpu from './lib/jianpu.js';
 
-const tr = (key, params) => window.SansI18n.t(key, params);
+const tr = (key, params) => SansI18n.t(key, params);
 
 /* Note names are never translated in this app — a saved zip is `vocals.wav` in every
  * language, and C# is C# in every language too. */
@@ -601,7 +603,7 @@ function createNotesChannel(stem, els) {
   els.listExport.addEventListener('click', () => {
     const secs = Number(els.listSecs.value) || 10;
     const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
-    const refOct = window.SansJianpu.referenceOctave(notes, jianpu.tonic);
+    const refOct = SansJianpu.referenceOctave(notes, jianpu.tonic);
 
     const windows = new Map();
     for (const n of notes) {
@@ -617,7 +619,7 @@ function createNotesChannel(stem, els) {
       const to = from + secs;
       lines.push(`### ${mmss(from)} - ${mmss(to)}`);
       lines.push(windows.get(idx)
-        .map((n) => window.SansJianpu.degreeToken(n.midi, jianpu.tonic, jianpu.mode, refOct))
+        .map((n) => SansJianpu.degreeToken(n.midi, jianpu.tonic, jianpu.mode, refOct))
         .join(' '));
       lines.push('');
     }

@@ -754,9 +754,11 @@ function createNotesChannel(stem, els) {
       .filter(Boolean);
     const harmonic = loadedHarmonic.length ? mixDown(loadedHarmonic.map((stemAudio) => stemAudio.buffer)) : null;
     const bassChannel = channels.find((c) => c.stem === 'bass');
+    const vocalChannel = channels.find((c) => c.stem === 'vocals');
     const chordSrc = bassChannel && bassChannel.chordSource();
+    const keySrc = vocalChannel && vocalChannel.keySource();
     const chords = harmonic
-      ? detectChords(harmonic.samples, harmonic.sampleRate, barStarts, chordSrc ? chordSrc.notes : null)
+      ? detectChords(harmonic.samples, harmonic.sampleRate, barStarts, chordSrc ? chordSrc.notes : null, keySrc)
       : undefined;
 
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
@@ -824,9 +826,14 @@ function createNotesChannel(stem, els) {
     return hasFrames() && notes.length ? { notes } : null;
   }
 
+  /** Vocal key for chord disambiguation. A manual picker choice is meaningful pre-analysis. */
+  function keySource() {
+    return hasFrames() || !jianpu.auto ? { tonicPc: jianpu.tonic, mode: jianpu.mode } : null;
+  }
+
   return {
     refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, stem,
-    hasFrames, exportEntry, importEntry, chordSource,
+    hasFrames, exportEntry, importEntry, chordSource, keySource,
   };
 }
 

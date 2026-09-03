@@ -1,6 +1,6 @@
 import { test, assertEq } from './assert.js';
 import { hzFromCents } from '../lib/pitch.js';
-import { detectChords } from '../lib/chords.js';
+import { decodeChordProgression, detectChords } from '../lib/chords.js';
 
 const SR = 44100;
 const n = (start, end, midi) => ({ start, end, midi });
@@ -23,6 +23,17 @@ function concat(...arrays) {
 const A_MAJ = [57, 61, 64];
 const E_MAJ = [64, 68, 71];
 const ONE_BAR = [0, 2];
+
+test('chords: vocal-key context resolves an E-versus-C#m ambiguity toward I-V-vi', () => {
+  const candidateSets = [
+    [{ rootPc: 9, quality: 'maj', rank: 1 }],
+    [{ rootPc: 4, quality: 'maj', rank: 0.8 }, { rootPc: 1, quality: 'min', rank: 0.85 }],
+    [{ rootPc: 6, quality: 'min', rank: 0.8 }],
+  ];
+  const path = decodeChordProgression(candidateSets, { tonicPc: 9, mode: 'major' });
+  assertEq(path[1].rootPc, 4);
+  assertEq(path[1].quality, 'maj');
+});
 
 test('chords: labels A major then E major per half-bar', () => {
   const [bar] = detectChords(concat(chordTone(A_MAJ, 1), chordTone(E_MAJ, 1)), SR, ONE_BAR, null);

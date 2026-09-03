@@ -45,3 +45,15 @@ for (const [name, pcs, quality] of [
 test('chroma: zero chroma has no template match', () => {
   assertEq(matchChordTemplate(new Float32Array(12)), null);
 });
+
+test('chroma: a vocal-key prior resolves a near-tied incomplete voicing', () => {
+  const match = matchChordTemplate(chromaAt([4, 9]), { tonicPc: 9, mode: 'major' });
+  assertEq(match.rootPc, 9);
+  assertEq(match.quality, 'maj');
+});
+
+test('chroma: strong borrowed-chord evidence beats the vocal-key preference', () => {
+  const match = matchChordTemplate(chromaAt([2, 5, 9, 0]), { tonicPc: 9, mode: 'major' });
+  assertEq(match.rootPc, 2);
+  assertEq(match.quality, 'min7');
+});

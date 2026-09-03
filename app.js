@@ -140,7 +140,10 @@ const el = {
   speed: $('speed'), speedVal: $('speed-val'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
   allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'), langToggle: $('lang-toggle'),
+  buildSha: $('build-sha'),
 };
+
+if (el.buildSha) el.buildSha.textContent = __COMMIT_SHA__;
 
 /* Null-safe wiring. Every listener in this file is registered from one flat run of
  * top-level statements, so a single missing element used to abort the whole script at its

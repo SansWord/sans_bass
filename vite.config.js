@@ -1,6 +1,17 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 
+// Identifies exactly which commit is live on a given deploy (dev, PR preview, or main) —
+// the same "observe the real thing, not a hand-maintained proxy for it" reasoning that
+// replaced the old manual `?v=` cache-busting string with Vite's own content hash. A
+// devlog/semver version only changes once per session and can't tell two commits within
+// the same version apart; this changes every commit, for free.
+const COMMIT_SHA = execSync('git rev-parse --short HEAD').toString().trim();
+
 export default defineConfig({
+  define: {
+    __COMMIT_SHA__: JSON.stringify(COMMIT_SHA),
+  },
   // Relative, not root-absolute: the built site is never served from a domain root — it's
   // https://sansword.github.io/sans_bass/ for main, and /sans_bass/pr-<N>/ for a preview.
   // Vite's default absolute '/assets/...' 404s under both.

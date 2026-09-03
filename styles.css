@@ -167,6 +167,20 @@ code {
 .dropzone .big { font-size: 19px; font-weight: 600; margin: 0 auto 12px; }
 .dropzone p { margin: 6px auto; max-width: 540px; text-align: left; }
 
+/* ---------- build sha ---------- */
+
+/* user-select left at its default (rather than none) so the SHA can be selected/copied
+   straight out of the corner when checking a deploy. */
+.build-sha {
+  position: fixed;
+  right: 8px;
+  bottom: 6px;
+  z-index: 5;
+  font: 10px var(--mono);
+  color: var(--dim);
+  opacity: .6;
+}
+
 /* ---------- drag overlay ---------- */
 
 /* pointer-events: none is deliberate. The overlay appears under the cursor mid-drag, so if

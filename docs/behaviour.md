@@ -547,6 +547,7 @@ The inline Start/End/Pitch fields beside the toolbar (rows E27-E32) are a later 
 | G2 | An uncaught error puts a message on screen naming the force-reload, instead of leaving a page that looks fine and does nothing. | Throw from the console; `#status` is visible and mentions Cmd-Shift-R. |
 | G3 | Every asset Vite's build touches is content-hashed, and a fresh `index.html` never references a stale hashed file. | Run `npm run build`, inspect `dist/index.html` — every `<script src>`/`<link href>` points at a `-<hash>.js`/`.css` filename that matches a file actually present in `dist/assets/`. |
 | G4 | The page is served over HTTP — GitHub Pages, or `npm run dev` locally. `file://` is no longer supported (dropped in v1.5.0); opening `index.html` from disk is not expected to work. | `separate.js` now loads as a plain `<script type="module">` with no protocol guard. |
+| G5 | A dim `<git short SHA>` sits fixed in the bottom-right corner of every build (dev, PR preview, main) — the exact commit that produced it, baked in at build time by `vite.config.js`'s `__COMMIT_SHA__`. Lets a manual/browser-automation check confirm it is testing the deploy it thinks it is, rather than a stale cached page (see the v1.24.0 devlog gotcha). | `#build-sha`'s text matches `git rev-parse --short HEAD` for the commit that was actually built. Compare it against a fresh (`cache: 'no-store'`) fetch of the same URL when in doubt. |
 
 ## Analytics
 

@@ -3,7 +3,14 @@
  * because every track is started from one AudioContext clock at the same time.
  */
 
-const { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } = window.SansStems;
+import { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } from './lib/stems.js';
+import { extract } from './lib/unzip.js';
+import * as SansI18n from './lib/i18n.js';
+import * as SansPlatform from './lib/platform.js';
+import * as SansAnalytics from './lib/analytics.js';
+import * as SansRibbon from './lib/ribbon.js';
+import * as SansJianpu from './lib/jianpu.js';
+import * as SansTransportMath from './lib/transport-math.js';
 
 const BUCKETS = 1400;   // waveform resolution
 const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
@@ -139,23 +146,24 @@ function on(node, ev, fn, opts) {
   node.addEventListener(ev, fn, opts);
 }
 
-const tr = (key, params) => window.SansI18n.t(key, params);
+const tr = (key, params) => SansI18n.t(key, params);
 
-/* Analytics must never be able to break the player. Same reasoning as on() above: a
- * missing window.SansAnalytics (script blocked by an extension, 404 after a bad deploy)
- * must degrade to a no-op, not take out every listener below it. */
-const gcTrack = (n) => { try { window.SansAnalytics?.track(n); } catch (e) { /* never */ } };
-const gcOnce  = (n) => { try { window.SansAnalytics?.once(n);  } catch (e) { /* never */ } };
-const gcBump  = (n) => { try { window.SansAnalytics?.bump(n);  } catch (e) { /* never */ } };
+/* Analytics must never be able to break the player. try/catch guards against track()
+ * itself throwing — a missing or failed lib/analytics.js module now fails app.js's whole
+ * import graph instead of degrading here; see the ESM design spec's accepted trade-off. */
+const gcTrack = (n) => { try { SansAnalytics?.track(n); } catch (e) { /* never */ } };
+const gcOnce  = (n) => { try { SansAnalytics?.once(n);  } catch (e) { /* never */ } };
+const gcBump  = (n) => { try { SansAnalytics?.bump(n);  } catch (e) { /* never */ } };
 
 /* The drop zone promises that a song "can be split into six stems right here in the
  * browser". On a phone that is false — see lib/platform.js. Swap the KEY rather than the
  * text: SansI18n.apply() re-reads data-i18n-html from the element on every run, so the
  * language toggle keeps working for free and t() needs no branch.
  *
- * app.js is a classic script at the end of <body>, so this runs during parse — before
- * DOMContentLoaded, and therefore before apply() first walks the document. */
-if (window.SansPlatform?.isHandheld()) {
+ * app.js's script tag sits at the end of <body>; as a module script it runs after parsing
+ * but still before DOMContentLoaded, so this executes before apply() first walks the
+ * document. */
+if (SansPlatform?.isHandheld()) {
   const explain = document.getElementById('drop-explain');
   if (explain) explain.setAttribute('data-i18n-html', 'drop.explainHandheld');
 }
@@ -312,7 +320,7 @@ async function loadFiles(fileList, fallbackName, source) {
   stop(true);
   loopA = loopB = null;            // A-B points belong to the previous song
   renderLoopBadge();
-  ratePercent = window.SansTransportMath.RATE_DEFAULT;
+  ratePercent = SansTransportMath.RATE_DEFAULT;
   tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
   say(files.length > 1 ? 'status.decodingMany' : 'status.decodingOne', { n: files.length });
@@ -365,7 +373,7 @@ async function loadZip(file) {
   say('status.readingZip');
   let entries;
   try {
-    entries = await window.SansUnzip.extract(file);
+    entries = await extract(file);
   } catch (err) {
     console.error(err);
     gcTrack('load-error');
@@ -375,7 +383,7 @@ async function loadZip(file) {
      * English original — the trade for not reaching into lib/unzip.js. Any code without a
      * key falls through to the original message rather than printing "zipError.whatever". */
     const key = `zipError.${err.code}`;
-    say(window.SansI18n.has(key) ? key : err.message, null, true);
+    say(SansI18n.has(key) ? key : err.message, null, true);
     return;
   }
   if (!entries.length) {
@@ -478,7 +486,7 @@ function loadSeparated(original, stems) {
 
   loopA = loopB = null;
   renderLoopBadge();
-  ratePercent = window.SansTransportMath.RATE_DEFAULT;
+  ratePercent = SansTransportMath.RATE_DEFAULT;
   tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
   // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks
@@ -1148,7 +1156,7 @@ function ensureZoomPeaks(stem) {
   if (zoomPeaksByStem[stem]) return zoomPeaksByStem[stem];
   const t = tracks.find((tr) => tr.stem === stem);
   if (!t || !t.buffer) return null;
-  const peaks = window.SansRibbon.zoomPeaks(t.buffer.getChannelData(0), t.buffer.sampleRate, ZOOM_BPS);
+  const peaks = SansRibbon.zoomPeaks(t.buffer.getChannelData(0), t.buffer.sampleRate, ZOOM_BPS);
   zoomPeaksByStem[stem] = peaks;
   return peaks;
 }
@@ -1298,8 +1306,8 @@ const noteFillKey = (n) => (n.fix && NOTE_FILL[n.fix.state] ? n.fix.state : 'pla
  * The octave is deliberately absent from the degree form — it lives on the pitch axis as
  * dots instead of being repeated on every block, which is the whole point of the notation. */
 function noteLabel(n, jianpu) {
-  if (!jianpu || !jianpu.on || !window.SansJianpu) return n.name;
-  const d = window.SansJianpu.degreeOf(n.midi, jianpu.tonic, jianpu.mode);
+  if (!jianpu || !jianpu.on) return n.name;
+  const d = SansJianpu.degreeOf(n.midi, jianpu.tonic, jianpu.mode);
   return d.accidental + d.digit;
 }
 
@@ -1331,7 +1339,7 @@ function renderRibbon(canvas, payload, cssWidth, height) {
   canvas.style.height = h + 'px';
 
   const { notes, frames } = payload;
-  const [loM, hiM] = window.SansRibbon.pitchRange(notes, { clip: payload.clip !== false });
+  const [loM, hiM] = SansRibbon.pitchRange(notes, { clip: payload.clip !== false });
   const span = hiM - loM || 1;
   const y = (midi) => h - ((midi - loM) / span) * h;
   // The SAME time-to-x mapping every other lane uses. Anything else drifts on resize.
@@ -1343,8 +1351,8 @@ function renderRibbon(canvas, payload, cssWidth, height) {
    * highlight — degree 1 in 簡譜, C otherwise. Keeping those two on different rows in, say,
    * 1=G would half-undo the point of labelling the tonic at all. */
   const jp = payload.jianpu && payload.jianpu.on ? payload.jianpu : null;
-  const refOct = jp && window.SansJianpu
-    ? window.SansJianpu.referenceOctave(notes, jp.tonic) : 0;
+  const refOct = jp && SansJianpu
+    ? SansJianpu.referenceOctave(notes, jp.tonic) : 0;
   const isHome = (m) => (((m - (jp ? jp.tonic : 0)) % 12) + 12) % 12 === 0;
 
   const make = (dim) => {
@@ -1375,7 +1383,7 @@ function renderRibbon(canvas, payload, cssWidth, height) {
     /* The beat/bar grid, purely visual — see docs/transcription.md on why this never
      * touches interpret() or the note list. Bars draw taller/stronger than plain beats. */
     if (payload.tempo && payload.tempo.on) {
-      const beats = window.SansRibbon.beatTimes(payload.tempo, duration);
+      const beats = SansRibbon.beatTimes(payload.tempo, duration);
       for (const b of beats) {
         const bx = Math.round(x(b.t));
         c.fillStyle = b.bar
@@ -1401,8 +1409,8 @@ function renderRibbon(canvas, payload, cssWidth, height) {
         if (!everySemitone && !home) continue;
         let label;
         let dots = 0;
-        if (jp && window.SansJianpu) {
-          const d = window.SansJianpu.degreeOf(m, jp.tonic, jp.mode);
+        if (jp && SansJianpu) {
+          const d = SansJianpu.degreeOf(m, jp.tonic, jp.mode);
           label = d.accidental + d.digit;
           dots = d.octaveIndex - refOct;
         } else {
@@ -1429,7 +1437,7 @@ function renderRibbon(canvas, payload, cssWidth, height) {
      * drowns the notes it is supposed to support. This view is for navigation; the zoomed
      * pane is where the contour is read. */
     c.fillStyle = dim ? 'rgba(109,157,192,.16)' : 'rgba(109,157,192,.30)';
-    const cols = window.SansRibbon.contourColumns(frames, duration, w);
+    const cols = SansRibbon.contourColumns(frames, duration, w);
     for (let x = 0; x < cols.length; x++) {
       const col = cols[x];
       if (!col) continue;
@@ -1487,7 +1495,7 @@ function renderZoom(canvas) {
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.clearRect(0, 0, w, h);
 
-  const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration);
+  const win = SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration);
   const span = win.to - win.from || 1;
   const x = (t) => ((t - win.from) / span) * w;
 
@@ -1503,7 +1511,7 @@ function renderZoom(canvas) {
   const frames = ribbon ? ribbon.frames : null;
   let loM, hiM, y, semi;
   if (showNotes) {
-    [loM, hiM] = window.SansRibbon.pitchRange(notes, { clip: ribbon.clip !== false });
+    [loM, hiM] = SansRibbon.pitchRange(notes, { clip: ribbon.clip !== false });
     const pitchSpan = hiM - loM || 1;
     y = (midi) => h - ((midi - loM) / pitchSpan) * h;
     semi = Math.abs(y(0) - y(1));
@@ -1565,7 +1573,7 @@ function renderZoom(canvas) {
    * of the showNotes block. */
   const tempoRibbon = ribbon ?? anyRibbon();
   if (tempoRibbon && tempoRibbon.tempo && tempoRibbon.tempo.on) {
-    const beats = window.SansRibbon.beatTimes(tempoRibbon.tempo, duration);
+    const beats = SansRibbon.beatTimes(tempoRibbon.tempo, duration);
     for (const b of beats) {
       if (b.t < win.from || b.t > win.to) continue;
       const bx = x(b.t);
@@ -1589,12 +1597,12 @@ function renderZoom(canvas) {
       c.lineWidth = 1;
       c.setLineDash([2, 2]);
       if (showQuarterBeat) {
-        for (const t of window.SansRibbon.subdivisionTimes(tempoRibbon.tempo, duration, 4)) {
+        for (const t of SansRibbon.subdivisionTimes(tempoRibbon.tempo, duration, 4)) {
           if (t >= win.from && t <= win.to) drawDotted(t, 'rgba(255,255,255,.07)');
         }
       }
       if (showHalfBeat) {
-        for (const t of window.SansRibbon.subdivisionTimes(tempoRibbon.tempo, duration, 2)) {
+        for (const t of SansRibbon.subdivisionTimes(tempoRibbon.tempo, duration, 2)) {
           if (t >= win.from && t <= win.to) drawDotted(t, 'rgba(255,255,255,.14)');
         }
       }
@@ -1616,8 +1624,8 @@ function renderZoom(canvas) {
      * the pane a pitch is actually read off, so leaving its axis in note names while its
      * blocks drew degrees put both notations side by side in the one view where it matters. */
     const jp = ribbon.jianpu && ribbon.jianpu.on ? ribbon.jianpu : null;
-    const refOct = jp && window.SansJianpu
-      ? window.SansJianpu.referenceOctave(notes, jp.tonic) : 0;
+    const refOct = jp && SansJianpu
+      ? SansJianpu.referenceOctave(notes, jp.tonic) : 0;
     const isHome = (m) => (((m - (jp ? jp.tonic : 0)) % 12) + 12) % 12 === 0;
 
     for (let m = lo; m <= hi + 1; m++) {
@@ -1638,8 +1646,8 @@ function renderZoom(canvas) {
         if (!everySemitone && !home) continue;
         let label;
         let dots = 0;
-        if (jp && window.SansJianpu) {
-          const d = window.SansJianpu.degreeOf(m, jp.tonic, jp.mode);
+        if (jp && SansJianpu) {
+          const d = SansJianpu.degreeOf(m, jp.tonic, jp.mode);
           label = d.accidental + d.digit;
           dots = d.octaveIndex - refOct;
         } else {
@@ -1883,7 +1891,7 @@ function paintLaneGrid(c, canvas, dpr) {
   if (!ribbon || !ribbon.tempo || !ribbon.tempo.on || !duration) return;
   const w = canvas.width;
   const h = canvas.height;
-  const beats = window.SansRibbon.beatTimes(ribbon.tempo, duration);
+  const beats = SansRibbon.beatTimes(ribbon.tempo, duration);
   c.fillStyle = 'rgba(255,255,255,.06)';
   for (const b of beats) {
     if (!b.bar) continue;
@@ -1981,7 +1989,7 @@ function currentTime() {
   if (!playing) return offset;
   const elapsed = audio.currentTime - startedAt;
   if (elapsed <= 0) return offset;
-  return window.SansTransportMath.currentTimeAtRate({
+  return SansTransportMath.currentTimeAtRate({
     offset, elapsed, ratePercent,
     loopA: loopOn() ? loopA : null, loopB: loopOn() ? loopB : null, duration,
   });
@@ -2134,11 +2142,10 @@ function seek(seconds) {
   /* Bring the zoomed window along, but only when the playhead has left it. Recentring on
    * every seek would yank the view sideways when you click INSIDE the zoom pane, which is
    * the one place you were already looking. */
-  /* Guarded on the library, not just on duration. lib/ribbon.js is optional decoration;
-   * seeking is core transport. A stale-cache mismatch that drops one script must not take
-   * seeking away from users who never open the notes lane. */
-  if (duration && window.SansRibbon) {
-    const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration);
+  /* Once a static import, this guard is unreachable-false: if lib/ribbon.js had failed to
+   * load, app.js's module would never have evaluated far enough to run this check. */
+  if (duration) {
+    const win = SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration);
     if (offset < win.from || offset > win.to) zoomCenter = offset;
   }
   if (wasPlaying) play(); else draw();
@@ -2201,7 +2208,7 @@ function syncSpeedUI() {
  *  and live-messages the running stretch nodes instead, so dragging the slider mid-song
  *  has no audible restart. See the design spec's "Architecture" and "Live rate changes". */
 function setRate(newPercent) {
-  const clamped = window.SansTransportMath.clampRatePercent(newPercent);
+  const clamped = SansTransportMath.clampRatePercent(newPercent);
   if (clamped === ratePercent) { syncSpeedUI(); return; }
 
   if (!playing) {
@@ -2433,7 +2440,7 @@ function retranslate() {
 /** Keep the pressed half of the switcher in step with the active locale. */
 function renderLangToggle() {
   if (!el.langToggle) return;
-  const active = window.SansI18n.getLocale();
+  const active = SansI18n.getLocale();
   el.langToggle.querySelectorAll('button').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.lang === active));
   });
@@ -2974,7 +2981,7 @@ function syncAddButton() {
 /** Song time under a client x position in the zoomed pane. */
 function zoomTimeAt(canvas, clientX) {
   const r = canvas.getBoundingClientRect();
-  const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration || 1);
+  const win = SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration || 1);
   return win.from + ((clientX - r.left) / r.width) * (win.to - win.from);
 }
 
@@ -2982,7 +2989,7 @@ const EDGE_PX = 8;   // how close a pointer must be to a note's edge to grab it 
 
 /** How many seconds correspond to EDGE_PX at the zoomed pane's current width and window. */
 function zoomEdgeToleranceSeconds(canvas) {
-  const win = window.SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration || 1);
+  const win = SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration || 1);
   const r = canvas.getBoundingClientRect();
   return (EDGE_PX / (r.width || 1)) * (win.to - win.from);
 }
@@ -2991,7 +2998,7 @@ function zoomEdgeToleranceSeconds(canvas) {
 function zoomPitchRangeNow() {
   const ribbon = currentRibbon();
   if (!ribbon) return [48, 72];
-  return window.SansRibbon.pitchRange(ribbon.notes, { clip: ribbon.clip !== false });
+  return SansRibbon.pitchRange(ribbon.notes, { clip: ribbon.clip !== false });
 }
 
 /** Client Y -> MIDI in the zoomed pane, the inverse of renderZoom's y(midi). */
@@ -3076,7 +3083,7 @@ on(el.allToggle, 'click', toggleAllTracks);
 on(el.mode, 'change', () => { setMode(el.mode.value); el.mode.blur(); });
 on(el.langToggle, 'click', (e) => {
   const btn = e.target.closest('button[data-lang]');
-  if (btn) window.SansI18n.setLocale(btn.dataset.lang);   // an explicit choice persists
+  if (btn) SansI18n.setLocale(btn.dataset.lang);   // an explicit choice persists
 });
 window.addEventListener('sansbass:langchange', retranslate);
 window.addEventListener('sansbass:editmode', (e) => {
@@ -3107,7 +3114,7 @@ window.addEventListener('sansbass:tempo', (e) => {
   if (changed) draw();
 });
 renderLangToggle();
-gcOnce(`lang-${window.SansI18n.getLocale()}`);
+gcOnce(`lang-${SansI18n.getLocale()}`);
 on(el.masterVol, 'input', () => {
   ensureAudio();
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
@@ -3148,15 +3155,15 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setLoopPoint('a'); }
   else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setLoopPoint('b'); }
   else if (e.key === 'c' || e.key === 'C' || e.key === 'Escape') { e.preventDefault(); clearLoop(); }
-  else if (e.key === '[') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, -window.SansTransportMath.RATE_STEP)); }
-  else if (e.key === ']') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, window.SansTransportMath.RATE_STEP)); }
+  else if (e.key === '[') { e.preventDefault(); setRate(SansTransportMath.nudgeRatePercent(ratePercent, -SansTransportMath.RATE_STEP)); }
+  else if (e.key === ']') { e.preventDefault(); setRate(SansTransportMath.nudgeRatePercent(ratePercent, SansTransportMath.RATE_STEP)); }
   // Shift+[ / Shift+] for the fine ±1% step. NOT `e.key === '[' && e.shiftKey` — holding
   // Shift while pressing the physical [ / ] key changes e.key to '{' / '}' on a standard
   // layout, so a shiftKey check here would just never fire; checking the produced
   // character directly is what actually matches a real Shift+[ keypress.
-  else if (e.key === '{') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, -window.SansTransportMath.RATE_FINE_STEP)); }
-  else if (e.key === '}') { e.preventDefault(); setRate(window.SansTransportMath.nudgeRatePercent(ratePercent, window.SansTransportMath.RATE_FINE_STEP)); }
-  else if (e.key === '\\') { e.preventDefault(); setRate(window.SansTransportMath.RATE_DEFAULT); }
+  else if (e.key === '{') { e.preventDefault(); setRate(SansTransportMath.nudgeRatePercent(ratePercent, -SansTransportMath.RATE_FINE_STEP)); }
+  else if (e.key === '}') { e.preventDefault(); setRate(SansTransportMath.nudgeRatePercent(ratePercent, SansTransportMath.RATE_FINE_STEP)); }
+  else if (e.key === '\\') { e.preventDefault(); setRate(SansTransportMath.RATE_DEFAULT); }
   else if (/^[1-9]$/.test(e.key)) {
     const t = tracks[parseInt(e.key, 10) - 1];
     if (t) toggleTrack(t);

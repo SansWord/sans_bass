@@ -2717,6 +2717,7 @@ function attachZoom(canvas) {
       const hit = noteAt(ribbon.notes, t, clickMidi);
       if (hit) {
         selectedNote = { at: (hit.start + hit.end) / 2, midi: hit.midi };
+        rangeSelection = null;
         noteDrag = { mode: 'move', note: hit, startT: t, origStart: hit.start, origEnd: hit.end,
                      previewStart: hit.start, previewEnd: hit.end, travelled: 0, lastX: e.clientX };
         canvas.setPointerCapture(e.pointerId);
@@ -2786,6 +2787,7 @@ function attachZoom(canvas) {
       syncAddButton();
       dispatchEdit([{ type: 'add', start, end: finalEnd, midi }]);
       selectedNote = { at: (start + finalEnd) / 2, midi };
+      rangeSelection = null;
       draw();
       return;
     }
@@ -2794,6 +2796,7 @@ function attachZoom(canvas) {
       const to = Math.max(rangeDrag.startT, rangeDrag.curT);
       rangeDrag = null;
       rangeSelection = (to - from > 0.01) ? { from, to } : null;
+      if (rangeSelection) selectedNote = null;
       draw();
       return;
     }
@@ -3099,6 +3102,7 @@ function editSnapRange() {
 function setWholeSongRange() {
   if (!duration) return;
   rangeSelection = { from: 0, to: duration };
+  selectedNote = null;
   draw();
 }
 
@@ -3230,6 +3234,7 @@ function attachSeek(canvas, opts) {
       const to = Math.max(rangeDrag.startT, rangeDrag.curT);
       rangeDrag = null;
       rangeSelection = (to - from > 0.01) ? { from, to } : null;
+      if (rangeSelection) selectedNote = null;
       draw();
       return;
     }

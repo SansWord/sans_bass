@@ -154,6 +154,9 @@ out of the project; never commit them.
   note came from a music-domain assumption (an instrument's tuning or range) baked into a
   detection parameter, not a coding bug. **Check this before chasing a "note missing" report
   as a fresh bug** — it may be the same shape as one already solved.
+- [`docs/chord-detection.md`](docs/chord-detection.md) — the export-time chroma, vocal-key,
+  bass-slash, and sequence-decoder pipeline; its real-fixture regression check and known
+  limitations. **Read this before changing chord scoring or progression priors.**
 - [`docs/deployment.md`](docs/deployment.md) — how the site is hosted: GitHub Pages off the
   `gh-pages` branch, the three CI workflows, per-PR preview URLs, and the rules that keep
   `rips/`, `stems/` and the model unpublished. **Read this before touching

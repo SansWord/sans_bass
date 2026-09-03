@@ -23,6 +23,7 @@ import * as SansI18n from './lib/i18n.js';
 import * as SansJianpu from './lib/jianpu.js';
 import { beatTimes } from './lib/ribbon.js';
 import { buildEditsPayload, planImport } from './lib/notes-edits.js';
+import { detectChords } from './lib/chords.js';
 
 const tr = (key, params) => SansI18n.t(key, params);
 
@@ -78,17 +79,39 @@ function fragmentHtml(frag) {
   return `<span class="frag">${note}${dot}${dashes}${tie}</span>`;
 }
 
+/** One bar's chord row: the first half's label at the top-left, the second half's label
+ *  (only when present — lib/chords.js's detectChords() already nulls it out when it's
+ *  silent or matches the first half) centered above the bar. `pair` is one entry from
+ *  detectChords()'s return array, `{ first, second }`. Always renders the (possibly empty)
+ *  `.chords` wrapper — see jianpuHtml below for when this is called at all — so every bar
+ *  in an export that HAS chord data reserves the same vertical space, matching the
+ *  `.oct-up`/`.oct-down` convention fragmentHtml already uses for octave dots. */
+function chordsHtml(pair) {
+  const first = pair && pair.first ? `<span class="chord-first">${escapeHtml(pair.first)}</span>` : '';
+  const second = pair && pair.second ? `<span class="chord-second">${escapeHtml(pair.second)}</span>` : '';
+  return `<span class="chords">${first}${second}</span>`;
+}
+
 /** A self-contained HTML page for a 簡譜 export: `bars` (from lib/jianpu.js's layoutBars)
  *  wrapped into lines of `barsPerLine`, each bar a bordered cell of rhythm-marked fragments,
  *  under a tempo/time-signature line (`♩ = <bpm>  <beatsPerBar>/4` — every bar in this app's
  *  grid is `beatsPerBar` quarter-note beats, so the note value is always fixed at 4, same
  *  assumption noteRhythm's GRID_UNITS_PER_BEAT already makes). No external assets — every
- *  rule needed to read it lives in the inlined <style>. */
-function jianpuHtml({ title, bars, barsPerLine, bpm, beatsPerBar }) {
+ *  rule needed to read it lives in the inlined <style>.
+ *
+ *  `chords` (optional, same length as `bars`) is lib/chords.js's detectChords() output for
+ *  the BASS channel — passed regardless of which channel this export is actually for. When
+ *  present, every bar gets a `.chords` row (see chordsHtml above); when omitted entirely
+ *  (no bass stem loaded, or it was never analysed), no `.chords` element is rendered on any
+ *  bar and `.bar`'s visual height/appearance match what they were before this feature. */
+function jianpuHtml({ title, bars, barsPerLine, bpm, beatsPerBar, chords }) {
   const lines = [];
   for (let i = 0; i < bars.length; i += barsPerLine) {
     const cells = bars.slice(i, i + barsPerLine)
-      .map((frags) => `<span class="bar">${frags.map(fragmentHtml).join('')}</span>`)
+      .map((frags, j) => {
+        const chordRow = chords ? chordsHtml(chords[i + j]) : '';
+        return `<span class="bar">${chordRow}<span class="frags">${frags.map(fragmentHtml).join('')}</span></span>`;
+      })
       .join('');
     lines.push(`<div class="line">${cells}</div>`);
   }
@@ -105,8 +128,19 @@ h1 { font-size: 18px; margin: 0 0 4px; font-weight: 600; }
    blank line's worth of margin separates one system from the next. */
 .line { display: flex; border-left: 2px solid #333; }
 .line:not(:last-child) { margin-bottom: 40px; }
-.bar { display: flex; flex: 1 1 0; min-width: 0; align-items: center; justify-content: flex-start;
-       flex-wrap: wrap; gap: 12px; padding: 4px 16px; border-right: 2px solid #333; min-height: 1.6em; }
+/* .bar is a two-row flex column: an optional .chords row (only present when this export
+   carries chord data at all) above .frags, which now does the flex-row layout .bar itself
+   used to do directly — moving it here rather than duplicating it keeps a chord-less export
+   visually identical to before this feature (no .chords element, .frags alone lays out
+   exactly like .bar did). */
+.bar { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0;
+       border-right: 2px solid #333; padding: 4px 16px; }
+.chords { position: relative; height: 15px; margin-bottom: 2px; }
+.chord-first { position: absolute; left: 0; top: 0; font-size: 13px; font-weight: 700; }
+.chord-second { position: absolute; left: 50%; top: 0; transform: translateX(-50%);
+                font-size: 13px; font-weight: 700; }
+.frags { display: flex; align-items: center; justify-content: flex-start;
+         flex-wrap: wrap; gap: 12px; min-height: 1.6em; }
 .frag { position: relative; display: inline-flex; align-items: center; }
 /* .note stacks standard 簡譜 octave dots above/below the digit. .oct-up/.oct-down keep a
    fixed minimum height (empty or not) so every digit in a bar sits on the same baseline
@@ -694,10 +728,20 @@ function createNotesChannel(stem, els) {
 
     const bars = SansJianpu.layoutBars(notes, barStarts, jianpu.tonic, jianpu.mode, refOct, beatSec);
 
+    // Chord labels always come from the BASS channel's own notes/key, regardless of which
+    // channel is being exported — see lib/chords.js's detectChords() and the design spec.
+    // `undefined` (no bass stem loaded, or it was never analysed) means this export carries
+    // no chord data at all, and jianpuHtml renders exactly as it did before this feature.
+    const bassChannel = channels.find((c) => c.stem === 'bass');
+    const chordSrc = bassChannel ? bassChannel.chordSource() : null;
+    const chords = chordSrc
+      ? detectChords(chordSrc.notes, barStarts, chordSrc.tonicPc, chordSrc.mode)
+      : undefined;
+
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
     const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`;
 
-    const blob = new Blob([jianpuHtml({ title, bars, barsPerLine, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar })],
+    const blob = new Blob([jianpuHtml({ title, bars, barsPerLine, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar, chords })],
       { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -754,9 +798,17 @@ function createNotesChannel(stem, els) {
     syncJianpuControls();
   }
 
+  /** This channel's notes and key, for another channel's export to derive chord labels
+   *  from — `null` when this channel has nothing analysed yet. Populated automatically once
+   *  the channel has notes (jianpu.tonic/mode are always kept current, whether or not this
+   *  channel's own 簡譜 checkbox is on) — see lib/chords.js's detectChords(). */
+  function chordSource() {
+    return hasFrames() ? { notes, tonicPc: jianpu.tonic, mode: jianpu.mode } : null;
+  }
+
   return {
     refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, stem,
-    hasFrames, exportEntry, importEntry,
+    hasFrames, exportEntry, importEntry, chordSource,
   };
 }
 

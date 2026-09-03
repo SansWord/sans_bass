@@ -81,12 +81,12 @@ function sine(freq, seconds, sr = 44100) {
 /** A synthetic stems .zip Blob, built straight in the page. `stems` is `{name: freqHz}` —
  *  e.g. `{ vocals: 440, bass: 110, drums: 80 }` — each becoming `<name>.wav`, mono duplicated
  *  to stereo, `seconds` long (default 3; use longer for tempo detection, which needs several
- *  beats). Reads the app's own current `?v=` off an already-loaded script tag, so it never
- *  needs a hand-maintained version number that could go stale against this doc. */
+ *  beats). Imports lib/wav.js and lib/zip.js by their real dev-server path — needs
+ *  `npm run dev` (see above); Vite serves both as real files there, no build/hash step
+ *  in the way, unlike a `npm run build` + `npm run preview` copy. */
 async function buildStemsZip(stems, seconds = 3) {
-  const v = document.querySelector('script[src^="app.js"]').src.split('?v=')[1];
-  const { encodeWav } = await import(`/lib/wav.js?v=${v}`);
-  const { buildZip } = await import(`/lib/zip.js?v=${v}`);
+  const { encodeWav } = await import('/lib/wav.js');
+  const { buildZip } = await import('/lib/zip.js');
   const entries = Object.entries(stems).map(([name, freq]) => {
     const ch = sine(freq, seconds);
     return { name: `${name}.wav`, bytes: encodeWav(ch, ch, 44100) };

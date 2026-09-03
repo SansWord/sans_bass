@@ -605,8 +605,13 @@ function createNotesChannel(stem, els) {
     const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
     const refOct = SansJianpu.referenceOctave(notes, jianpu.tonic);
 
+    /* applyEdits() (lib/pitch.js) appends an added/split note to the end of `notes`
+     * regardless of its own start time — lib/sonify.js hit this same issue and sorts a
+     * copy before use for the same reason. Without it, an edited-in note lands at the end
+     * of its 10-second window instead of its correct time-sorted position. */
+    const sorted = [...notes].sort((a, b) => a.start - b.start);
     const windows = new Map();
-    for (const n of notes) {
+    for (const n of sorted) {
       const idx = Math.floor(n.start / secs);
       if (!windows.has(idx)) windows.set(idx, []);
       windows.get(idx).push(n);

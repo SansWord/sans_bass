@@ -1,8 +1,10 @@
 # Deployment
 
-The site is static, so hosting it needs no backend and no build step. It lives at
-**<https://sansword.github.io/sans_bass/>**, served by GitHub Pages from the `gh-pages`
-branch. Inference runs on the visitor's GPU; the server only ever hands out files.
+The site is static once built, so hosting it needs no backend. A Vite build step
+(`npm run build`) runs in CI before every deploy — nothing unbuilt reaches `gh-pages`. It
+lives at **<https://sansword.github.io/sans_bass/>**, served by GitHub Pages from the
+`gh-pages` branch. Inference runs on the visitor's GPU; the server only ever hands out
+files.
 
 ## The shape of it
 
@@ -42,7 +44,7 @@ under HTTPS from a public host than it does on `localhost`:
 
 `tests/parity.html` will **not** work on a preview. It compares separation output against
 the native stems in `rips/` and `stems/`, which are deliberately never published. Run it
-locally against `./scripts/serve.sh`.
+locally against `npm run dev`.
 
 Merging the PR deletes its preview directory and publishes `main` to the root.
 

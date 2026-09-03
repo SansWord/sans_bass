@@ -24,7 +24,7 @@ function clickTrain(sampleRate, periodSec, totalSec, clickSec = 0.02, amp = 1) {
 // or to see a standalone `{ type: 'tempo' }` reply that carries no `frames` at all.
 function roundTrip(message) {
   return new Promise((resolve, reject) => {
-    const w = new Worker('../notes.worker.js?v=1.16.1', { type: 'module' });
+    const w = new Worker(new URL('../notes.worker.js', import.meta.url), { type: 'module' });
     const timer = setTimeout(() => { w.terminate(); reject(new Error('worker never answered')); }, 20000);
     w.onmessage = (e) => { clearTimeout(timer); w.terminate(); resolve(e.data); };
     w.onerror = (e) => { clearTimeout(timer); w.terminate(); reject(new Error(e.message)); };
@@ -34,7 +34,7 @@ function roundTrip(message) {
 
 function analyse(channels, sampleRate) {
   return new Promise((resolve, reject) => {
-    const w = new Worker('../notes.worker.js?v=1.16.1', { type: 'module' });
+    const w = new Worker(new URL('../notes.worker.js', import.meta.url), { type: 'module' });
     const timer = setTimeout(() => { w.terminate(); reject(new Error('worker never answered')); }, 20000);
     w.onmessage = (e) => {
       clearTimeout(timer);

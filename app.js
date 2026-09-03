@@ -2686,12 +2686,20 @@ function attachZoom(canvas) {
           return;
         }
       }
+      /* A note that isn't already the tolerance-matched selection above still gets armed as
+       * a move-drag right away, not just selected — one click-drag-release both selects AND
+       * moves it, instead of forcing a separate first click to select before a move-drag can
+       * start. Resizing stays two clicks: it needs the edge tabs drawn (only once a note is
+       * selected) as the visual affordance for where the edge actually is. Releasing within
+       * DRAG_SLOP (below) falls back to today's plain-click behaviour — seek, no edit. */
       const hit = noteAt(ribbon.notes, t, clickMidi);
       if (hit) {
         selectedNote = { at: (hit.start + hit.end) / 2, midi: hit.midi };
-        seek(t);
+        noteDrag = { mode: 'move', note: hit, startT: t, origStart: hit.start, origEnd: hit.end,
+                     previewStart: hit.start, previewEnd: hit.end, travelled: 0, lastX: e.clientX };
+        canvas.setPointerCapture(e.pointerId);
         draw();
-        return;   // selecting a note is the gesture; it does not also start a pan/seek
+        return;
       }
     }
     panning = true;

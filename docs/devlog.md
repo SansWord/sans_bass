@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.24.0](#v1240--single-gesture-click-drag-to-select-and-move-a-note-2026-09-03-0315) | Moving a note in the zoomed pane used to need two separate clicks — one to select, a second to grab and drag. Now the very first click-drag on a note both selects and moves it in one gesture; releasing without dragging still just selects (E22). Resizing near an edge is unchanged: it still needs the note already selected, since the edge tabs that show where to grab are only drawn once selected. |
 | [v1.23.0](#v1230--shared-exportimport-edits--multi-stem-json-format-2026-09-03-0231) | The per-stem Export/Import-edits button pairs (vocals, bass) become one shared pair in the zoomed pane, beside the Edit-notes toggle — matching how editing itself is already single-target. A new JSON format keys each stem's edits under `stems.<id>` with `tempo`/`tempoRange` hoisted to the top as one shared object instead of duplicated per stem, so a future note-capable stem needs no format change. No back-compat with the old per-stem files — deliberately dropped. |
 | [v1.22.1](#v1221--fix-note-list-export-ordering-for-edited-in-notes-2026-09-03-0149) | An `add`/split-off note from `applyEdits()` was landing at the end of its 10-second block in **Export list**'s Markdown instead of its chronological position, because `applyEdits()` appends it to the end of the note array and the export handler bucketed notes in that raw array order. Fixed by sorting a copy before bucketing — the same pattern `lib/sonify.js` already used for the identical playback-side issue. |
 | [v1.22.0](#v1220--snap-note-drag-to-the-tempo-grid-2026-09-03-0014) | Dragging a note's edge (resize) or body (move) in the zoomed pane now snaps to the beat grid whenever it's on, at the finest resolution the ½/¼ toggles have enabled — a move preserves duration exactly, a resize snaps only the edge being dragged. New `lib/ribbon.js` function `snapToGrid` answers the nearest grid line in O(1), cheap enough for every `pointermove`. |
@@ -61,6 +62,50 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.24.0 — Single-gesture click-drag to select and move a note (2026-09-03 03:15)
+
+**Review:** not yet
+
+**What was built:**
+- In the zoomed pane's note editor, clicking-and-dragging a note's body now selects AND
+  moves it in one continuous gesture, even on its very first click — no separate prior
+  click to select it before a move-drag could start. Releasing without a real drag still
+  behaves exactly as a plain click always has: seeks the playhead, selects the note,
+  dispatches no edit.
+- Resizing near a note's edge is unchanged: it still requires the note to already be
+  selected, since the edge tabs that show where to grab are only drawn once a note is
+  selected — merging that into the first click too would mean grabbing an edge with no
+  visual affordance for where it is.
+- `app.js`'s canvas `pointerdown` handler: the branch that used to just call
+  `selectedNote = ...; seek(t); draw(); return;` on a fresh hit now also arms a `mode:
+  'move'` `noteDrag` right there, the same shape the already-selected branch already used.
+  `pointerup`'s existing tap-vs-drag disambiguation (`travelled <= DRAG_SLOP`) needed no
+  changes — it already handled "released without moving" correctly for the two-click case,
+  and covers the merged first-click case identically.
+
+**Key technical learnings:**
+- `[note]` Verified with the same recipe as the v1.22.0 tempo-grid-snap work: synthesize a
+  stems `.zip` in-page (`buildStemsZip`/`loadStemsZip` from `docs/behaviour.md`), then
+  dispatch real `PointerEvent`s directly on the zoomed-pane canvas with `clientX`/`clientY`
+  computed from `getBoundingClientRect()`. Listening for `sansbass:noteedit` on `window`
+  and sampling the canvas's own pixel data (white outline / purple fill) confirmed all
+  three cases without needing to read any module-private state.
+- `[gotcha]` A synthetic single-stem zip (`{ bass: 110 }`) gets claimed by the lone-file
+  rule in `assignStems` and shows up as **Full mix**, not as a `bass` lane — there is no
+  notes-capable channel to test at all. Needs at least two stems (`{ bass: 110, drums: 80
+  }`) so `bass` stays identifiably `bass`.
+- `[gotcha]` Getting to a clickable note in the zoomed pane needs three separate switches
+  in sequence, not just "Find notes": that channel's own **Show notes** button
+  (`ribbonVisible`), the shared **Notes: Bass** chip (`zoomNotesStem`, which only
+  auto-claims a channel on detection if `ribbonVisible` was already true at that moment —
+  otherwise it stays `null` and the **Edit notes** toggle stays disabled), and only then
+  **Edit notes** itself.
+- `[note]` A leftover `localStorage['sans_bass.zoomSeconds']` from an earlier manual test
+  in the same browser profile silently narrowed the zoomed pane to a 2-second window,
+  clipping a 3-second synthetic note's edges out of view before its resize handles could
+  be reached. Worth a fresh profile or an explicit reset when a zoom-dependent test's pixel
+  math doesn't add up.
 
 ## v1.23.0 — Shared export/import edits + multi-stem JSON format (2026-09-03 02:31)
 

@@ -3304,6 +3304,12 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); editDeleteNote(); return; }
     if (e.key === 'g' || e.key === 'G') { e.preventDefault(); editSnapNote(); return; }
   }
+  // Range hotkeys mirror the Delete range/Snap range buttons. Gated on selectedNote being
+  // absent so a note's own Delete/G (above) keeps priority if both happen to be set at once.
+  else if (editMode && rangeSelection) {
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); editRangeDelete(); return; }
+    if (e.key === 'g' || e.key === 'G') { e.preventDefault(); editSnapRange(); return; }
+  }
   if (e.key === ' ') { e.preventDefault(); toggle(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }

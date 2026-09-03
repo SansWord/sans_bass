@@ -1,5 +1,5 @@
 import { test, assert } from './assert.js';
-import { SoundTouch, SimpleFilter } from '../lib/vendor/soundtouch-core.js';
+import { SoundTouch, SimpleFilter } from 'soundtouchjs';
 
 const SR = 44100;
 

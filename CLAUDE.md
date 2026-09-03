@@ -122,6 +122,11 @@ out of the project; never commit them.
   observable outcomes with a way to observe each one, plus the browser-test harness (faking
   a separation run, reading gain ramps, the traps that make a working app look broken).
   **Read this before changing UI behaviour, and update it in the same commit when you do.**
+  Its **Deployment smoke test** section is a different, narrower thing — a fast build/deploy
+  wiring check (module loading, a real Worker/AudioWorklet actually instantiating, asset
+  paths resolving), for after touching `vite.config.js`/CI/an entry HTML file or after a
+  real deploy. Run that instead of the full matrix when nothing UI-shaped changed; run the
+  full matrix for an actual behaviour change.
 - [`docs/transcription.md`](docs/transcription.md) — how a stem becomes notes: the four
   layers (audio → frames → notes → edits), which are re-derivable and which can be lost,
   what each interpretation parameter measurably does, and why beat tracking is not the fix

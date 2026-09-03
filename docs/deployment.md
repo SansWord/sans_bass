@@ -30,6 +30,14 @@ nothing on `gh-pages` should ever be edited by hand.
 `pr-preview.yml` also posts a single sticky comment on the PR with the preview links,
 updating it in place rather than commenting on every push.
 
+A fourth workflow, `test.yml`, runs `npm test` (Vitest) on every PR and on push to `main`.
+It writes nothing to `gh-pages` — it only gates the PR — so it is not in the table above.
+Some of the unit tests need real Web Audio (`AudioContext`/`OfflineAudioContext`) or a real
+module `Worker`, neither of which Node or jsdom implements; `vitest.config.js` runs those
+in headless Chromium via `@vitest/browser-playwright`, and `test.yml` installs the browser
+binary (`npx playwright install --with-deps chromium`) before running the suite — so
+`npm test` needs no manual browser interaction, locally or in CI.
+
 ## Verifying a change before it reaches production
 
 Open a pull request. It gets its own live copy at `/pr-<N>/`, which is a real Pages
@@ -40,7 +48,9 @@ under HTTPS from a public host than it does on `localhost`:
   cross-origin, both dependent on those hosts' CORS headers)
 - WebGPU initialising and reporting `webgpu` rather than falling back to `wasm`
 - Cache Storage keeping the model, so a second visit starts in well under a second
-- `tests/test.html`, which runs the full unit suite in the deployed environment
+
+The unit suite itself (`npm test`) is not part of the preview — it's a separate CI gate
+(`test.yml`) that runs against the PR's code directly, independent of any deploy.
 
 `tests/parity.html` will **not** work on a preview. It compares separation output against
 the native stems in `rips/` and `stems/`, which are deliberately never published. Run it

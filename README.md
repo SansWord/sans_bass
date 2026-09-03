@@ -438,11 +438,12 @@ notes.js                  notes panel: worker lifecycle and live re-interpretati
 notes.worker.js           pitch analysis, off the main thread
 icons/icon.svg            favicon + iOS home-screen artwork (source of truth)
 icons/*.png               rasterised from icon.svg by scripts/make-icons.sh
-tests/test.html           unit tests   (read window.__testResults)
+tests/*.test.js           unit tests, run via `npm test` (Vitest — see vitest.config.js)
 tests/parity.html         separation accuracy vs native stems (read window.__parity)
 tests/notes.html          note + key detection bench (read window.__notes)
-package.json              npm scripts: dev, build, preview
+package.json              npm scripts: dev, build, preview, test
 vite.config.js             Vite multi-page build config
+vitest.config.js          unit test config (three tiers: node / jsdom / browser)
 scripts/make-icons.sh     icons/icon.svg    → the committed PNG icons (needs librsvg)
 scripts/rip-cd.sh         mounted audio CD  → lossless FLAC
 scripts/prep-stems.sh     one song          → separated, web-ready stems

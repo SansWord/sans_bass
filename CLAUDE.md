@@ -111,11 +111,15 @@ lib/ribbon.js                      ribbon geometry — ESM, no window bridge
 lib/jianpu.js                      簡譜 degrees — ESM, window.SansJianpu bridge for notes.js
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 notes.js  notes.worker.js          ESM — notes panel and the analysis worker
-tests/test.html                    units      → window.__testResults
+tests/*.test.js                    units      → `npm test` (Vitest; see vitest.config.js)
 tests/parity.html                  accuracy   → window.__parity
 tests/notes.html                   notes+key  → window.__notes
-.github/workflows/                 Pages deploy + per-PR previews (see docs/deployment.md)
-package.json  vite.config.js       npm scripts (dev/build/preview), Vite multi-page config
+.github/workflows/                 Pages deploy + per-PR previews + `npm test` gate
+                                   (see docs/deployment.md)
+package.json  vite.config.js       npm scripts (dev/build/preview/test), Vite multi-page
+                                   build config
+vitest.config.js                   unit test config — three tiers (node/jsdom/browser),
+                                   see the comment at its top for which tier a file needs
 dist/                               build output (git-ignored; CI builds it, never committed)
 scripts/rip-cd.sh                  CD → rips/*.flac
 scripts/prep-stems.sh              one song → stems/<song>/*.m4a
@@ -281,12 +285,17 @@ out of the project; never commit them.
   not instead of, `npm run dev` / `npm run build` + `npm run preview` during the work
   itself. A plan can note these as its own final steps, but the routine holds regardless of
   whether the plan spells it out.
-- **Tests are browser pages, not a runner.** `tests/test.html` for units (read
-  `window.__testResults`), `tests/parity.html` for separation accuracy against the native
-  stems in the repo (read `window.__parity`). Both need `npm run dev` (or `npm run build`
-  plus `npm run preview`, for a production-parity check). Everything the unit tests cannot
-  reach — the whole UI — is specified in [`docs/behaviour.md`](docs/behaviour.md), harness
-  included.
+- **Unit tests run under `npm test` (Vitest), CI-gated on every PR.** `vitest.config.js`
+  splits `tests/*.test.js` into three tiers by what each file actually needs — plain Node,
+  jsdom (for the files that assign a `window.SansX` bridge or touch `document` at module
+  load), or headless Chromium via Playwright (for real `AudioContext`/`OfflineAudioContext`
+  or a real module `Worker`, neither of which Node or jsdom implements) — see the comment
+  at the top of that file before moving a test between tiers. `tests/parity.html` is a
+  separate, manual browser page for separation accuracy against the native stems in the
+  repo (read `window.__parity`); it needs `npm run dev` (or `npm run build` plus
+  `npm run preview`) and is not part of `npm test` since it needs local-only `rips/`/`stems/`
+  audio that CI never has. Everything the unit tests cannot reach — the whole UI — is
+  specified in [`docs/behaviour.md`](docs/behaviour.md), harness included.
 - **Versioning:** three-part semver. `vX.Y.0` for releases, `vX.Y.1` for follow-up sessions,
   `vX.Y.0-design` for design-only sessions. Devlog headings, TL;DR anchors, and any tags match.
 - **Devlog at end of session.** Newest-first, update the TL;DR table with an anchor link, and

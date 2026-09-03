@@ -126,9 +126,13 @@ test('i18n: each key uses the same {placeholders} in both locales', () => {
 });
 
 test('i18n: every key used in index.html exists in both locales', async () => {
-  const r = await fetch('../index.html', { cache: 'no-store' });
-  assert(r.ok, `could not read index.html (${r.status}) — is serve.sh running?`);
-  const html = await r.text();
+  // Not `new URL('../index.html', import.meta.url)`: under the jsdom test environment the
+  // global URL is jsdom's own polyfill, not node:url's — fs.readFile rejects it as "not of
+  // scheme file" even though .protocol reads 'file:'. A plain path sidesteps that entirely.
+  // Vitest always runs from the repo root, so process.cwd() is safe here.
+  const { readFile } = await import('node:fs/promises');
+  const { resolve } = await import('node:path');
+  const html = await readFile(resolve(process.cwd(), 'index.html'), 'utf8');
 
   const keys = new Set();
   // data-i18n="k" and data-i18n-html="k". data-i18n-attr is NOT matched here: the "-attr"

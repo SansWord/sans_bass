@@ -111,9 +111,9 @@ jobs:
           | | |
           |---|---|
           | Player | [${URL}](${URL}) |
-          | Unit tests | [${URL}tests/test.html](${URL}tests/test.html) |
 
           Updated for \`${GITHUB_SHA::7}\`. Pages can take a minute to serve a fresh deploy.
+          Unit tests run in the separate \`Test\` check on this PR, not here.
 
           Separation needs WebGPU and downloads a 285 MB model on first run.
           \`tests/parity.html\` will not work here — it needs the local \`rips/\` and

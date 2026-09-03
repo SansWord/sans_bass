@@ -271,6 +271,17 @@ out of the project; never commit them.
   through a change before it reaches the published site — and `main` publishes to the root
   the moment it moves. A design-only session branches too; the spec is reviewed the same way
   the code is.
+- **Executing a plan ends with the Deployment smoke test against a real deploy, twice —
+  not just local verification.** Once the PR is open and `pr-preview.yml` succeeds, run
+  [`docs/behaviour.md`](docs/behaviour.md)'s Deployment smoke test section against
+  `https://sansword.github.io/sans_bass/pr-<N>/`; once merged and `deploy-main.yml`
+  succeeds, run it again against `https://sansword.github.io/sans_bass/`. Check each
+  workflow's *conclusion*, not just that it ran (see the gotcha below — a cancelled run
+  reports no failure anywhere). This catches what only a real HTTPS deploy exposes —
+  cross-origin fetches (the ONNX runtime, the model), WebGPU, Cache Storage — on top of,
+  not instead of, `npm run dev` / `npm run build` + `npm run preview` during the work
+  itself. A plan can note these as its own final steps, but the routine holds regardless of
+  whether the plan spells it out.
 - **Tests are browser pages, not a runner.** `tests/test.html` for units (read
   `window.__testResults`), `tests/parity.html` for separation accuracy against the native
   stems in the repo (read `window.__parity`). Both need `npm run dev` (or `npm run build`

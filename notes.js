@@ -16,11 +16,12 @@
  * so its state and DOM wiring stay shared, module-level code below the channel factory.
  * See docs/superpowers/specs/2026-09-01-bass-notes-design.md. */
 
-import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, stemMismatch, BASS_RANGE }
+import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, BASS_RANGE }
   from './lib/pitch.js';
 import { scheduleNotes } from './lib/sonify.js';
 import * as SansI18n from './lib/i18n.js';
 import * as SansJianpu from './lib/jianpu.js';
+import { buildEditsPayload, planImport } from './lib/notes-edits.js';
 
 const tr = (key, params) => SansI18n.t(key, params);
 
@@ -426,8 +427,6 @@ function createNotesChannel(stem, els) {
     jianpu.auto = true;
     editGroups = [];
     orphaned = [];
-    els.exportBtn.disabled = true;
-    els.importBtn.disabled = true;
     /* Only announce if THIS channel believed it was the editable one — otherwise a reset on
      * the channel that ISN'T currently selected would blank editmode out from under whichever
      * channel actually is (every 'on:false' clears editable everywhere, stem match or not). */
@@ -469,8 +468,6 @@ function createNotesChannel(stem, els) {
       els.meta.hidden = false;
       els.tune.hidden = false;
       els.show.hidden = false;
-      els.exportBtn.disabled = false;
-      els.importBtn.disabled = false;
       syncShowLabel();
       // Not just reinterpret(): a tempo result above belongs to BOTH channels, so the other
       // channel (if it already has frames) must also pick up the fresh grid.
@@ -490,11 +487,10 @@ function createNotesChannel(stem, els) {
 
   /* Hidden until this channel actually has notes, not merely until its stem is loaded —
    * same principle as the meta/tune rows inside it (and #notes-tempo): an empty panel with
-   * disabled Export/Import/Export-list controls sitting there before Find Notes is pressed
-   * is output before there is any. Checked ahead of the reset() call below so a song/stem
-   * change hides the panel in the same tick frames is cleared, not one poll tick later.
-   * There is no load event to hang this on — separate.js polls the same way, for the same
-   * reason. */
+   * a disabled Export-list control sitting there before Find Notes is pressed is output
+   * before there is any. Checked ahead of the reset() call below so a song/stem change hides
+   * the panel in the same tick frames is cleared, not one poll tick later. There is no load
+   * event to hang this on — separate.js polls the same way, for the same reason. */
   function refresh() {
     const stemAudio = window.sansBass?.stemBuffer?.(stem);
     if (frames && (!stemAudio || stemAudio.buffer !== analysedBuffer)) reset();
@@ -578,28 +574,6 @@ function createNotesChannel(stem, els) {
     if (els.editsRow.open && !els.editsRow.contains(e.target)) els.editsRow.open = false;
   });
 
-  els.exportBtn.addEventListener('click', () => {
-    const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
-    const payload = {
-      version: 1,
-      stem,
-      ...(mix ? { song: mix.name } : {}),
-      ...currentParams(),
-      clip: els.clip.checked,
-      jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
-      tempo: { on: tempo.on, bpmValue: tempo.bpmValue, phaseMs: tempo.phaseMs, beatsPerBar: tempo.beatsPerBar },
-      tempoRange,
-      edits: editGroups.map((g) => g.edits),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${mix ? mix.name : 'song'}-${stem}-edits.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
-  });
-
   els.listExport.addEventListener('click', () => {
     const secs = Number(els.listSecs.value) || 10;
     const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
@@ -638,69 +612,51 @@ function createNotesChannel(stem, els) {
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   });
 
-  els.importBtn.addEventListener('click', () => els.importFile.click());
-
-  els.importFile.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-
-    let data;
-    try {
-      data = JSON.parse(await file.text());
-    } catch (err) {
-      window.sansBass.say('notes.importFailed', { message: err.message }, true);
-      return;
-    }
-    if (!data || data.version !== 1 || !Array.isArray(data.edits)) {
-      window.sansBass.say('notes.importFailed', { message: 'not a note-edits file' }, true);
-      return;
-    }
-
-    const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
-    if (data.song && mix && data.song !== mix.name) {
-      window.sansBass.say('notes.importMismatch', { song: data.song }, true);
-    }
-    if (stemMismatch(data, stem)) {
-      window.sansBass.say('notes.importStemMismatch', { stem: tr('stem.' + data.stem) }, true);
-    }
-
-    if (data.params) {
-      if (data.params.minDurationMs != null) els.min.value = data.params.minDurationMs;
-      els.fold.checked = !!data.params.fold;
-      if (data.params.confidentWithin != null) els.foldTol.value = data.params.confidentWithin;
-    }
-    els.hmm.checked = data.interpreter !== 'threshold-v1';
-    els.clip.checked = data.clip !== false;
-    if (data.jianpu) {
-      jianpu.on = !!data.jianpu.on;
-      jianpu.auto = false;
-      jianpu.tonic = data.jianpu.tonic ?? 0;
-      jianpu.mode = data.jianpu.mode || 'major';
-      els.jianpu.checked = jianpu.on;
-    }
-    if (data.tempo) {
-      tempo.on = !!data.tempo.on;
-      tempo.auto = false;
-      if (data.tempo.bpmValue != null) tempo.bpmValue = data.tempo.bpmValue;
-      if (data.tempo.phaseMs != null) tempo.phaseMs = data.tempo.phaseMs;
-      if (data.tempo.beatsPerBar != null) tempo.beatsPerBar = data.tempo.beatsPerBar;
-      syncTempoControls();
-    }
-    if (data.tempoRange !== undefined) {
-      tempoRange = data.tempoRange || null;
-      window.sansBass.setTempoRange(tempoRange);
-    }
-    editGroups = data.edits.map((edits) => ({ id: nextEditId++, edits }));
-    syncJianpuControls();
-    // Not just reinterpret(): an imported tempo (shared across both channels) may have
-    // changed, and the sibling channel needs to redraw its own grid too.
-    reinterpretAll();
-  });
-
   syncJianpuControls();      // the selectors are inert until 簡譜 is ticked, from the first paint
 
-  return { refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, stem };
+  /** Whether this channel has run analysis — the gate the shared Export/Import buttons (in
+   * app.js's zoomed pane) use to decide whether this stem belongs in a combined edits file,
+   * mirroring the gate the old per-channel Export/Import buttons used. */
+  function hasFrames() { return !!frames; }
+
+  /** This channel's slice of an edits export — everything from the old single-stem payload
+   * except `version`/`stem`/`song`/`tempo`/`tempoRange`, which the shared export wraps around
+   * every channel's entry once (see the module-level 'sansbass:exportedits' listener below). */
+  function exportEntry() {
+    return {
+      ...currentParams(),
+      clip: els.clip.checked,
+      jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
+      edits: editGroups.map((g) => g.edits),
+    };
+  }
+
+  /** Applies one stem's entry from planImport() (lib/notes-edits.js) — the counterpart to
+   * exportEntry(). Does not call reinterpret() itself: the shared import handler applies
+   * every affected channel's entry first, then reinterprets all of them once. */
+  function importEntry(entry) {
+    if (entry.params) {
+      if (entry.params.minDurationMs != null) els.min.value = entry.params.minDurationMs;
+      els.fold.checked = !!entry.params.fold;
+      if (entry.params.confidentWithin != null) els.foldTol.value = entry.params.confidentWithin;
+    }
+    els.hmm.checked = entry.interpreter !== 'threshold-v1';
+    els.clip.checked = entry.clip !== false;
+    if (entry.jianpu) {
+      jianpu.on = !!entry.jianpu.on;
+      jianpu.auto = false;
+      jianpu.tonic = entry.jianpu.tonic ?? 0;
+      jianpu.mode = entry.jianpu.mode || 'major';
+      els.jianpu.checked = jianpu.on;
+    }
+    editGroups = (entry.edits || []).map((edits) => ({ id: nextEditId++, edits }));
+    syncJianpuControls();
+  }
+
+  return {
+    refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, stem,
+    hasFrames, exportEntry, importEntry,
+  };
 }
 
 // ---------------------------------------------------------------- two instances
@@ -723,9 +679,6 @@ channels.push(createNotesChannel('vocals', {
   editsSummary: document.getElementById('notes-edits-summary-vocals'),
   editUndo: document.getElementById('notes-edit-undo-vocals'),
   editRows: document.getElementById('notes-edit-rows-vocals'),
-  exportBtn: document.getElementById('notes-export-vocals'),
-  importBtn: document.getElementById('notes-import-vocals'),
-  importFile: document.getElementById('notes-import-file-vocals'),
   listSecs: document.getElementById('notes-list-secs-vocals'),
   listExport: document.getElementById('notes-list-export-vocals'),
   jianpu: document.getElementById('notes-jianpu-vocals'),
@@ -752,9 +705,6 @@ channels.push(createNotesChannel('bass', {
   editsSummary: document.getElementById('notes-edits-summary-bass'),
   editUndo: document.getElementById('notes-edit-undo-bass'),
   editRows: document.getElementById('notes-edit-rows-bass'),
-  exportBtn: document.getElementById('notes-export-bass'),
-  importBtn: document.getElementById('notes-import-bass'),
-  importFile: document.getElementById('notes-import-file-bass'),
   listSecs: document.getElementById('notes-list-secs-bass'),
   listExport: document.getElementById('notes-list-export-bass'),
   jianpu: document.getElementById('notes-jianpu-bass'),
@@ -797,6 +747,88 @@ function syncGoAll() {
     ? tr('notes.detecting', { stems: busyChannels.map((c) => tr('stem.' + c.stem)).join(', ') })
     : '';
 }
+
+// ---------------------------------------------------------------- shared: export/import edits
+//
+// One Export/Import pair for both channels, same reasoning as the shared detect button above
+// (editing is already single-target — see the zoomed pane's one global Edit-notes toggle — so
+// a per-panel pair had no real per-panel meaning left). The buttons themselves live in app.js,
+// beside that toggle; app.js has no reach into this module's channel state, so it dispatches
+// these two events instead, the same way its edit toolbar already dispatches 'sansbass:noteedit'
+// and 'sansbass:editundo' for this file to act on.
+
+window.addEventListener('sansbass:exportedits', () => {
+  const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
+  const stems = {};
+  for (const c of channels) if (c.hasFrames()) stems[c.stem] = c.exportEntry();
+  if (!Object.keys(stems).length) return;   // nothing analysed yet — the button should be disabled anyway
+
+  const payload = buildEditsPayload({
+    song: mix ? mix.name : undefined,
+    tempo: { on: tempo.on, bpmValue: tempo.bpmValue, phaseMs: tempo.phaseMs, beatsPerBar: tempo.beatsPerBar },
+    tempoRange,
+    stems,
+  });
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${mix ? mix.name : 'song'}-notes-edits.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+});
+
+window.addEventListener('sansbass:importedits', async (e) => {
+  const file = e.detail.file;
+  if (!file) return;
+
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch (err) {
+    window.sansBass.say('notes.importFailed', { message: err.message }, true);
+    return;
+  }
+
+  const plan = planImport(data, channels.map((c) => c.stem));
+  if (!plan.ok) {
+    if (plan.reason === 'unroutable') {
+      const stemName = plan.stem ? tr('stem.' + plan.stem) : tr('notes.importUnknownStem');
+      window.sansBass.say('notes.importStemMismatch', { stem: stemName }, true);
+    } else {
+      window.sansBass.say('notes.importFailed', { message: 'not a note-edits file' }, true);
+    }
+    return;
+  }
+
+  // Song mismatch and skipped-stem warnings share one status line (see app.js's say()) — a
+  // skipped stem is the more actionable of the two when both fire, so it's said last and wins.
+  const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
+  if (plan.song && mix && plan.song !== mix.name) {
+    window.sansBass.say('notes.importMismatch', { song: plan.song }, true);
+  }
+  if (plan.skipped.length) {
+    window.sansBass.say('notes.importStemSkipped', { stems: plan.skipped.map((s) => tr('stem.' + s)).join(', ') }, true);
+  }
+
+  if (plan.hasTempo && plan.tempo) {
+    tempo = { ...tempo, ...plan.tempo, auto: false };
+    syncTempoControls();
+  }
+  if (plan.hasTempoRange) {
+    tempoRange = plan.tempoRange || null;
+    window.sansBass.setTempoRange(tempoRange);
+  }
+
+  const entryByStem = new Map(plan.apply.map((x) => [x.stem, x.entry]));
+  for (const c of channels) {
+    const entry = entryByStem.get(c.stem);
+    if (entry) c.importEntry(entry);
+  }
+  // Not just reinterpret() per touched channel: an imported tempo (shared across both
+  // channels) may have changed, and every channel needs to redraw its own grid from it.
+  reinterpretAll();
+});
 
 function refreshAll() {
   refreshTempo();

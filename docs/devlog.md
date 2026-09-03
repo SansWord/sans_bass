@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.22.1](#v1221--fix-note-list-export-ordering-for-edited-in-notes-2026-09-03-0149) | An `add`/split-off note from `applyEdits()` was landing at the end of its 10-second block in **Export list**'s Markdown instead of its chronological position, because `applyEdits()` appends it to the end of the note array and the export handler bucketed notes in that raw array order. Fixed by sorting a copy before bucketing — the same pattern `lib/sonify.js` already used for the identical playback-side issue. |
 | [v1.22.0](#v1220--snap-note-drag-to-the-tempo-grid-2026-09-03-0014) | Dragging a note's edge (resize) or body (move) in the zoomed pane now snaps to the beat grid whenever it's on, at the finest resolution the ½/¼ toggles have enabled — a move preserves duration exactly, a resize snaps only the edge being dragged. New `lib/ribbon.js` function `snapToGrid` answers the nearest grid line in O(1), cheap enough for every `pointermove`. |
 | [v1.21.1](#v1211--drop-the-last-windowsansx-bridges-2026-09-02-2331) | `separate.js` and `notes.js` converted from reading `window.SansI18n`/`SansPlatform`/`SansAnalytics`/`SansJianpu` to importing `lib/i18n.js`/`platform.js`/`analytics.js`/`jianpu.js` directly, closing the item v1.21.0 deliberately left open. All five remaining `window.SansX` bridges deleted, including `window.SansPitch` — whose real (and only) reader turned out to be `app.js`, not `notes.js` as its own comment claimed. No `lib/*.js` file in this repo carries a `window` bridge any more. |
 | [Meta](#meta--migrate-unit-tests-to-vitest-gate-on-ci-2026-09-02-2256) | `tests/test.html` (a browser page read via `window.__testResults`) is gone; `npm test` runs the same 271 tests via Vitest, split into three tiers (plain Node, jsdom, headless Chromium) by what each file actually needs, gated on every PR by a new `test.yml` CI workflow. No browser tool needed to check results anymore. |
@@ -57,6 +58,44 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.22.1 — Fix note-list export ordering for edited-in notes (2026-09-03 01:49)
+
+**Review:** not yet
+
+**What was built:**
+- **Export list**'s per-block token order now always matches note start time, even for
+  notes an edit added or split off. Fixed by sorting a copy of `notes` before bucketing
+  into 10-second blocks in the `listExport` handler (`notes.js`).
+- `docs/behaviour.md`'s E34 entry now states the within-block ordering guarantee
+  explicitly and cross-references the identical footgun already documented at E23.
+
+**Key technical learnings:**
+- `[gotcha]` `applyEdits()` (`lib/pitch.js`) `push`es an `add`-type edit's note onto the
+  end of the array with no re-sort, regardless of that note's own start time — every other
+  edit type re-locates and replaces in place, but `add` and split-off notes always land
+  last positionally. `lib/sonify.js` already hit this for playback scheduling and fixed it
+  locally by sorting a copy before use (`sonify.js:124`), with a comment explaining exactly
+  this trap — but that fix never got generalized or even flagged as a pattern other
+  consumers of `notes` should watch for, so the same bug reappeared independently in the
+  list-export handler. Any future code that walks `notes` in array order and assumes
+  chronological order needs the same local sort; `applyEdits()` itself was deliberately
+  left non-sorting rather than fixed at the source (see the file's own docstring: it
+  "never mutates `notes`... returns new note objects" but says nothing about order), so
+  this is a standing trap for every future consumer, not a one-off bug.
+- `[note]` Reproduced entirely in a real dev-server browser tab rather than a unit test:
+  loaded a stems zip via a fetched `File` + `DataTransfer` pushed onto the hidden
+  `#file-input` (bypassing the native picker and the 10MB file-attachment limit by fetching
+  same-origin through Vite's `/@fs/<absolute-path>` dev-server route), ran real pitch
+  detection, imported the edits JSON the same way, then intercepted `URL.createObjectURL`
+  to read the exported Markdown `Blob`'s text directly instead of watching a file download
+  land on disk. `notes.js`'s DOM-wiring code (the `listExport` click handler specifically)
+  isn't reachable by any of the three Vitest tiers — only `notes.worker.js` is, via
+  `tests/notes.test.js` — so this was the fastest way to get a real failing/passing
+  reproduction against the exact repro files provided, and to observe the real DOM
+  behaviour docs/behaviour.md's testing conventions call for.
 
 ---
 

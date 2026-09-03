@@ -1,7 +1,6 @@
 import { test, assert, assertEq } from './assert.js';
 import { detectChords } from '../lib/chords.js';
 
-const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const n = (start, end, midi) => ({ start, end, midi });
 
 // One bar, midpoint at 2s: first half [0,2), second half [2,4).

@@ -140,7 +140,7 @@ h1 { font-size: 18px; margin: 0 0 4px; font-weight: 600; }
 .chord-second { position: absolute; left: 50%; top: 0; transform: translateX(-50%);
                 font-size: 13px; font-weight: 700; }
 .frags { display: flex; align-items: center; justify-content: flex-start;
-         flex-wrap: wrap; gap: 12px; min-height: 1.6em; }
+         flex-wrap: wrap; gap: 12px; min-height: 1.6em; flex: 1 1 auto; }
 .frag { position: relative; display: inline-flex; align-items: center; }
 /* .note stacks standard 簡譜 octave dots above/below the digit. .oct-up/.oct-down keep a
    fixed minimum height (empty or not) so every digit in a bar sits on the same baseline
@@ -803,7 +803,7 @@ function createNotesChannel(stem, els) {
    *  the channel has notes (jianpu.tonic/mode are always kept current, whether or not this
    *  channel's own 簡譜 checkbox is on) — see lib/chords.js's detectChords(). */
   function chordSource() {
-    return hasFrames() ? { notes, tonicPc: jianpu.tonic, mode: jianpu.mode } : null;
+    return hasFrames() && notes.length ? { notes, tonicPc: jianpu.tonic, mode: jianpu.mode } : null;
   }
 
   return {

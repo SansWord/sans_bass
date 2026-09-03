@@ -85,10 +85,14 @@ Running log of what was built and what was learned building it.
   bar where the bass line moves mid-bar (e.g. a walk up to the 4th) shows both.
 - Chord quality is triads (major/minor/diminished) plus sus2/sus4 only — no 7ths,
   extensions, or inversions — with a bare root name (no suffix) when the longest-duration
-  note in a half is chromatic to the bass channel's own detected key.
+  note in a half is chromatic to the bass channel's own detected key. The sus2/sus4 override
+  requires the candidate 2nd/4th to sound simultaneously (overlapping) with the root, which
+  ordinary notes from a **Find notes** run never do — it can only fire after a manual edit
+  introduces overlap.
 - An export from a song with no bass stem loaded, or a bass stem never analysed, is
-  unaffected: no `.chords` element renders on any bar, and `.bar`'s markup/appearance match
-  exactly what they were before this feature.
+  unaffected in appearance: no `.chords` element renders on any bar, and `.bar` renders
+  identically (visually) to before this feature. The underlying markup is not unchanged —
+  `jianpuHtml` now always wraps a bar's note fragments in a `.frags` span, chord data or not.
 
 **Key technical learnings:**
 - `[note]` Each half is split at the bar's time MIDPOINT, not by beat count — the same
@@ -103,7 +107,17 @@ Running log of what was built and what was learned building it.
   line even when one bar's bass line is silent through both halves.
 - `[note]` `jianpuHtml`'s new `.frags` wrapper (holding what `.bar`'s own CSS used to do
   directly) keeps a chord-less export visually identical to before: with `chords` omitted,
-  no `.chords` element exists at all, and `.frags` alone lays out exactly as `.bar` did.
+  no `.chords` element exists at all. Getting `.frags` to lay out exactly as `.bar` used to
+  wasn't automatic from the restructuring alone, though — `.frags` only takes its own
+  content height inside the new flex-column `.bar` unless it also carries `flex: 1 1 auto`
+  to stretch and center within the column, which had to be added explicitly.
+- `[gotcha]` `lib/chords.js`'s sus2/sus4 override requires the candidate 2nd/4th to
+  temporally overlap the root note — but `lib/pitch.js`'s segmenters (`segmentNotes`,
+  `segmentNotesHmm`) always emit strictly sequential, non-overlapping notes from a
+  monophonic line, so sus2/sus4 never actually fires on notes from an ordinary Find-notes
+  run; it can only appear after a manual note edit introduces overlap. A future redesign of
+  the suspension rule (e.g. requiring the 4th/2nd to be the final note of the half, rather
+  than requiring simultaneity) is separate design work, not attempted here.
 
 ---
 

@@ -22,3 +22,6 @@ dist/
 
 # Superpowers git worktrees (isolated implementation workspaces)
 .worktrees/
+
+# testing data that should not be upload
+examples/

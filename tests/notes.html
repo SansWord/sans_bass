@@ -47,10 +47,10 @@
 </div>
 
 <pre id="out">running…</pre>
-<script type="module" src="../lib/ribbon.js"></script>
 <script type="module">
 import { detectNotes, notesToChroma, detectKey, interpret } from '../lib/pitch.js';
 import { scheduleNotes, LOOKAHEAD } from '../lib/sonify.js';
+import * as SansRibbon from '../lib/ribbon.js';
 
 const out = document.getElementById('out');
 const el = (id) => document.getElementById(id);
@@ -177,9 +177,7 @@ const metrics = (list) => {
     if (Math.abs(list[i].start - list[i - 1].end) < 1e-6 && list[i].midi === list[i - 1].midi) touchingSame++;
   }
 
-  const [rlo, rhi] = window.SansRibbon
-    ? window.SansRibbon.pitchRange(list, { clip: true })
-    : [mids[0], mids[mids.length - 1]];
+  const [rlo, rhi] = SansRibbon.pitchRange(list, { clip: true });
 
   return {
     notes: list.length,

@@ -159,30 +159,42 @@ thing under test is whether `separate.worker.js` itself loads at all, which faki
 `Worker` constructor bypasses entirely. A worker that's broken at the module level would
 pass a faked run and fail a real one. Same logic for `notes.worker.js`.
 
-1. Load the page fresh. Console has zero errors. (G1, G2)
-2. Every entry HTML's script/link tags resolve to files that actually exist — check the
+1. **Check `#build-sha` against the commit you expect, before anything else.** For a PR
+   preview, that's the PR's merge commit — `gh pr view <N> --json mergeCommit --jq
+   .mergeCommit.oid` (its short form is what the badge shows; see G5 — this is GitHub's
+   synthetic merge-commit SHA, not the PR branch's own tip). For `main`, it's simply
+   `git rev-parse --short HEAD` on `main` after pulling. A `pr-preview.yml`/`deploy-main.yml`
+   run reporting `success` does **not** mean the page in front of you is that build yet —
+   GitHub Pages pins `index.html` itself to `Cache-Control: max-age=600` regardless of the
+   content-hashed asset names, so a stale page can silently keep serving the previous
+   build's JS for up to ten minutes. If the SHA doesn't match, reload with a cache-busting
+   query string (or a fresh tab) and check again — do not proceed to step 2, and do not
+   read a mismatch here as the deploy having failed; the workflow run's own conclusion is
+   still the authority on that.
+2. Load the page fresh. Console has zero errors. (G1, G2)
+3. Every entry HTML's script/link tags resolve to files that actually exist — check the
    Network tab (every request 200, none 404), or against a built copy, that
    `dist/index.html`'s hashed `<script src>`/`<link href>` names match files present in
    `dist/assets/`. (G3, G4)
-3. Load one whole-song audio file. Confirm exactly one lane labelled **Full mix**, and
+4. Load one whole-song audio file. Confirm exactly one lane labelled **Full mix**, and
    that `AudioContext.sampleRate` reads `44100`. (L1, L7)
-4. Click a lane's name block. Confirm it dims and nothing else does. (M1)
-5. Move the speed slider off 100%. Confirm the transport clock keeps advancing and the
+5. Click a lane's name block. Confirm it dims and nothing else does. (M1)
+6. Move the speed slider off 100%. Confirm the transport clock keeps advancing and the
    console stays clean — this is the one `AudioWorkletNode` load in the whole app, and
    the exact thing that broke silently in dev/preview but not in production. (S1, S4, S5
    under Playback speed)
-6. Set an A–B loop (`a` then `b`) and **sample the playhead across two laps** — confirms
+7. Set an A–B loop (`a` then `b`) and **sample the playhead across two laps** — confirms
    it actually wraps, not just that the bounds got set. (R1)
-7. Click **Separate into 6 stems** for real (see the note above — don't fake the
+8. Click **Separate into 6 stems** for real (see the note above — don't fake the
    worker here) and wait for it to finish. Confirm the status line goes empty and
    exactly six lanes replace the one, with no Full mix left over. This exercises
    `separate.js`'s own `Worker`. (S4, S7 under Separation panel)
-8. Click **Find notes** for real. Confirm both note counts populate and, with a drums
+9. Click **Find notes** for real. Confirm both note counts populate and, with a drums
    stem present, the tempo panel appears with a BPM. This exercises `notes.js`'s
-   `Worker` — a second, independent module boundary from step 7's. (N1–N3 under Notes
+   `Worker` — a second, independent module boundary from step 8's. (N1–N3 under Notes
    lane; T1–T2 under Tempo grid)
-9. Switch language mid-playback. Confirm the transport clock keeps advancing across the
-   switch. (N4 under Language)
+10. Switch language mid-playback. Confirm the transport clock keeps advancing across the
+    switch. (N4 under Language)
 
 ---
 

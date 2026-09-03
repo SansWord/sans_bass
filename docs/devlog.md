@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [Meta](#meta--require-a-build-sha-check-before-any-deploy-verification-2026-09-03-0359) | Both `docs/behaviour.md`'s Deployment smoke test and `CLAUDE.md` now require checking `#build-sha` against the expected commit before verifying anything against a PR preview or `main` — a stale cached `index.html` can otherwise silently pass off the previous build as the one under test. |
 | [v1.25.0](#v1250--build-commit-sha-shown-in-the-corner-2026-09-03-0349) | A dim `<git short SHA>` now sits fixed in the page's bottom-right corner on every build (dev, PR preview, main), baked in at build time via a new `vite.config.js` `define`. Answers "is this actually the deploy I just made" directly, after the v1.24.0 session's own verification got fooled once by a stale cached `index.html`. |
 | [v1.24.0](#v1240--single-gesture-click-drag-to-select-and-move-a-note-2026-09-03-0315) | Moving a note in the zoomed pane used to need two separate clicks — one to select, a second to grab and drag. Now the very first click-drag on a note both selects and moves it in one gesture; releasing without dragging still just selects (E22). Resizing near an edge is unchanged: it still needs the note already selected, since the edge tabs that show where to grab are only drawn once selected. |
 | [v1.23.0](#v1230--shared-exportimport-edits--multi-stem-json-format-2026-09-03-0231) | The per-stem Export/Import-edits button pairs (vocals, bass) become one shared pair in the zoomed pane, beside the Edit-notes toggle — matching how editing itself is already single-target. A new JSON format keys each stem's edits under `stems.<id>` with `tempo`/`tempoRange` hoisted to the top as one shared object instead of duplicated per stem, so a future note-capable stem needs no format change. No back-compat with the old per-stem files — deliberately dropped. |
@@ -63,6 +64,30 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## Meta — Require a #build-sha check before any deploy verification (2026-09-03 03:59)
+
+**Review:** not yet
+
+**What was built:**
+- `docs/behaviour.md`'s Deployment smoke test is now a 10-step list instead of 9: a new
+  step 1 requires checking `#build-sha` against the expected commit (PR merge commit for
+  a preview, `main`'s `HEAD` for production) before doing anything else, with a
+  reload-and-recheck instruction on mismatch rather than treating it as a deploy failure.
+- `CLAUDE.md` gained a matching gotcha bullet next to "Check a workflow's conclusion, not
+  that it ran" — same shape of mistake (trusting a green check instead of the actual
+  observable state) — and the existing "Executing a plan ends with the Deployment smoke
+  test..." bullet now cross-references it explicitly.
+- Scoped deliberately wider than just the numbered smoke test: the `CLAUDE.md` bullet
+  reads "before testing ANYTHING against a real deploy — smoke test or otherwise", since
+  ad-hoc manual/browser-automation verification against a PR preview or `main` (not
+  running the literal 10-step list) is just as exposed to the same stale-`index.html`
+  trap — which is exactly what happened during this session's own v1.24.0 verification.
+
+**Key technical learnings:**
+- `[note]` Prompted directly by user request after being shown the v1.24.0/v1.25.0
+  sessions' own near-misses with stale GitHub Pages caching — a case of the harness's own
+  process gap being visible from the outside before it was written down anywhere.
 
 ## v1.25.0 — Build commit SHA shown in the corner (2026-09-03 03:49)
 

@@ -253,3 +253,102 @@ test('ribbon: snapToGrid tolerates a missing or zero bpmValue', () => {
   assertEq(R().snapToGrid(null, 0.62, 1), 0.62, 'no tempo, no snap');
   assertEq(R().snapToGrid({ bpmValue: 0, phaseMs: 0, beatsPerBar: 4 }, 0.62, 1), 0.62, 'zero BPM would divide by zero');
 });
+
+// snapNotesToGrid — the batch-snap primitive behind the Snap-range/Whole-song buttons.
+// 120 BPM = 0.5s/beat throughout, so beat lines sit at 0, 0.5, 1, 1.5, 2, ...
+//
+// No overlap-avoidance logic here: snapToGrid rounds to the NEAREST grid point, and nearest-
+// rounding is monotonic non-decreasing (t1 <= t2 implies snap(t1) <= snap(t2)), so two notes
+// that don't already overlap can never end up overlapping purely from independently snapping
+// their edges — round(noteA.end) <= round(noteB.start) whenever noteA.end <= noteB.start, for
+// any BPM/phase/division. The only real edge case is a single SHORT note whose own two edges
+// round to the same grid point, which the MIN_DUR floor below covers.
+
+const TEMPO_120 = { bpmValue: 120, phaseMs: 0, beatsPerBar: 4 };
+const n = (start, end, midi) => ({ start, end, midi });
+
+test('ribbon: snapNotesToGrid leaves an already-on-grid note out of the result', () => {
+  const out = R().snapNotesToGrid([n(0.5, 1.0, 60)], TEMPO_120, 1, null);
+  assertEq(out.length, 0, 'nothing moved, nothing reported');
+});
+
+test('ribbon: snapNotesToGrid snaps an off-grid note to its nearest beats', () => {
+  const out = R().snapNotesToGrid([n(0.62, 1.4, 60)], TEMPO_120, 1, null);
+  assertEq(out.length, 1);
+  assertClose(out[0].newStart, 0.5, 1e-9);
+  assertClose(out[0].newEnd, 1.5, 1e-9);
+});
+
+test('ribbon: snapNotesToGrid ignores notes outside the given range', () => {
+  const notes = [n(0.62, 0.9, 60), n(5.6, 5.9, 62)];
+  const out = R().snapNotesToGrid(notes, TEMPO_120, 1, { from: 0, to: 2 });
+  assertEq(out.length, 1, 'only the in-range note is touched');
+  assertEq(out[0].note, notes[0]);
+});
+
+test('ribbon: snapNotesToGrid never introduces overlap between originally non-overlapping notes', () => {
+  // A grid of many off-beat, tightly-packed but non-overlapping notes across several beats —
+  // independent snapping must preserve non-overlap for every adjacent pair (see the note above).
+  const notes = [];
+  for (let i = 0; i < 30; i++) notes.push(n(i * 0.31 + 0.02, i * 0.31 + 0.29, 60));
+  const out = R().snapNotesToGrid(notes, TEMPO_120, 4, null);
+  const byNote = new Map(out.map((o) => [o.note, o]));
+  for (let i = 1; i < notes.length; i++) {
+    const prev = byNote.get(notes[i - 1]) ?? { newEnd: notes[i - 1].end };
+    const cur = byNote.get(notes[i]) ?? { newStart: notes[i].start };
+    assert(cur.newStart >= prev.newEnd, `note ${i} doesn't overlap note ${i - 1}: ${cur.newStart} >= ${prev.newEnd}`);
+  }
+});
+
+test('ribbon: snapNotesToGrid floors a note whose edges round to the same grid point', () => {
+  // Both 1.20 and 1.28 are nearer to the beat at 1.5 than to 1.0 — without a floor this would
+  // collapse to a zero-length note at 1.5.
+  const out = R().snapNotesToGrid([n(1.2, 1.28, 60)], TEMPO_120, 1, null);
+  assertEq(out.length, 1);
+  assert(out[0].newEnd - out[0].newStart > 0, 'still a positive-duration note');
+});
+
+test('ribbon: snapNotesToGrid with range: null snaps every note', () => {
+  const notes = [n(0.6, 0.9, 60), n(5.6, 5.9, 62)];
+  const out = R().snapNotesToGrid(notes, TEMPO_120, 1, null);
+  assertEq(out.length, 2);
+});
+
+test('ribbon: snapNotesToGrid tolerates a missing tempo or empty note list', () => {
+  assertEq(R().snapNotesToGrid([n(0.6, 0.9, 60)], null, 1, null).length, 0);
+  assertEq(R().snapNotesToGrid([], TEMPO_120, 1, null).length, 0);
+});
+
+test('ribbon: snapNoteEdges never collapses a note to zero width', () => {
+  // Regression: a 0.1742s note against a 0.7605s beat period (78.9 BPM) — real numbers from
+  // a live repro — has both edges land on the SAME nearest grid point when snapped
+  // independently with no floor. app.js's editSnapNote used to call snapToGrid directly for
+  // each edge with no MIN_DUR floor (only snapNotesToGrid, the batch path, had one), so a
+  // single-note Snap on a short note produced a genuinely zero-width note — start === end —
+  // which can never be found again by ANY anchor search (`start <= at < end` is false for
+  // every `at` once start === end), permanently orphaning the next edit that touched it.
+  // editSnapNote now shares this exact function with the batch path, so this covers both.
+  const tempo = { bpmValue: 78.9, phaseMs: 50, beatsPerBar: 4 };
+  const { newStart, newEnd } = R().snapNoteEdges(tempo, 5.9443, 6.1185, 1);
+  assert(newEnd > newStart, `positive width after snapping: ${newStart} -> ${newEnd}`);
+});
+
+test('ribbon: snapNotesToGrid rounds to 4 decimal places, matching applyEdits (lib/pitch.js)', () => {
+  // Regression: applyEdits reconstructs a replayed note as
+  // +(note.start + edit.dStart).toFixed(4), and note positions from interpret()/applyEdits
+  // are always already 4dp. A full-precision delta computed here against a 4dp input can
+  // replay a fraction of a millisecond off from what this function computed — on a real
+  // 78.9 BPM song this was enough to push a reconstructed note edge outside a neighbour's
+  // interval and orphan an unrelated edit two edits later. An irregular BPM (not a clean
+  // divisor of 1s, unlike the 120 BPM used elsewhere in this file) is what exposes it.
+  const tempo = { bpmValue: 78.9, phaseMs: 50, beatsPerBar: 4 };
+  const out = R().snapNotesToGrid([n(5.944, 6.119, 53)], tempo, 1, null);
+  assertEq(out.length, 1);
+  const { newStart, newEnd } = out[0];
+  assertEq(newStart, +newStart.toFixed(4), `newStart already 4dp: ${newStart}`);
+  assertEq(newEnd, +newEnd.toFixed(4), `newEnd already 4dp: ${newEnd}`);
+  // Re-snapping the result (simulating applyEdits' own 4dp-rounded reconstruction of it)
+  // must be a stable no-op — this is what "already on grid" means once precision matches.
+  const again = R().snapNotesToGrid([n(newStart, newEnd, 53)], tempo, 1, null);
+  assertEq(again.length, 0, 'snapping an already-snapped note a second time is a no-op');
+});

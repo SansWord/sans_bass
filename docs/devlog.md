@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.26.0](#v1260--snap-notes-to-the-beat-grid-2026-09-03-0522) | A **⊞ Snap** button (or the `G` key) snaps the selected note to the beat grid; **Snap range** does the same for every note in a selected range as one grouped edit — one row, one undo, regardless of note count. Range-select now also works on the Overview lane. Found and fixed a real bug along the way: the single-note path had no minimum-duration floor, so snapping a short note could collapse it to zero width and permanently orphan the next edit that touched it. |
 | [Meta](#meta--require-a-build-sha-check-before-any-deploy-verification-2026-09-03-0359) | Both `docs/behaviour.md`'s Deployment smoke test and `CLAUDE.md` now require checking `#build-sha` against the expected commit before verifying anything against a PR preview or `main` — a stale cached `index.html` can otherwise silently pass off the previous build as the one under test. |
 | [v1.25.0](#v1250--build-commit-sha-shown-in-the-corner-2026-09-03-0349) | A dim `<git short SHA>` now sits fixed in the page's bottom-right corner on every build (dev, PR preview, main), baked in at build time via a new `vite.config.js` `define`. Answers "is this actually the deploy I just made" directly, after the v1.24.0 session's own verification got fooled once by a stale cached `index.html`. |
 | [v1.24.0](#v1240--single-gesture-click-drag-to-select-and-move-a-note-2026-09-03-0315) | Moving a note in the zoomed pane used to need two separate clicks — one to select, a second to grab and drag. Now the very first click-drag on a note both selects and moves it in one gesture; releasing without dragging still just selects (E22). Resizing near an edge is unchanged: it still needs the note already selected, since the edge tabs that show where to grab are only drawn once selected. |
@@ -64,6 +65,69 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.26.0 — Snap notes to the beat grid (2026-09-03 05:22)
+
+**Review:** not yet
+
+**What was built:**
+- **⊞ Snap** (toolbar, or the `G` key with a note selected) snaps the selected note's
+  start/end to the current beat/half/quarter grid resolution — one ordinary `timeAdjust`
+  edit, indistinguishable from a manual resize that happened to land on grid values.
+- **Snap range**, gated on a range selection, snaps every note overlapping that range in
+  ONE grouped edit-list entry regardless of how many notes moved — one row, one undo — so
+  repeatedly re-snapping after a BPM change never bloats the edit history. Reuses the exact
+  grouping mechanism Split already relied on (`dispatchEdit()` pushes one array as one
+  group) rather than needing new plumbing.
+- **Whole song** — a one-click shortcut that sets the range selection to the full song,
+  feeding the same Snap range/Delete range buttons instead of requiring a full-width drag.
+- Range-select (E12/E21) now also works on the **Overview** lane, sharing the same
+  `rangeSelection` state as the zoomed pane and each stem's own lane.
+- New `lib/ribbon.js` functions: `snapNoteEdges` (one note's snapped edges, with a 20ms
+  floor) and `snapNotesToGrid` (the batch version, built on it). `docs/roadmap.md` gained a
+  deferred "Self-cleaning orphaned edits" item, out of scope here.
+
+**Key technical learnings:**
+- `[insight]` A batch grid-snap needs NO overlap-avoidance/clamping logic at all: nearest-
+  grid rounding is monotonic non-decreasing (t1 <= t2 implies snap(t1) <= snap(t2)), so two
+  notes that don't already overlap can never be made to overlap by independently snapping
+  their edges. Designed a whole sort-and-clamp neighbour-avoidance pass before writing the
+  first unit test exposed it was solving an impossible problem; deleted ~30 lines in favour
+  of the much simpler direct version. TDD earned its keep here specifically by forcing the
+  math to be written down before the code.
+- `[gotcha]` `applyEdits()` (`lib/pitch.js`) rounds a replayed note's position to 4 decimal
+  places every time it reconstructs `note.start + edit.dStart` — the same precision
+  `interpret()` already stores every note at. A snap function computing a full-precision
+  delta against an already-4dp note can replay a fraction of a millisecond off from what it
+  computed. Usually harmless on its own; fixed by rounding to 4dp at the same point the rest
+  of the pipeline does, for exact round-trip reproducibility.
+- `[gotcha]` The real bug, found only by manual repro: the single-note Snap function had NO
+  minimum-duration floor (only the batch path did). Snapping a note short enough for both
+  edges to round to the same grid point collapsed it to literal zero width — and a
+  zero-width note can never be found again by ANY anchor search (`start <= at < end` is
+  false for every `at` once `start === end`), permanently orphaning the next edit that
+  touched it. Unit tests never caught it because none fed inputs shaped to collapse; it only
+  surfaced by chaining a real single-note snap into a real batch snap covering the same
+  note, live in the browser. Fixed by extracting one shared `snapNoteEdges` helper used by
+  both the single-note and batch paths, so the floor logic can't drift out of sync between
+  them again the way it briefly did.
+- `[note]` Diagnosing the orphan needed going past both the unit tests and the app's own UI:
+  pinning down which of 15 batch edits actually failed meant `await import()`-ing
+  `lib/pitch.js#applyEdits` and `lib/ribbon.js` directly in the live page's console and
+  replaying the exact edit sequence against a note list captured by monkey-patching
+  `window.sansBass.setNotes` — the UI only ever shows one ⚠ per grouped row, not per
+  primitive edit inside it.
+
+**Process learnings:**
+- `[insight]` The user's explicit ask — "avoid a lot of edit history" from a batch action —
+  was satisfied entirely by dispatching every primitive from one click as a single array in
+  one `sansbass:noteedit` event, reusing the exact grouping Split already relied on for its
+  1-2 primitives. No new edit type, no change to `applyEdits()`'s "pure function of notes +
+  edits" contract, no group-size limit to design around.
+- `[gotcha]` Vite's dev server does a full page reload (not HMR) on some edits, silently
+  wiping any `window.__foo` instrumentation set up via browser automation for a diagnosis —
+  had to redo the same manual repro three times because captured state kept disappearing
+  out from under the investigation.
 
 ## Meta — Require a #build-sha check before any deploy verification (2026-09-03 03:59)
 

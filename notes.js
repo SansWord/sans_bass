@@ -319,11 +319,21 @@ function createNotesChannel(stem, els) {
     return tr(KEYS[edit.type]);
   }
 
+  /** `group.label`, when set, is an i18n KEY (not pre-translated text) supplied by the
+   *  dispatcher — e.g. the Snap-range/Whole-song button labels its batch 'notes.editSnapLabel'
+   *  so the row reads "Snap to grid" instead of falling through to the generic multi-edit
+   *  "Split" label below. Session-local only: exportEntry() doesn't carry it, so a re-imported
+   *  Snap batch shows the generic label again — cosmetic only, doesn't affect replay. */
   function groupLabel(group) {
+    if (group.label) return tr(group.label);
     return group.edits.length > 1 ? tr('notes.editSplitLabel') : editTypeLabel(group.edits[0]);
   }
 
+  /** `group.timeLabel`, when set, overrides the per-edit time shown — the Snap-range/Whole-
+   *  song dispatch sets it to the snapped range, since `group.edits[0].at` alone would show
+   *  just the first note's timestamp for what might be a many-note batch. */
   function groupTimeLabel(group) {
+    if (group.timeLabel) return group.timeLabel;
     const e = group.edits[0];
     if (e.type === 'rangeDelete') return `${e.from.toFixed(2)}–${e.to.toFixed(2)}s`;
     if (e.type === 'add') return `${e.start.toFixed(2)}s`;
@@ -558,7 +568,7 @@ function createNotesChannel(stem, els) {
   });
   window.addEventListener('sansbass:noteedit', (e) => {
     if (!editable) return;
-    editGroups.push({ id: nextEditId++, edits: e.detail.edits });
+    editGroups.push({ id: nextEditId++, edits: e.detail.edits, label: e.detail.label, timeLabel: e.detail.timeLabel });
     reinterpret();
   });
   els.editUndo.addEventListener('click', () => {

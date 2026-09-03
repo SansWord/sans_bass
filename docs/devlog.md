@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [Meta](#meta--deployment-smoke-test-in-behaviourmd-2026-09-02-2123) | Extracted the checks used to verify the v1.20.0 deploy into a named **Deployment smoke test** section in `docs/behaviour.md` — a fast wiring check (module loading, real Worker/AudioWorklet instantiation, asset resolution) distinct from the full behaviour matrix. Fixed a stale `?v=` reference left over from the npm + Vite migration in the same file, and pointed `CLAUDE.md`'s own docs list at the new section so a fresh session can find it without reading `behaviour.md` end to end. |
 | [v1.20.0](#v1200--npm--vite-migration-2026-09-02-1754) | Dropped the vendored SoundTouch DSP core and the hand-written `?v=` cache-busting convention for a real npm + Vite pipeline: `soundtouchjs` installs as a normal dependency, `npm run build` produces the `dist/` both CI workflows now publish, and every asset Vite touches gets a content hash instead of a manually-bumped version string. No UI framework added; `app.js` and the classic-script `lib/*.js` files stay `window.SansX` scripts in substance, but all of them (plus `app.js`) had to switch their `<script>` tag to `type="module"` — Vite's HTML plugin only bundles/hashes a tag carrying that attribute, silently dropping a plain classic `<script src>` from the build entirely. |
 | [v1.19.0](#v1190--pitch-preserving-playback-speed-control-2026-09-02-1612) | A speed slider (50–150%, step 5, keyboard `[`/`]`/`\`) time-stretches playback without shifting pitch, via a vendored SoundTouchJS DSP core wrapped in a per-stem `AudioWorkletNode`. The native 100% path is byte-for-byte unchanged; crossing the 100% boundary rebuilds the audio graph, staying on one side of it live-rebases with no restart. |
 | [v1.18.8](#v1188--current-time-code-in-the-overview-and-zoom-lanes-2026-09-02-1514) | The Overview and Zoom lane-name divs now show `current/total` after their label (`0:06.72/3:20`), updated every frame off the same `currentTime()`/`draw()` path as the master transport clock. The Overview lane stacks it under the label instead of inline, since its 128px name column is pinned to every other lane's width for playhead alignment and couldn't grow to fit the extra digits. |
@@ -52,6 +53,46 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## Meta — Deployment smoke test in behaviour.md (2026-09-02 21:23)
+
+**Review:** not yet
+
+**What was built:**
+
+- Extracted the checks run to verify PR #37's live deploy (both the `/pr-37/` preview and
+  `main`) into a new **Deployment smoke test** section in `docs/behaviour.md` — a fast,
+  named, reusable wiring check, distinct from the full ~300-row behaviour matrix.
+  Cross-references existing rows (L1, L7, M1, R1, S1/S4/S5, Separation S4/S7, N1-N3, T1-T2,
+  Language N4, G1-G4) instead of duplicating their assertions.
+- Fixed a stale `?v=` reference in the same file's "Synthesising stems on the fly" recipe,
+  left over from before the npm + Vite migration removed that convention entirely —
+  verified against a real `npm run dev` session: synthesises a two-stem zip and loads it
+  through the real picker with no console errors.
+- Pointed `CLAUDE.md`'s own docs list at the new section, with the same
+  when-to-run-which-set distinction the section itself states.
+
+**Key technical learnings:**
+
+- `[insight]` The "Faking a separation run" recipe used throughout the full matrix is the
+  wrong tool for a deployment-wiring smoke test. It exists to skip a slow model download
+  when what's under test is `separate.js`'s message-handling logic — but it bypasses
+  exactly the module-loading boundary (`new Worker(new URL(...))`) a wiring check exists
+  to verify. A worker broken at the module level would pass a faked run and fail a real
+  one; the smoke test's separation and notes steps deliberately run the real workers.
+- `[note]` `CLAUDE.md`, not `docs/behaviour.md`, is the actual discoverability lever for a
+  fresh session. `CLAUDE.md` is the one file explicitly described as "read this instead of
+  re-deriving the project from scratch," so anything living only inside a long reference
+  doc is one targeted `grep` away from being missed entirely by a session that jumps
+  straight to one specific row.
+
+**Process learnings:**
+
+- `[gotcha]` A doc reorganisation can leave stale content sitting right next to what you
+  touched. The `?v=` recipe was three sections above the new smoke-test content and would
+  have shipped unnoticed if it hadn't been read end to end while placing the new section.
 
 ---
 

@@ -130,6 +130,27 @@ Running log of what was built and what was learned building it.
   (`./assets/...` from `index.html`, `../assets/...` from `tests/test.html`) — the same
   "relative, never root-relative" rule `index.html`'s hand-written icon links already
   followed, just not yet applied to Vite's own output.
+- `[gotcha]` **`AudioWorkletNode`/`.addModule()` has no Vite-native bundling support the
+  way `new Worker(new URL(...))` does.** A URL passed to `addModule()` gets Vite's generic
+  "copy as a raw, unprocessed static asset" treatment — not the special worker-detection
+  path that resolves imports and hashes the output — so `lib/stretch-processor.js`'s own
+  `import { SoundTouch, SimpleFilter } from 'soundtouchjs'` was copied byte-for-byte with
+  the bare specifier intact, which the browser's native module loader cannot resolve
+  (`Failed to resolve module specifier "soundtouchjs"`). This blocked **all** playback, not
+  just the speed feature, because `ensureAudio()` calls `addModule()` unconditionally on
+  first use, and its rejected promise stalled everything downstream. Silent in
+  `npm run dev` and even `npm run build` + `npm run preview` in this session's own earlier
+  testing — the actual root cause is unclear (worklet-module rejections may not always
+  surface as a visible console error at the moment they're awaited), but it was caught for
+  certain only once the built site was exercised for real on GitHub Pages. Fixed by adding
+  `lib/stretch-processor.js` as its own `rollupOptions.input` entry (so Rollup bundles and
+  resolves its import instead of leaving it as dead source), pinning that entry's output to
+  a fixed, unhashed filename via a custom `entryFileNames` function, and branching `app.js`
+  on `import.meta.env.DEV` to point at that fixed build path in production while keeping the
+  original `new URL(...)` reference for dev (which the dev server already handles
+  correctly). Leaves one small, harmless orphaned duplicate in the build output — Vite's
+  asset scanner still processes the dead-code dev-branch's `new URL(...)` literal before
+  minification removes it — accepted rather than chased further.
 
 **Process learnings:**
 

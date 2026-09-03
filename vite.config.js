@@ -15,6 +15,19 @@ export default defineConfig({
         test: new URL('./tests/test.html', import.meta.url).pathname,
         parity: new URL('./tests/parity.html', import.meta.url).pathname,
         notes: new URL('./tests/notes.html', import.meta.url).pathname,
+        // AudioWorkletNode.addModule() has no Vite-native bundling support the way
+        // new Worker(new URL(...)) does — a URL passed to addModule() gets Vite's generic
+        // "copy as a raw, unprocessed static asset" treatment, so the file's own
+        // `import ... from 'soundtouchjs'` is left as an unresolvable bare specifier and
+        // 404s/throws in the browser. Adding it as its own rollup entry here makes Vite
+        // bundle it as a real module instead (imports resolved); entryFileNames below then
+        // pins its output to a fixed, unhashed name so app.js can reference it directly
+        // without needing to know a content hash at author time.
+        'stretch-processor': new URL('./lib/stretch-processor.js', import.meta.url).pathname,
+      },
+      output: {
+        entryFileNames: (info) =>
+          info.name === 'stretch-processor' ? 'assets/stretch-processor.js' : 'assets/[name]-[hash].js',
       },
     },
   },

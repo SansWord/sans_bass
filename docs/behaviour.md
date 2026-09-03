@@ -159,11 +159,13 @@ thing under test is whether `separate.worker.js` itself loads at all, which faki
 `Worker` constructor bypasses entirely. A worker that's broken at the module level would
 pass a faked run and fail a real one. Same logic for `notes.worker.js`.
 
-1. **Check `#build-sha` against the commit you expect, before anything else.** For a PR
-   preview, that's the PR's merge commit — `gh pr view <N> --json mergeCommit --jq
-   .mergeCommit.oid` (its short form is what the badge shows; see G5 — this is GitHub's
-   synthetic merge-commit SHA, not the PR branch's own tip). For `main`, it's simply
-   `git rev-parse --short HEAD` on `main` after pulling. A `pr-preview.yml`/`deploy-main.yml`
+1. **Check the on-page `#build-sha` corner badge's text against the commit you expect,
+   before anything else.** (`#build-sha` names the DOM element's id, not a URL fragment —
+   see G5.) For a PR preview, the commit you expect is the PR's merge commit — `gh pr view
+   <N> --json mergeCommit --jq .mergeCommit.oid` (its short form is what the badge shows;
+   this is GitHub's synthetic merge-commit SHA, not the PR branch's own tip). For `main`,
+   it's simply `git rev-parse --short HEAD` on `main` after pulling. A
+   `pr-preview.yml`/`deploy-main.yml`
    run reporting `success` does **not** mean the page in front of you is that build yet —
    GitHub Pages pins `index.html` itself to `Cache-Control: max-age=600` regardless of the
    content-hashed asset names, so a stale page can silently keep serving the previous

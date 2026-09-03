@@ -58,10 +58,16 @@ test('notes-edits: planImport carries shared tempo/tempoRange with explicit pres
   assert(!withoutRange.hasTempoRange, 'no tempoRange key at all means no opinion, not "clear it"');
 });
 
-// ---------------------------------------------------------------- planImport: v1 (old single-stem file)
+// ---------------------------------------------------------------- planImport: invalid input
 
-test('notes-edits: planImport still routes an old single-stem v1 file when its stem is loaded', () => {
-  const data = {
+test('notes-edits: planImport rejects a file that is not a note-edits file at all', () => {
+  assertEq(planImport({ hello: 'world' }, ['vocals']).ok, false);
+  assertEq(planImport(null, ['vocals']).ok, false);
+  assertEq(planImport({ version: 2, stems: [] }, ['vocals']).ok, false, 'stems must be a keyed object, not an array');
+});
+
+test('notes-edits: planImport rejects an old single-stem v1 file — no back-compat', () => {
+  const oldFile = {
     version: 1,
     stem: 'bass',
     song: 'My Song',
@@ -73,33 +79,7 @@ test('notes-edits: planImport still routes an old single-stem v1 file when its s
     tempoRange: null,
     edits: [['a']],
   };
-  const plan = planImport(data, ['vocals', 'bass']);
-  assert(plan.ok, 'an old v1 file for a loaded stem still imports');
-  assertEq(plan.apply.length, 1);
-  assertEq(plan.apply[0].stem, 'bass');
-  assertEq(plan.apply[0].entry.interpreter, 'hmm-v1', 'per-stem fields survive unpacking');
-  assertEq(plan.apply[0].entry.edits.length, 1);
-  assert(!('stem' in plan.apply[0].entry), 'the stem id itself is not duplicated inside the entry');
-  assert(!('tempo' in plan.apply[0].entry), 'tempo moves to the shared plan fields, not the per-stem entry');
-});
-
-test('notes-edits: planImport rejects a v1 file whose stem is not loaded in this song', () => {
-  const plan = planImport({ version: 1, stem: 'bass', edits: [] }, ['vocals']);
-  assert(!plan.ok, 'nothing to route it to');
-  assertEq(plan.reason, 'unroutable');
-  assertEq(plan.stem, 'bass');
-});
-
-test('notes-edits: planImport rejects a v1 file with no stem field at all', () => {
-  const plan = planImport({ version: 1, edits: [] }, ['vocals', 'bass']);
-  assert(!plan.ok, 'a shared import button has no implicit target panel to fall back on');
-  assertEq(plan.reason, 'unroutable');
-});
-
-// ---------------------------------------------------------------- planImport: invalid input
-
-test('notes-edits: planImport rejects a file that is not a note-edits file at all', () => {
-  assertEq(planImport({ hello: 'world' }, ['vocals']).ok, false);
-  assertEq(planImport(null, ['vocals']).ok, false);
-  assertEq(planImport({ version: 2, stems: [] }, ['vocals']).ok, false, 'stems must be a keyed object, not an array');
+  const plan = planImport(oldFile, ['vocals', 'bass']);
+  assert(!plan.ok, 'a pre-shared-button single-stem file is just not a recognized format');
+  assertEq(plan.reason, 'invalid');
 });

@@ -792,12 +792,7 @@ window.addEventListener('sansbass:importedits', async (e) => {
 
   const plan = planImport(data, channels.map((c) => c.stem));
   if (!plan.ok) {
-    if (plan.reason === 'unroutable') {
-      const stemName = plan.stem ? tr('stem.' + plan.stem) : tr('notes.importUnknownStem');
-      window.sansBass.say('notes.importStemMismatch', { stem: stemName }, true);
-    } else {
-      window.sansBass.say('notes.importFailed', { message: 'not a note-edits file' }, true);
-    }
+    window.sansBass.say('notes.importFailed', { message: 'not a note-edits file' }, true);
     return;
   }
 

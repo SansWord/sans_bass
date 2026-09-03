@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.26.1](#v1261--mutually-exclusive-note-and-range-selection-2026-09-03-1143) | Selecting a note now clears any active range selection, and creating or committing a range selection (drag, or the Whole song button) now clears any selected note — previously the two could coexist silently. |
 | [v1.26.0](#v1260--snap-notes-to-the-beat-grid-2026-09-03-0522) | A **⊞ Snap** button (or the `G` key) snaps the selected note to the beat grid; **Snap range** does the same for every note in a selected range as one grouped edit — one row, one undo, regardless of note count. Range-select now also works on the Overview lane. Found and fixed a real bug along the way: the single-note path had no minimum-duration floor, so snapping a short note could collapse it to zero width and permanently orphan the next edit that touched it. |
 | [Meta](#meta--require-a-build-sha-check-before-any-deploy-verification-2026-09-03-0359) | Both `docs/behaviour.md`'s Deployment smoke test and `CLAUDE.md` now require checking `#build-sha` against the expected commit before verifying anything against a PR preview or `main` — a stale cached `index.html` can otherwise silently pass off the previous build as the one under test. |
 | [v1.25.0](#v1250--build-commit-sha-shown-in-the-corner-2026-09-03-0349) | A dim `<git short SHA>` now sits fixed in the page's bottom-right corner on every build (dev, PR preview, main), baked in at build time via a new `vite.config.js` `define`. Answers "is this actually the deploy I just made" directly, after the v1.24.0 session's own verification got fooled once by a stale cached `index.html`. |
@@ -63,6 +64,42 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.26.1 — Mutually exclusive note and range selection (2026-09-03 11:43)
+
+**Review:** not yet
+
+**What was built:**
+- Selecting a note (a click hit-test, or placing a new one via + Add note) now clears any
+  active range selection.
+- Committing a range selection — dragging a range band on any surface (zoomed pane,
+  Overview, or a stem's own lane) or clicking **Whole song** — now clears any selected
+  note. At most one of the two is ever active at once (`docs/behaviour.md` E43).
+- `docs/behaviour.md` E42 updated to drop its now-impossible "if a note happens to be
+  selected at the same time" caveat, since E43 makes that state unreachable.
+
+**Key technical learnings:**
+- `[note]` `selectedNote` and `rangeSelection` were previously two fully independent
+  `app.js` module-scope variables — nothing in either's setter ever touched the other, and
+  the only place they interacted was an `if`/`else if` priority order in the keyboard
+  handler (the old E42). Five call sites needed the new cross-clear: the note hit-test
+  click, the add-note commit, two separate range-drag commits (the zoomed pane's own
+  handler and the shared `attachSeek` handler used by both the Overview and per-stem
+  lanes), and the Whole song button.
+- `[insight]` The several places `selectedNote` gets *reassigned* after an edit (octave/
+  pitch/time nudge, split, field commit, snap) are not new selections — they keep the same
+  note selected across a re-render — and correctly stayed untouched: each is guarded by
+  `if (!selectedNote) return`, so it can only run when a note is already the one thing
+  selected, at which point `rangeSelection` is already null under the new invariant.
+- `[note]` Verified live in a real browser (not just `npm test`) against `Find notes`'
+  actual pitch detection run on a synthesized single-tone stems zip — this interaction is
+  canvas/mouse-driven and has no unit-test coverage, consistent with `docs/behaviour.md`'s
+  existing note-editing rows. Confirmed both directions: selecting the note blanked the
+  range highlight and disabled Delete range/Snap range; both the Whole song button and a
+  real ruler-band drag blanked the Start/End/Pitch fields and disabled the note-only
+  toolbar buttons.
 
 ---
 

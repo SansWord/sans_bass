@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [v1.27.0](#v1270--簡譜-export-as-bars-rhythm-and-html-2026-09-03-1248) | **Export list** now lays the 簡譜 reading onto the tempo grid — lines wrap every N bars (not seconds), each note's duration renders as standard rhythm notation (underlines, sustain dashes, dots), a note held across a barline splits into tied fragments, and octave is drawn as real dots above/below the digit. A `♩ = <bpm> <beatsPerBar>/4` line now heads the page. The export itself is a self-contained HTML file now, not Markdown, which is what makes any of the above renderable at all. |
+| [v1.27.0](#v1270--簡譜-export-as-bars-rhythm-and-html-2026-09-03-1251) | **Export list** now lays the 簡譜 reading onto the tempo grid — lines wrap every N bars (not seconds), each note's duration renders as standard rhythm notation (underlines, sustain dashes, dots), a note held across a barline splits into tied fragments, and octave is drawn as real dots above/below the digit. A `♩ = <bpm> <beatsPerBar>/4` line now heads the page, and both it and Export edits download as `sans_bass_..._<timestamp>` files. The export itself is a self-contained HTML file now, not Markdown, which is what makes any of the above renderable at all. |
 | [v1.26.1](#v1261--mutually-exclusive-note-and-range-selection-2026-09-03-1143) | Selecting a note now clears any active range selection, and creating or committing a range selection (drag, or the Whole song button) now clears any selected note — previously the two could coexist silently. |
 | [v1.26.0](#v1260--snap-notes-to-the-beat-grid-2026-09-03-0522) | A **⊞ Snap** button (or the `G` key) snaps the selected note to the beat grid; **Snap range** does the same for every note in a selected range as one grouped edit — one row, one undo, regardless of note count. Range-select now also works on the Overview lane. Found and fixed a real bug along the way: the single-note path had no minimum-duration floor, so snapping a short note could collapse it to zero width and permanently orphan the next edit that touched it. |
 | [Meta](#meta--require-a-build-sha-check-before-any-deploy-verification-2026-09-03-0359) | Both `docs/behaviour.md`'s Deployment smoke test and `CLAUDE.md` now require checking `#build-sha` against the expected commit before verifying anything against a PR preview or `main` — a stale cached `index.html` can otherwise silently pass off the previous build as the one under test. |
@@ -68,7 +68,7 @@ Running log of what was built and what was learned building it.
 
 ---
 
-## v1.27.0 — 簡譜 export as bars, rhythm, and HTML (2026-09-03 12:48)
+## v1.27.0 — 簡譜 export as bars, rhythm, and HTML (2026-09-03 12:51)
 
 **Review:** not yet
 
@@ -92,6 +92,10 @@ Running log of what was built and what was learned building it.
 - A `♩ = <bpm> <beatsPerBar>/4` line sits under the title, reading the same shared tempo
   state the "Show tempo grid" panel already displays — the note value is always fixed at a
   quarter, matching `noteRhythm`'s 4-units-per-beat grid.
+- Both **Export list** and **Export edits** filenames now start with a `sans_bass_` prefix
+  and end with an export-time `_YYYY_MM_DD_HH_MM` stamp — `sans_bass_<song>_<stem>_notes_
+  <timestamp>.html` / `sans_bass_<song>_notes_edits_<timestamp>.json` — so a repeat export
+  never silently overwrites the last download.
 
 **Key technical learnings:**
 - `[note]` Bar boundaries reuse `lib/ribbon.js`'s existing `beatTimes()` — the same tempo

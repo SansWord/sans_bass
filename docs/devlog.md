@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.27.0](#v1270--簡譜-export-as-bars-rhythm-and-html-2026-09-03-1222) | **Export list** now lays the 簡譜 reading onto the tempo grid — lines wrap every N bars (not seconds), each note's duration renders as standard rhythm notation (underlines, sustain dashes, dots), a note held across a barline splits into tied fragments, and octave is drawn as real dots above/below the digit. The export itself is a self-contained HTML file now, not Markdown, which is what makes any of the above renderable at all. |
 | [v1.26.1](#v1261--mutually-exclusive-note-and-range-selection-2026-09-03-1143) | Selecting a note now clears any active range selection, and creating or committing a range selection (drag, or the Whole song button) now clears any selected note — previously the two could coexist silently. |
 | [v1.26.0](#v1260--snap-notes-to-the-beat-grid-2026-09-03-0522) | A **⊞ Snap** button (or the `G` key) snaps the selected note to the beat grid; **Snap range** does the same for every note in a selected range as one grouped edit — one row, one undo, regardless of note count. Range-select now also works on the Overview lane. Found and fixed a real bug along the way: the single-note path had no minimum-duration floor, so snapping a short note could collapse it to zero width and permanently orphan the next edit that touched it. |
 | [Meta](#meta--require-a-build-sha-check-before-any-deploy-verification-2026-09-03-0359) | Both `docs/behaviour.md`'s Deployment smoke test and `CLAUDE.md` now require checking `#build-sha` against the expected commit before verifying anything against a PR preview or `main` — a stale cached `index.html` can otherwise silently pass off the previous build as the one under test. |
@@ -64,6 +65,57 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.27.0 — 簡譜 export as bars, rhythm, and HTML (2026-09-03 12:22)
+
+**Review:** not yet
+
+**What was built:**
+- **Export list** (Notes panel) now lays the 簡譜 reading onto the tempo grid instead of
+  fixed-length time windows: lines wrap every N bars — "Bars per line" (default 4),
+  replacing the old "Seconds per line" — instead of every N seconds.
+- Each note's duration is quantised to a 16th-note grid and drawn as standard 簡譜 rhythm
+  notation: 0/1/2 underlines for a quarter/eighth/sixteenth note, a trailing dash per
+  sustained extra beat, a trailing dot for a half-beat extension.
+- A note held across a barline is split into per-bar fragments joined by a tie mark (⌣),
+  rather than silently overflowing into the next bar or being cut without a mark.
+- Octave renders as real dots stacked above (higher) or below (lower) the digit — standard
+  簡譜 — instead of the apostrophe/comma punctuation the old plain-text export used as a
+  stand-in for a mark it couldn't actually draw.
+- The export itself became a self-contained HTML file (was Markdown), which is what makes
+  any of the above renderable at all: each line is bracketed by explicit `|` barlines at
+  both ends with `|` between every bar too, a full blank line separates one line from the
+  next, bars in a line are equal width, and notes within a bar are left-aligned. Silent
+  gaps between notes stay blank — no rest marks.
+
+**Key technical learnings:**
+- `[note]` Bar boundaries reuse `lib/ribbon.js`'s existing `beatTimes()` — the same tempo
+  grid the lane and zoomed-pane overlay already draw from — filtered to `bar: true` and
+  padded with a leading pickup bar (if playing notes start before the first detected bar)
+  and a trailing boundary at the song's end.
+- `[insight]` `degreeToken`'s apostrophe/comma octave-mark encoding only ever existed
+  because the old export was plain text, and its own comment said as much: "a rendered dot
+  can't appear in a downloaded text file." Once the export became real HTML, dots became
+  possible, and `degreeToken` was left with zero callers anywhere in the app — removed
+  along with its four dedicated tests rather than kept around as unused public API.
+- `[note]` `lib/jianpu.js`'s new `layoutBars()` takes bar-boundary times as plain input
+  rather than importing `lib/ribbon.js` itself, so the pure degree-mapping module stays
+  decoupled from tempo internals — the caller (`notes.js`) is the one that already knows
+  about tempo state.
+
+**Process learnings:**
+- `[note]` The rhythm/bar/tie/rest design choices — bars-per-line configurable and
+  defaulting to 4, traditional underline/dash rhythm notation, tie-split at a crossed
+  barline, silent gaps left blank rather than marked with rests — were settled with the
+  user via multiple-choice questions before any code was written, per this session's
+  bounded-path brainstorm.
+- `[note]` Three follow-up layout requests arrived after the first working version shipped
+  (equal-width bar columns, left-aligned notes within a bar, explicit `|` barlines at both
+  ends of every line so a wrap is never mistaken for a missing barline) and each was
+  re-verified against a real exported file opened in a real browser tab, not assumed
+  correct from the CSS alone.
 
 ---
 

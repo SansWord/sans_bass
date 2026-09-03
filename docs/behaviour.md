@@ -129,6 +129,60 @@ only way to see per-lane gain at all. For "did playback actually stop", patch
 
 ---
 
+## Deployment smoke test
+
+A fast, narrow pass for one specific question: **is the build/deploy wiring intact** —
+every script tag resolving, every `new Worker(new URL(...))` / `addModule(new URL(...))`
+reference actually loading its module — as opposed to "does the app still behave
+correctly," which is the rest of this file's job. Run this after touching
+`vite.config.js`, an entry HTML file, a Worker/worklet instantiation, or a CI workflow;
+after a real deploy (a PR preview or `main` going live); or as a quick health check
+instead of the full matrix when nothing UI-shaped has changed. It does **not** replace
+the full matrix for an actual behaviour change — it asserts a clock advances and the
+console stays clean, not gain ramps or computed styles or exact message text.
+
+Each step below cross-references the fuller row(s) it draws from rather than repeating
+their assertions. First assembled as the live-deployment check for the v1.20.0 npm +
+Vite migration, which is exactly what motivates it existing as a named, reusable
+sequence: that migration shipped two bugs — a script tag Vite's build silently left
+unprocessed, and an `AudioWorkletNode`'s import Vite silently left unbundled — that
+`npm run dev` and even `npm run build` + `npm run preview` didn't catch, and only a
+real deploy did. See the devlog's v1.20.0 entry.
+
+**Important:** unlike the full matrix, do **not** use the "Faking a separation run"
+recipe above for the separation step below. That recipe exists to skip a slow model
+download when what's under test is `separate.js`'s *message handling* — but here the
+thing under test is whether `separate.worker.js` itself loads at all, which faking the
+`Worker` constructor bypasses entirely. A worker that's broken at the module level would
+pass a faked run and fail a real one. Same logic for `notes.worker.js`.
+
+1. Load the page fresh. Console has zero errors. (G1, G2)
+2. Every entry HTML's script/link tags resolve to files that actually exist — check the
+   Network tab (every request 200, none 404), or against a built copy, that
+   `dist/index.html`'s hashed `<script src>`/`<link href>` names match files present in
+   `dist/assets/`. (G3, G4)
+3. Load one whole-song audio file. Confirm exactly one lane labelled **Full mix**, and
+   that `AudioContext.sampleRate` reads `44100`. (L1, L7)
+4. Click a lane's name block. Confirm it dims and nothing else does. (M1)
+5. Move the speed slider off 100%. Confirm the transport clock keeps advancing and the
+   console stays clean — this is the one `AudioWorkletNode` load in the whole app, and
+   the exact thing that broke silently in dev/preview but not in production. (S1, S4, S5
+   under Playback speed)
+6. Set an A–B loop (`a` then `b`) and **sample the playhead across two laps** — confirms
+   it actually wraps, not just that the bounds got set. (R1)
+7. Click **Separate into 6 stems** for real (see the note above — don't fake the
+   worker here) and wait for it to finish. Confirm the status line goes empty and
+   exactly six lanes replace the one, with no Full mix left over. This exercises
+   `separate.js`'s own `Worker`. (S4, S7 under Separation panel)
+8. Click **Find notes** for real. Confirm both note counts populate and, with a drums
+   stem present, the tempo panel appears with a BPM. This exercises `notes.js`'s
+   `Worker` — a second, independent module boundary from step 7's. (N1–N3 under Notes
+   lane; T1–T2 under Tempo grid)
+9. Switch language mid-playback. Confirm the transport clock keeps advancing across the
+   switch. (N4 under Language)
+
+---
+
 ## Loading
 
 | # | Expected | How to observe |

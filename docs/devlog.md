@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.25.0](#v1250--build-commit-sha-shown-in-the-corner-2026-09-03-0349) | A dim `<git short SHA>` now sits fixed in the page's bottom-right corner on every build (dev, PR preview, main), baked in at build time via a new `vite.config.js` `define`. Answers "is this actually the deploy I just made" directly, after the v1.24.0 session's own verification got fooled once by a stale cached `index.html`. |
 | [v1.24.0](#v1240--single-gesture-click-drag-to-select-and-move-a-note-2026-09-03-0315) | Moving a note in the zoomed pane used to need two separate clicks — one to select, a second to grab and drag. Now the very first click-drag on a note both selects and moves it in one gesture; releasing without dragging still just selects (E22). Resizing near an edge is unchanged: it still needs the note already selected, since the edge tabs that show where to grab are only drawn once selected. |
 | [v1.23.0](#v1230--shared-exportimport-edits--multi-stem-json-format-2026-09-03-0231) | The per-stem Export/Import-edits button pairs (vocals, bass) become one shared pair in the zoomed pane, beside the Edit-notes toggle — matching how editing itself is already single-target. A new JSON format keys each stem's edits under `stems.<id>` with `tempo`/`tempoRange` hoisted to the top as one shared object instead of duplicated per stem, so a future note-capable stem needs no format change. No back-compat with the old per-stem files — deliberately dropped. |
 | [v1.22.1](#v1221--fix-note-list-export-ordering-for-edited-in-notes-2026-09-03-0149) | An `add`/split-off note from `applyEdits()` was landing at the end of its 10-second block in **Export list**'s Markdown instead of its chronological position, because `applyEdits()` appends it to the end of the note array and the export handler bucketed notes in that raw array order. Fixed by sorting a copy before bucketing — the same pattern `lib/sonify.js` already used for the identical playback-side issue. |
@@ -62,6 +63,34 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.25.0 — Build commit SHA shown in the corner (2026-09-03 03:49)
+
+**Review:** not yet
+
+**What was built:**
+- `vite.config.js` now runs `git rev-parse --short HEAD` at build time and injects it as a
+  `define`d global, `__COMMIT_SHA__`, available to every bundled module the same way the
+  content-hash cache-busting already is.
+- A small `#build-sha` element, fixed to the page's bottom-right corner, shows it — dim,
+  monospace, `user-select`-able for copying straight out when comparing against a local
+  `git log`. `app.js` sets its text once, guarded the same null-safe way every other `el.*`
+  lookup in the file is.
+- Chosen over showing the devlog's semver: a version only changes once per session, so it
+  can't tell two different commits within the same `vX.Y.x` series apart if a deploy
+  happens mid-session before the devlog entry is written. The commit SHA changes every
+  commit, for free, with nothing to remember to bump — the same reasoning that replaced the
+  old hand-written `?v=` convention with Vite's own content hash.
+
+**Key technical learnings:**
+- `[note]` No test imports `app.js` directly (confirmed via grep before adding the global) —
+  `__COMMIT_SHA__` being undefined outside a Vite build/dev context is a non-issue for
+  `npm test`. Only `lib/*.js` files are imported by the unit suite.
+- `[note]` Motivated directly by this session's own v1.24.0 verification: production had
+  already deployed the fix, but a cached `index.html` served a stale bundle and briefly
+  looked like a real regression. A visible per-build identifier turns that class of mistake
+  into an immediate, at-a-glance check instead of a `fetch(..., {cache:'no-store'})`
+  detour.
 
 ## v1.24.0 — Single-gesture click-drag to select and move a note (2026-09-03 03:15)
 

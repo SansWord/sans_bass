@@ -368,6 +368,11 @@ init();
   </div>
 </div>
 
+<!-- Which commit is actually live, for checking a deploy (dev, PR preview, or main) is the
+     one under test — see vite.config.js's __COMMIT_SHA__. Decorative/technical, not
+     content, so it's out of the accessibility tree like the header's brand mark. -->
+<div id="build-sha" class="build-sha" aria-hidden="true"></div>
+
 <script type="module" src="lib/stems.js"></script>
 <script type="module" src="lib/unzip.js"></script>
 <script type="module" src="lib/analytics.js"></script>

@@ -106,6 +106,16 @@ Running log of what was built and what was learned building it.
   clipping a 3-second synthetic note's edges out of view before its resize handles could
   be reached. Worth a fresh profile or an explicit reset when a zoom-dependent test's pixel
   math doesn't add up.
+- `[gotcha]` Re-verifying against `https://sansword.github.io/sans_bass/` right after
+  `deploy-main.yml` succeeds can still silently test the *previous* build: GitHub Pages
+  pins `index.html` itself to `Cache-Control: max-age=600`, so a browser that already had
+  the page open (or revisits within that window) keeps the old hashed `main-*.js` — which,
+  for this exact change, reproduced precisely the pre-fix symptom (click-drag on an
+  unselected note doing nothing) and looked like a real regression on first click. A
+  `fetch(location.href, { cache: 'no-store' })` comparison against the currently-loaded
+  `<script src>` names caught the mismatch; reloading with a cache-busting query string
+  picked up the fresh bundle and the behaviour matched the PR preview exactly. Content-hash
+  busting (see the earlier `?v=` gotcha) only helps once the *page* itself is fresh.
 
 ## v1.23.0 — Shared export/import edits + multi-stem JSON format (2026-09-03 02:31)
 

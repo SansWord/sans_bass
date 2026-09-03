@@ -1,1 +1,0 @@
-import{t as e}from"./rolldown-runtime-DK3Fl9T5.js";var t=e({isHandheld:()=>n});function n(e){let t=e||window,n=!!(t.matchMedia&&t.matchMedia(`(pointer: coarse)`).matches),r=!!(t.navigator&&t.navigator.maxTouchPoints>1);return n&&r}window.SansPlatform={isHandheld:n};export{t as n,n as t};

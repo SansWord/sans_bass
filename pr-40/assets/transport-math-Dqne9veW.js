@@ -1,1 +1,0 @@
-function e(e){return Math.max(10,Math.min(150,Math.round(e)))}function t(t,n){return e(t+n)}function n({offset:e,elapsed:t,ratePercent:n,loopA:r,loopB:i,duration:a}){let o=n/100*t;if(r!==null&&i!==null){let t=i-r;return r+(e-r+o)%t}return Math.min(a,e+o)}export{n,t as r,e as t};

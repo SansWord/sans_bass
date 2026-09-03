@@ -185,7 +185,15 @@ function ensureAudio() {
     master.connect(audio.destination);
     // Each stem's synthesised-notes gain node is created per lane, in buildUI() — no lane
     // exists yet the first time ensureAudio() runs, before any song is loaded.
-    workletReady = audio.audioWorklet.addModule('lib/stretch-processor.js?v=1.19.0');
+    // AudioWorklet's addModule() has no Vite-native import-bundling support (unlike
+    // new Worker(new URL(...))), so the production build pins the worklet to a fixed,
+    // unhashed output filename (see vite.config.js) that this branch points at directly —
+    // the dev server needs no such workaround, since it transforms every module request
+    // (including addModule's) through its own resolver regardless of which API asked.
+    const stretchProcessorUrl = import.meta.env.DEV
+      ? new URL('./lib/stretch-processor.js', import.meta.url)
+      : new URL('./stretch-processor.js', import.meta.url);
+    workletReady = audio.audioWorklet.addModule(stretchProcessorUrl);
   }
   if (audio.state === 'suspended') audio.resume();
   return audio;

@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.20.0](#v1200--npm--vite-migration-2026-09-02-1754) | Dropped the vendored SoundTouch DSP core and the hand-written `?v=` cache-busting convention for a real npm + Vite pipeline: `soundtouchjs` installs as a normal dependency, `npm run build` produces the `dist/` both CI workflows now publish, and every asset Vite touches gets a content hash instead of a manually-bumped version string. No UI framework added; `app.js` and the classic-script `lib/*.js` files stay `window.SansX` scripts in substance, but all of them (plus `app.js`) had to switch their `<script>` tag to `type="module"` — Vite's HTML plugin only bundles/hashes a tag carrying that attribute, silently dropping a plain classic `<script src>` from the build entirely. |
 | [v1.19.0](#v1190--pitch-preserving-playback-speed-control-2026-09-02-1612) | A speed slider (50–150%, step 5, keyboard `[`/`]`/`\`) time-stretches playback without shifting pitch, via a vendored SoundTouchJS DSP core wrapped in a per-stem `AudioWorkletNode`. The native 100% path is byte-for-byte unchanged; crossing the 100% boundary rebuilds the audio graph, staying on one side of it live-rebases with no restart. |
 | [v1.18.8](#v1188--current-time-code-in-the-overview-and-zoom-lanes-2026-09-02-1514) | The Overview and Zoom lane-name divs now show `current/total` after their label (`0:06.72/3:20`), updated every frame off the same `currentTime()`/`draw()` path as the master transport clock. The Overview lane stacks it under the label instead of inline, since its 128px name column is pinned to every other lane's width for playhead alignment and couldn't grow to fit the extra digits. |
 | [v1.18.7](#v1187--bass-detection-floor-widened-for-down-tuned-and-5-string-basses-2026-09-02-1456) | `BASS_RANGE`'s YIN search floor widened twice on measured real audio: first to catch a half-step-down D#1 a standard-tuning-only floor missed entirely (contour visible, no note), then further for 5-string low-B headroom — the latter's accuracy/decode-cost trade explicitly measured and accepted rather than assumed. New `docs/tuning-cases.md` logs both as a reusable pattern. |
@@ -54,7 +55,111 @@ Running log of what was built and what was learned building it.
 
 ---
 
-## v1.19.0 — Pitch-preserving playback speed control (2026-09-02 16:12)
+## v1.20.0 — npm + Vite migration (2026-09-02 17:54)
+
+**Review:** not yet
+
+**Design docs:**
+- npm + Vite migration: [Spec](superpowers/specs/2026-09-02-npm-vite-migration-design.md) [Plan](superpowers/plans/2026-09-02-npm-vite-migration.md)
+
+**What was built:**
+
+- Replaced `lib/vendor/soundtouch-core.js` (hand-copied during the v1.19.0 playback-speed
+  work) with `soundtouchjs@^0.3.0` as a normal npm dependency — a verified drop-in, same
+  `SoundTouch`/`SimpleFilter` exports both `lib/stretch-processor.js` and
+  `tests/soundtouch.test.js` already used.
+- Added `package.json`, `package-lock.json`, and `vite.config.js` (multi-page build across
+  `index.html`, `tests/test.html`, `tests/parity.html`, `tests/notes.html`). `npm run dev`
+  replaces `scripts/serve.sh`; `npm run build` writes `dist/`, mirroring the source layout.
+- Removed every hand-written `?v=1.19.0` cache-buster and `tests/versions.test.js`, the test
+  that guarded them — Vite's content hashing makes a stale-asset-against-fresh-markup
+  mismatch structurally impossible instead of manually guarded.
+- Converted the three worker instantiations (`separate.js`, `notes.js` ×2) and the one
+  AudioWorklet load (`app.js`) from string paths (some carrying `?v=`) to
+  `new URL('./relative.js', import.meta.url)`, Vite's documented pattern for bundling and
+  hashing worker/worklet files instead of serving them as static passthrough.
+- Both `deploy-main.yml` and `pr-preview.yml` gained `actions/setup-node` + `npm ci` +
+  `npm run build` steps, and their `rsync` source moved from the raw checkout to `dist/`.
+  `pr-preview-cleanup.yml` is unaffected (no build involved).
+- `app.js` and the classic-script `lib/*.js` files (`stems.js`, `i18n.js`, `platform.js`,
+  `unzip.js`, `ribbon.js`, `jianpu.js`, `transport-math.js`, `analytics.js`) are unchanged in
+  substance — still `window.SansX`-style globals, not ES modules with `import`/`export` —
+  but every one of their `<script>` tags switched to `type="module"` (see the first
+  `[gotcha]` below).
+
+**Key technical learnings:**
+
+- `[note]` `soundtouchjs@0.3.0`'s published `dist/soundtouch.js` exports exactly
+  `{ AbstractFifoSamplePipe, PitchShifter, RateTransposer, SimpleFilter, SoundTouch,
+  Stretch, WebAudioBufferSource, getWebAudioNode }` — confirmed against the actual npm
+  tarball before writing this plan, not assumed from the vendoring comment.
+- `[gotcha]` **Vite's HTML plugin only bundles/hashes a `<script>` tag that carries
+  `type="module"`.** A plain classic `<script src="lib/foo.js">` is left completely
+  untouched — not rewritten, not even copied into `dist/` — and 404s in the built output.
+  This was the plan's own top-listed risk, and it materialized on the very first real build:
+  every classic-script `lib/*.js` file plus `app.js` had to switch its script tag to
+  `type="module"`, across `index.html`, `tests/test.html` and `tests/notes.html`. None of
+  the files' own source changed — they're already self-contained
+  `(function (global) {...})(window)` IIFEs assigning `window.SansX` — only the loading
+  mechanism did. `import.meta.url` (needed for the `new URL(...)` worker/worklet pattern)
+  is itself only legal inside a module, which is what forced `app.js` into the same change.
+- `[gotcha]` **A bare-string `new Worker(...)` call anywhere in the repo is invisible to
+  Vite's build**, not just in the app's own source. `tests/notes.test.js` had its own two
+  `new Worker('../notes.worker.js?v=1.16.1', ...)` calls — an even staler version string —
+  that Task 3's file list never covered, since it only listed `notes.js`/`notes.worker.js`
+  themselves. It passed under `npm run dev` (the dev server serves any path permissively)
+  and only failed under `npm run build` + `npm run preview`, where it 404s exactly like the
+  script-tag issue above. Caught by running the full built-mode test suite, not just the
+  dev-mode one — the two modes are not equivalent verification.
+- `[insight]` Multiple `<script type="module">` tags on one HTML entry point get bundled by
+  Rollup into a single chunk when there's no dynamic-import boundary between them (here:
+  every classic lib, `app.js`, `separate.js` and `notes.js` all collapsed into one
+  `main-*.js`). Functionally equivalent — Rollup renames colliding top-level identifiers —
+  but it does trade away the independent-failure isolation three separate script tags had
+  (an error in one no longer leaves the others unaffected). Accepted as a reasonable
+  build-tool default rather than fought, since manual testing found no actual regression.
+- `[gotcha]` **Vite's default `base: '/'` emits root-absolute asset paths
+  (`/assets/main-*.js`), which 404 anywhere the site isn't served from a domain root** —
+  and this site never is: production is `https://sansword.github.io/sans_bass/`, and every
+  PR preview is a further `/pr-<N>/` under that. Missed in local `npm run dev`/`npm run
+  preview` testing because both happen to serve from `http://localhost:8777/`, a real root —
+  the bug was invisible in every environment this plan's manual verification pass actually
+  used, and only showed up after the first real PR-preview deploy came back with the app
+  half-loading (HTML 200, every asset 404). Fixed with `base: './'` in `vite.config.js`,
+  which makes Vite emit paths relative to each output HTML file instead
+  (`./assets/...` from `index.html`, `../assets/...` from `tests/test.html`) — the same
+  "relative, never root-relative" rule `index.html`'s hand-written icon links already
+  followed, just not yet applied to Vite's own output.
+- `[gotcha]` **`AudioWorkletNode`/`.addModule()` has no Vite-native bundling support the
+  way `new Worker(new URL(...))` does.** A URL passed to `addModule()` gets Vite's generic
+  "copy as a raw, unprocessed static asset" treatment — not the special worker-detection
+  path that resolves imports and hashes the output — so `lib/stretch-processor.js`'s own
+  `import { SoundTouch, SimpleFilter } from 'soundtouchjs'` was copied byte-for-byte with
+  the bare specifier intact, which the browser's native module loader cannot resolve
+  (`Failed to resolve module specifier "soundtouchjs"`). This blocked **all** playback, not
+  just the speed feature, because `ensureAudio()` calls `addModule()` unconditionally on
+  first use, and its rejected promise stalled everything downstream. Silent in
+  `npm run dev` and even `npm run build` + `npm run preview` in this session's own earlier
+  testing — the actual root cause is unclear (worklet-module rejections may not always
+  surface as a visible console error at the moment they're awaited), but it was caught for
+  certain only once the built site was exercised for real on GitHub Pages. Fixed by adding
+  `lib/stretch-processor.js` as its own `rollupOptions.input` entry (so Rollup bundles and
+  resolves its import instead of leaving it as dead source), pinning that entry's output to
+  a fixed, unhashed filename via a custom `entryFileNames` function, and branching `app.js`
+  on `import.meta.env.DEV` to point at that fixed build path in production while keeping the
+  original `new URL(...)` reference for dev (which the dev server already handles
+  correctly). Leaves one small, harmless orphaned duplicate in the build output — Vite's
+  asset scanner still processes the dead-code dev-branch's `new URL(...)` literal before
+  minification removes it — accepted rather than chased further.
+
+**Process learnings:**
+
+- `[insight]` The plan's own "no ES module conversion needed" claim was the single
+  highest-risk assumption in it, and its own risk list said so. Verifying that assumption
+  meant actually running `npm run build` and reading the warnings, not trusting the spec's
+  reasoning about how Vite's HTML plugin behaves — the reasoning was wrong on the first try.
+
+---
 
 **Review:** not yet
 

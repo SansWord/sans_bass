@@ -17,8 +17,8 @@
  * See docs/superpowers/specs/2026-09-01-bass-notes-design.md. */
 
 import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, stemMismatch, BASS_RANGE }
-  from './lib/pitch.js?v=1.19.0';
-import { scheduleNotes } from './lib/sonify.js?v=1.19.0';
+  from './lib/pitch.js';
+import { scheduleNotes } from './lib/sonify.js';
 
 const tr = (key, params) => window.SansI18n.t(key, params);
 
@@ -179,7 +179,7 @@ tempoEl.rangeToggle.addEventListener('click', () => {
 tempoEl.redetect.addEventListener('click', () => {
   const drums = currentTempoRangeChannels();
   if (!drums) return;
-  const w = new Worker('./notes.worker.js?v=1.19.0', { type: 'module' });
+  const w = new Worker(new URL('./notes.worker.js', import.meta.url), { type: 'module' });
   tempoEl.redetect.disabled = true;
   w.onmessage = (e) => {
     w.terminate();
@@ -449,7 +449,7 @@ function createNotesChannel(stem, els) {
 
     const drums = currentTempoRangeChannels();
 
-    worker = new Worker('./notes.worker.js?v=1.19.0', { type: 'module' });
+    worker = new Worker(new URL('./notes.worker.js', import.meta.url), { type: 'module' });
     worker.onmessage = (e) => {
       const m = e.data;
       worker.terminate();

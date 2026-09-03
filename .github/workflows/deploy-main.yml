@@ -34,6 +34,21 @@ jobs:
           ref: gh-pages
           path: site
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/package-lock.json
+
+      - name: Install dependencies
+        working-directory: src
+        run: npm ci
+
+      - name: Build
+        working-directory: src
+        run: npm run build
+
       - name: Sync main to the site root, keeping PR previews
         run: |
           set -euo pipefail
@@ -46,7 +61,7 @@ jobs:
             --exclude 'rips' \
             --exclude 'stems' \
             --filter 'protect pr-*' --filter 'protect .nojekyll' \
-            src/ site/
+            src/dist/ site/
           # Plain static site: Jekyll would reprocess it and silently skip some files
           # (anything under a leading-underscore path, for one). Recreated on every run
           # so it survives the --delete sync above.

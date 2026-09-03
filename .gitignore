@@ -14,5 +14,11 @@ stems/**
 # Superpowers brainstorm scratch (visual companion mockups)
 .superpowers/
 
+# npm
+node_modules/
+
+# Vite build output — CI builds it fresh, never committed
+dist/
+
 # Superpowers git worktrees (isolated implementation workspaces)
 .worktrees/

@@ -25,26 +25,27 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   support was dropped in v1.5.0. `app.js` and every `lib/*.js` file (`stems.js`, `i18n.js`,
   `platform.js`, `unzip.js`, `ribbon.js`, `jianpu.js`, `transport-math.js`, `analytics.js`)
   are real ES modules as of v1.21.0 — actual `import`/`export`, not just the
-  `type="module"` loading mechanism the npm + Vite migration (v1.20.0) switched them to. See
-  the next bullet for the `window.SansX` bridge four of them still carry.
+  `type="module"` loading mechanism the npm + Vite migration (v1.20.0) switched them to.
+  `separate.js` and `notes.js` (already ESM themselves) import these `lib/*.js` files
+  directly too, as of v1.21.1 — see the next bullet.
 - **A module's public surface is its `export`s — a `window.SansX` global is a bridge, never
   a default.** Every ESM file in this repo (`lib/pitch.js`, `lib/wav.js`, `lib/zip.js`,
-  `lib/overlap.js`, `lib/sonify.js`, `lib/tempo.js`, `app.js`, and every `lib/*.js` file)
-  exports what it wants read; it does not also assign a global on the chance something might
-  want one later — that is designing for a hypothetical future consumer, the same thing this
-  project's conventions already rule out for features. The one exception is a **documented,
-  named bridge** for a specific consumer that genuinely cannot `import` yet — e.g.
-  `lib/pitch.js`'s `window.SansPitch = { parseNoteName }`, needed because `separate.js` is an
-  ES module and cannot share scope with `app.js`; the comment there says exactly which caller
-  it is for. `lib/i18n.js`, `lib/platform.js`, `lib/analytics.js` and `lib/jianpu.js` carry
-  the same kind of bridge, because `separate.js`/`notes.js` (already ESM, out of scope for
-  the v1.21.0 conversion) still read them via `window`; `lib/stems.js`, `lib/unzip.js`,
-  `lib/ribbon.js` and `lib/transport-math.js` do not, because nothing outside this project's
-  own module graph reads them. See
+  `lib/overlap.js`, `lib/sonify.js`, `lib/tempo.js`, `app.js`, `separate.js`, `notes.js`, and
+  every `lib/*.js` file) exports what it wants read; it does not also assign a global on the
+  chance something might want one later — that is designing for a hypothetical future
+  consumer, the same thing this project's conventions already rule out for features. No file
+  in this repo currently carries a `window.SansX` bridge — the last five
+  (`lib/i18n.js`'s `window.SansI18n`, `lib/platform.js`'s `window.SansPlatform`,
+  `lib/analytics.js`'s `window.SansAnalytics`, `lib/jianpu.js`'s `window.SansJianpu`, and
+  `lib/pitch.js`'s `window.SansPitch`) were removed in v1.21.1 once `separate.js` and
+  `notes.js` were converted to import them directly (and `app.js`'s one remaining
+  `window.SansPitch.parseNoteName` read, in `commitPitchDropdown()`, was converted the same
+  way — that bridge's actual reader had drifted from what its own comment claimed). See
   [`docs/superpowers/specs/2026-09-02-esm-modules-design.md`](superpowers/specs/2026-09-02-esm-modules-design.md)
-  for the full design. Never add a global "for consistency with the other files" or "in case
-  something needs it" — if a real consumer shows up later, adding the export back is a
-  one-line, fully reversible change.
+  for the original design. The exception this rule still allows is a **documented, named
+  bridge** for a specific consumer that genuinely cannot `import` yet — none currently exist,
+  but if a real one shows up, add it back narrowly and commented, the way these were; never a
+  global "for consistency with the other files" or "in case something needs it."
 - **Nothing leaves the machine.** No audio egress ever. No uploads of user content. One
   cookieless, anonymous usage beacon (GoatCounter) reports **event names only** — never
   audio, never filenames, never song titles. Every event name is a compile-time constant
@@ -99,16 +100,14 @@ A-B repeat / routing / input).
 index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
 lib/stems.js                       stem identity — ESM, no window bridge
 lib/unzip.js                       zip reading — ESM, no window bridge
-lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, window.SansI18n
-                                   bridge for separate.js/notes.js
-lib/platform.js                    isHandheld() device predicate — ESM, window.SansPlatform
-                                   bridge for separate.js
+lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
+lib/platform.js                    isHandheld() device predicate — ESM, no window bridge
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
 lib/pitch.js                       ESM — YIN, candidates, Viterbi decoding, segmentation,
                                    octave folding, key
 lib/sonify.js                      ESM — plays detected notes back as tones
 lib/ribbon.js                      ribbon geometry — ESM, no window bridge
-lib/jianpu.js                      簡譜 degrees — ESM, window.SansJianpu bridge for notes.js
+lib/jianpu.js                      簡譜 degrees — ESM, no window bridge
 separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
 notes.js  notes.worker.js          ESM — notes panel and the analysis worker
 tests/*.test.js                    units      → `npm test` (Vitest; see vitest.config.js)

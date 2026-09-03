@@ -3,6 +3,9 @@
 
 import { encodeWav } from './lib/wav.js';
 import { buildZip } from './lib/zip.js';
+import * as SansI18n from './lib/i18n.js';
+import * as SansPlatform from './lib/platform.js';
+import * as SansAnalytics from './lib/analytics.js';
 
 const el = {
   panel:  document.getElementById('sep'),
@@ -18,7 +21,7 @@ const el = {
 /* Separation cannot run on a phone or tablet — the first session.run() kills the tab. See
  * lib/platform.js for the evidence. Read once: the answer cannot change within a page
  * load, and refresh() runs every 400 ms. */
-const HANDHELD = window.SansPlatform?.isHandheld() ?? false;
+const HANDHELD = SansPlatform?.isHandheld() ?? false;
 
 const MB = 1e6;
 let worker = null;
@@ -30,12 +33,12 @@ function setProgress(frac) {
   if (frac !== null) el.fill.style.width = `${Math.round(frac * 100)}%`;
 }
 
-const tr = (key, params) => window.SansI18n.t(key, params);
+const tr = (key, params) => SansI18n.t(key, params);
 
 /* Analytics must never be able to break separation. A blocked or missing analytics
  * script degrades to a no-op rather than throwing out of an event handler. */
-const gcTrack = (n) => { try { window.SansAnalytics?.track(n); } catch (e) { /* never */ } };
-const gcOnce  = (n) => { try { window.SansAnalytics?.once(n);  } catch (e) { /* never */ } };
+const gcTrack = (n) => { try { SansAnalytics?.track(n); } catch (e) { /* never */ } };
+const gcOnce  = (n) => { try { SansAnalytics?.once(n);  } catch (e) { /* never */ } };
 
 /* Same shape as app.js's say(): remember the key, not the rendered text, so a language
  * switch mid-separation re-renders the progress line instead of freezing it. */

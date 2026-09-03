@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.21.1](#v1211--drop-the-last-windowsansx-bridges-2026-09-02-2331) | `separate.js` and `notes.js` converted from reading `window.SansI18n`/`SansPlatform`/`SansAnalytics`/`SansJianpu` to importing `lib/i18n.js`/`platform.js`/`analytics.js`/`jianpu.js` directly, closing the item v1.21.0 deliberately left open. All five remaining `window.SansX` bridges deleted, including `window.SansPitch` — whose real (and only) reader turned out to be `app.js`, not `notes.js` as its own comment claimed. No `lib/*.js` file in this repo carries a `window` bridge any more. |
 | [Meta](#meta--migrate-unit-tests-to-vitest-gate-on-ci-2026-09-02-2256) | `tests/test.html` (a browser page read via `window.__testResults`) is gone; `npm test` runs the same 271 tests via Vitest, split into three tiers (plain Node, jsdom, headless Chromium) by what each file actually needs, gated on every PR by a new `test.yml` CI workflow. No browser tool needed to check results anymore. |
 | [v1.21.0](#v1210--esm-modules-2026-09-02-2205) | `app.js` and the 8 classic-script `lib/*.js` files (`stems.js`, `i18n.js`, `platform.js`, `unzip.js`, `ribbon.js`, `jianpu.js`, `transport-math.js`, `analytics.js`) became real ES modules with `import`/`export`, closing the item the npm + Vite migration (v1.20.0) deliberately deferred. Four of them (`i18n.js`, `platform.js`, `analytics.js`, `jianpu.js`) keep a documented `window.SansX` bridge for `separate.js`/`notes.js`, which are already ESM and out of scope; the other four lose the global entirely. `index.html` needed zero changes — module singletons mean app.js importing the same files its own `<script>` tags load causes no duplicate evaluation, and execution order is spec-guaranteed rather than a document-order coincidence. |
 | [Meta](#meta--deployment-smoke-test-in-behaviourmd-2026-09-02-2123) | Extracted the checks used to verify the v1.20.0 deploy into a named **Deployment smoke test** section in `docs/behaviour.md` — a fast wiring check (module loading, real Worker/AudioWorklet instantiation, asset resolution) distinct from the full behaviour matrix. Fixed a stale `?v=` reference left over from the npm + Vite migration in the same file, and pointed `CLAUDE.md`'s own docs list at the new section so a fresh session can find it without reading `behaviour.md` end to end. |
@@ -55,6 +56,57 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.21.1 — Drop the last window.SansX bridges (2026-09-02 23:31)
+
+**Review:** not yet
+
+**What was built:**
+- `separate.js` and `notes.js` (both already ES modules) converted from reading
+  `window.SansI18n`/`window.SansPlatform`/`window.SansAnalytics`/`window.SansJianpu` to
+  importing `lib/i18n.js`/`lib/platform.js`/`lib/analytics.js`/`lib/jianpu.js` directly —
+  the item v1.21.0 deliberately left out of scope.
+- The now-unread `window.SansI18n`, `window.SansPlatform`, `window.SansAnalytics` and
+  `window.SansJianpu` bridge assignments deleted from their `lib/*.js` files, the same way
+  v1.21.0 dropped the analogous four, plus each one's bridge-regression test in
+  `tests/*.test.js`.
+- `index.html`'s two-tag i18n bootstrap (`<script src="lib/i18n.js">` followed by
+  `<script>window.SansI18n.init()</script>`) collapsed into one inline module that imports
+  `{ init }` and calls it — the last reader of `window.SansI18n` outside
+  `separate.js`/`notes.js`.
+- `window.SansPitch` deleted too. `app.js` now imports `parseNoteName` from `lib/pitch.js`
+  directly instead of reading the bridge in `commitPitchDropdown()`.
+- `lib/jianpu.js` and `lib/platform.js` no longer touch `window`/`document` at all once
+  their bridge assignment is gone, so `tests/jianpu.test.js` and `tests/platform.test.js`
+  moved from the jsdom Vitest tier to the plain-Node tier.
+- `CLAUDE.md`'s hard-constraints section and repo-layout table updated: no `lib/*.js` file
+  in this repo carries a `window.SansX` bridge any more.
+
+**Key technical learnings:**
+- `[gotcha]` A bridge's own comment naming its reader can drift wrong without anyone
+  re-checking it. `lib/pitch.js` said "`separate.js`... needs a bridge" and later "notes.js
+  imports lib/pitch.js... that import is what actually executes this assignment", but a
+  `grep` for the actual call site found only `app.js`'s `commitPitchDropdown()` — `notes.js`
+  already imports `lib/pitch.js` directly and has never called `parseNoteName`. Grep the
+  real call sites before deleting a bridge; don't trust the comment that named them.
+- `[insight]` A jsdom Vitest tier's own stated justification ("assigns a `window.SansX`
+  bridge... at module load") is worth re-checking after removing a bridge — it can silently
+  go stale. `lib/jianpu.js` and `lib/platform.js` had no other reason to need `window` once
+  their bridge was gone, so they moved to the Node tier; `lib/i18n.js` and `lib/analytics.js`
+  still legitimately need it (`localStorage`/`document`, `window.goatcounter`), so they
+  stayed in jsdom.
+- `[note]` Collapsing `index.html`'s two-tag i18n bootstrap into one inline
+  `<script type="module">import { init } from './lib/i18n.js'; init();</script>` is exactly
+  equivalent to the old `<script src="lib/i18n.js">` + `window.SansI18n.init()` pair —
+  module singleton semantics mean the import still only evaluates `lib/i18n.js` once.
+
+**Process learnings:**
+- `[insight]` Same safe sequencing v1.21.0 used: convert one consumer, run `npm test` and
+  `npm run build`, THEN `grep` to confirm zero remaining `window.SansX` readers before
+  deleting that one bridge — repeated five times here (i18n, platform, analytics, jianpu,
+  pitch) with a passing test+build checkpoint after each, not just at the end.
 
 ---
 

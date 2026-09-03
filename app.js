@@ -5,6 +5,7 @@
 
 import { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } from './lib/stems.js';
 import { extract } from './lib/unzip.js';
+import { parseNoteName } from './lib/pitch.js';
 import * as SansI18n from './lib/i18n.js';
 import * as SansPlatform from './lib/platform.js';
 import * as SansAnalytics from './lib/analytics.js';
@@ -2909,7 +2910,7 @@ function commitPitchDropdown() {
   const pitchStr = zoomToolbar.fieldPitchLetter.value
                  + zoomToolbar.fieldPitchAccidental.value
                  + zoomToolbar.fieldPitchOctave.value;
-  const newMidi = window.SansPitch.parseNoteName(pitchStr);
+  const newMidi = parseNoteName(pitchStr);
   if (newMidi === null || newMidi === n.midi) return;
 
   const at = selectedNote.at;

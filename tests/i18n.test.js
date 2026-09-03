@@ -188,11 +188,3 @@ test('i18n: translating labels never renames a stem', () => {
 
   I18N.setLocale('en', { persist: false });
 });
-
-test('i18n: window.SansI18n bridge still matches the real exports (regression: separate.js/notes.js read this)', () => {
-  assertEq(Object.keys(window.SansI18n).sort().join(','), Object.keys(SansI18n).sort().join(','),
-    'bridge exposes exactly the real exports, nothing more or less');
-  for (const k of Object.keys(SansI18n)) {
-    assert(window.SansI18n[k] === SansI18n[k], `window.SansI18n.${k} is the same binding`);
-  }
-});

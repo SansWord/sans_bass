@@ -123,11 +123,3 @@ test('analytics: watch() installs the GoatCounter sink and drains the queue', as
   assertEq(got[0].path, 'queued-before-load');
   assertEq(got[0].event, true, 'must be sent as an event, not a pageview');
 });
-
-test('analytics: window.SansAnalytics bridge still matches the real exports (regression: separate.js reads this)', () => {
-  assertEq(Object.keys(window.SansAnalytics).sort().join(','), Object.keys(SansAnalytics).sort().join(','),
-    'bridge exposes exactly the real exports, nothing more or less');
-  for (const k of Object.keys(SansAnalytics)) {
-    assert(window.SansAnalytics[k] === SansAnalytics[k], `window.SansAnalytics.${k} is the same binding`);
-  }
-});

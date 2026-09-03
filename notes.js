@@ -21,6 +21,7 @@ import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, BASS_RANG
 import { scheduleNotes } from './lib/sonify.js';
 import * as SansI18n from './lib/i18n.js';
 import * as SansJianpu from './lib/jianpu.js';
+import { beatTimes } from './lib/ribbon.js';
 import { buildEditsPayload, planImport } from './lib/notes-edits.js';
 
 const tr = (key, params) => SansI18n.t(key, params);
@@ -37,10 +38,98 @@ const STEM_RANGE = { vocals: undefined, bass: BASS_RANGE };   // undefined -> th
  * imply it is meant to be translated, which it deliberately never is. */
 const STEM_WORD = { vocals: 'Vocals', bass: 'Bass' };
 
-function mmss(totalSeconds) {
-  const m = Math.floor(totalSeconds / 60);
-  const s = Math.floor(totalSeconds % 60);
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+/** The current local time as `YYYY_MM_DD_HH_MM`, for stamping an export filename so a
+ *  repeated export of the same song/stem doesn't silently overwrite the last download. */
+function exportTimestamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}_${p(d.getMonth() + 1)}_${p(d.getDate())}_${p(d.getHours())}_${p(d.getMinutes())}`;
+}
+
+/** Escapes text dropped into the self-contained 簡譜 export — a song/mix name can carry
+ *  arbitrary characters (it comes from a ripped filename), and that export is an HTML
+ *  document rather than markdown now, so it needs the same care as any other HTML output. */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+/** `count` small filled circles, standard 簡譜 octave dots — stacked above the digit for
+ *  notes above the reference octave, below it for notes below. */
+function octaveDots(count) {
+  return '<span class="oct-dot"></span>'.repeat(count);
+}
+
+/** One rhythm-marked 簡譜 note fragment (see lib/jianpu.js's layoutBars) as inline HTML: the
+ *  digit with 0/1/2 underlines via CSS classes, standard 簡譜 octave dots stacked above/below
+ *  it from `frag.octave`, a dot for a half-beat rhythm extension, one `.dash` span per
+ *  sustained extra beat, and a tie glyph when this fragment is the first half of a note
+ *  split across a barline. The `.oct-up`/`.oct-down` spans are always present (even empty)
+ *  so every note reserves the same vertical space and digits stay aligned along a bar. */
+function fragmentHtml(frag) {
+  const octUp = `<span class="oct-up">${frag.octave > 0 ? octaveDots(frag.octave) : ''}</span>`;
+  const octDown = `<span class="oct-down">${frag.octave < 0 ? octaveDots(-frag.octave) : ''}</span>`;
+  const digit = `<span class="digit ul${frag.underline}">${escapeHtml(frag.token)}</span>`;
+  const note = `<span class="note">${octUp}${digit}${octDown}</span>`;
+  const dot = frag.dot ? '<span class="dot">.</span>' : '';
+  const dashes = '<span class="dash">-</span>'.repeat(frag.dashes);
+  const tie = frag.tie ? '<span class="tie">⌣</span>' : '';
+  return `<span class="frag">${note}${dot}${dashes}${tie}</span>`;
+}
+
+/** A self-contained HTML page for a 簡譜 export: `bars` (from lib/jianpu.js's layoutBars)
+ *  wrapped into lines of `barsPerLine`, each bar a bordered cell of rhythm-marked fragments,
+ *  under a tempo/time-signature line (`♩ = <bpm>  <beatsPerBar>/4` — every bar in this app's
+ *  grid is `beatsPerBar` quarter-note beats, so the note value is always fixed at 4, same
+ *  assumption noteRhythm's GRID_UNITS_PER_BEAT already makes). No external assets — every
+ *  rule needed to read it lives in the inlined <style>. */
+function jianpuHtml({ title, bars, barsPerLine, bpm, beatsPerBar }) {
+  const lines = [];
+  for (let i = 0; i < bars.length; i += barsPerLine) {
+    const cells = bars.slice(i, i + barsPerLine)
+      .map((frags) => `<span class="bar">${frags.map(fragmentHtml).join('')}</span>`)
+      .join('');
+    lines.push(`<div class="line">${cells}</div>`);
+  }
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+       background: #faf9f6; color: #1a1a1a; padding: 32px; line-height: 2.2; }
+h1 { font-size: 18px; margin: 0 0 4px; font-weight: 600; }
+.tempo { font-size: 14px; color: #555; margin: 0 0 20px; }
+/* Every bar keeps its own right border and the line itself carries a left border, so each
+   line reads as a self-contained "| bar | bar | bar |" — the wrap between one line's last
+   bar and the next line's first is never mistaken for the absence of a barline. A full
+   blank line's worth of margin separates one system from the next. */
+.line { display: flex; border-left: 2px solid #333; }
+.line:not(:last-child) { margin-bottom: 40px; }
+.bar { display: flex; flex: 1 1 0; min-width: 0; align-items: center; justify-content: flex-start;
+       flex-wrap: wrap; gap: 12px; padding: 4px 16px; border-right: 2px solid #333; min-height: 1.6em; }
+.frag { position: relative; display: inline-flex; align-items: center; }
+/* .note stacks standard 簡譜 octave dots above/below the digit. .oct-up/.oct-down keep a
+   fixed minimum height (empty or not) so every digit in a bar sits on the same baseline
+   regardless of how many dots its neighbours carry. */
+.note { display: inline-grid; grid-template-rows: auto auto auto; justify-items: center; row-gap: 2px; }
+.oct-up, .oct-down { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 5px; }
+.oct-dot { width: 4px; height: 4px; border-radius: 50%; background: #1a1a1a; }
+.digit { position: relative; display: inline-block; font-size: 20px; font-weight: 600;
+         line-height: 1; padding-bottom: 5px; }
+.digit.ul1::after, .digit.ul2::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1.5px; background: #1a1a1a; }
+.digit.ul2::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 1.5px; background: #1a1a1a; }
+.dot { font-weight: 900; margin-left: 1px; align-self: flex-end; }
+.dash { margin-left: 3px; font-weight: 700; }
+.tie { margin-left: 2px; color: #888; font-size: 14px; }
+</style></head>
+<body>
+<h1>${escapeHtml(title)}</h1>
+<p class="tempo">♩ = ${bpm.toFixed(1)} &nbsp;&nbsp; ${beatsPerBar}/4</p>
+${lines.join('\n')}
+</body></html>
+`;
 }
 
 // ---------------------------------------------------------------- shared: tempo grid
@@ -584,39 +673,36 @@ function createNotesChannel(stem, els) {
   });
 
   els.listExport.addEventListener('click', () => {
-    const secs = Number(els.listSecs.value) || 10;
+    const barsPerLine = Number(els.listBars.value) || 4;
     const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
     const refOct = SansJianpu.referenceOctave(notes, jianpu.tonic);
 
     /* applyEdits() (lib/pitch.js) appends an added/split note to the end of `notes`
-     * regardless of its own start time — lib/sonify.js hit this same issue and sorts a
-     * copy before use for the same reason. Without it, an edited-in note lands at the end
-     * of its 10-second window instead of its correct time-sorted position. */
-    const sorted = [...notes].sort((a, b) => a.start - b.start);
-    const windows = new Map();
-    for (const n of sorted) {
-      const idx = Math.floor(n.start / secs);
-      if (!windows.has(idx)) windows.set(idx, []);
-      windows.get(idx).push(n);
-    }
+     * regardless of its own start time — layoutBars (lib/jianpu.js) sorts its own copy
+     * before walking it, the same guard lib/sonify.js needed for the same reason. */
+    const stemAudio = window.sansBass.stemBuffer(stem);
+    const duration = stemAudio ? stemAudio.buffer.duration
+      : notes.reduce((max, n) => Math.max(max, n.end), 0);
+    const beatSec = tempo.bpmValue > 0 ? 60 / tempo.bpmValue : 0.5;
+
+    // Bar-start times from the shared tempo grid (same beatTimes() the ribbon draws from),
+    // padded with a leading pickup bar if the phase leaves notes before the first detected
+    // bar, and a trailing boundary at the song's end so the last bar isn't dropped.
+    const barStarts = beatTimes(tempo, duration).filter((b) => b.bar).map((b) => b.t);
+    if (!barStarts.length || barStarts[0] > 0) barStarts.unshift(0);
+    if (barStarts[barStarts.length - 1] < duration) barStarts.push(duration);
+
+    const bars = SansJianpu.layoutBars(notes, barStarts, jianpu.tonic, jianpu.mode, refOct, beatSec);
 
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
-    const lines = [`## ${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`, ''];
-    for (const idx of [...windows.keys()].sort((a, b) => a - b)) {
-      const from = idx * secs;
-      const to = from + secs;
-      lines.push(`### ${mmss(from)} - ${mmss(to)}`);
-      lines.push(windows.get(idx)
-        .map((n) => SansJianpu.degreeToken(n.midi, jianpu.tonic, jianpu.mode, refOct))
-        .join(' '));
-      lines.push('');
-    }
+    const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`;
 
-    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+    const blob = new Blob([jianpuHtml({ title, bars, barsPerLine, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar })],
+      { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${mix ? mix.name : 'song'}-${stem}-notes.md`;
+    a.download = `sans_bass_${mix ? mix.name : 'song'}_${stem}_notes_${exportTimestamp()}.html`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   });
@@ -694,7 +780,7 @@ channels.push(createNotesChannel('vocals', {
   editsSummary: document.getElementById('notes-edits-summary-vocals'),
   editUndo: document.getElementById('notes-edit-undo-vocals'),
   editRows: document.getElementById('notes-edit-rows-vocals'),
-  listSecs: document.getElementById('notes-list-secs-vocals'),
+  listBars: document.getElementById('notes-list-bars-vocals'),
   listExport: document.getElementById('notes-list-export-vocals'),
   jianpu: document.getElementById('notes-jianpu-vocals'),
   keyTonic: document.getElementById('notes-key-tonic-vocals'),
@@ -720,7 +806,7 @@ channels.push(createNotesChannel('bass', {
   editsSummary: document.getElementById('notes-edits-summary-bass'),
   editUndo: document.getElementById('notes-edit-undo-bass'),
   editRows: document.getElementById('notes-edit-rows-bass'),
-  listSecs: document.getElementById('notes-list-secs-bass'),
+  listBars: document.getElementById('notes-list-bars-bass'),
   listExport: document.getElementById('notes-list-export-bass'),
   jianpu: document.getElementById('notes-jianpu-bass'),
   keyTonic: document.getElementById('notes-key-tonic-bass'),
@@ -788,7 +874,7 @@ window.addEventListener('sansbass:exportedits', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${mix ? mix.name : 'song'}-notes-edits.json`;
+  a.download = `sans_bass_${mix ? mix.name : 'song'}_notes_edits_${exportTimestamp()}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 });

@@ -1,5 +1,6 @@
-import { test, assertEq } from './assert.js';
+import { test, assert, assertEq } from './assert.js';
 import * as SansJianpu from '../lib/jianpu.js';
+import { beatTimes } from '../lib/ribbon.js';
 
 const J = () => SansJianpu;
 
@@ -85,27 +86,103 @@ test('jianpu: referenceOctave survives an empty list', () => {
   assertEq(typeof J().referenceOctave([], 0), 'number', 'a number, not NaN or undefined');
 });
 
-test('jianpu: degreeToken has no octave marks in the reference octave', () => {
-  const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
-  assertEq(J().degreeToken(C4, 0, 'major', ref), '1', 'C4 in 1=C, reference octave');
+// ---------------------------------------------------------------- noteRhythm
+
+const BEAT = 0.5; // 120 BPM
+
+test('jianpu: noteRhythm reads a quarter note as the bare digit', () => {
+  assertEq(JSON.stringify(J().noteRhythm(0.5, BEAT)), JSON.stringify({ dashes: 0, underline: 0, dot: false }));
 });
 
-test('jianpu: degreeToken appends an apostrophe per octave above the reference', () => {
-  const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
-  assertEq(J().degreeToken(C4 + 12, 0, 'major', ref), "1'", 'one octave up');
-  assertEq(J().degreeToken(C4 + 24, 0, 'major', ref), "1''", 'two octaves up');
+test('jianpu: noteRhythm reads an eighth note as a single underline', () => {
+  assertEq(JSON.stringify(J().noteRhythm(0.25, BEAT)), JSON.stringify({ dashes: 0, underline: 1, dot: false }));
 });
 
-test('jianpu: degreeToken prepends a comma per octave below the reference', () => {
-  const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
-  assertEq(J().degreeToken(C4 - 12, 0, 'major', ref), ',1', 'one octave down');
-  assertEq(J().degreeToken(C4 - 24, 0, 'major', ref), ',,1', 'two octaves down');
+test('jianpu: noteRhythm reads a sixteenth note as a double underline', () => {
+  assertEq(JSON.stringify(J().noteRhythm(0.125, BEAT)), JSON.stringify({ dashes: 0, underline: 2, dot: false }));
 });
 
-test('jianpu: degreeToken keeps the accidental between the octave marks and the digit', () => {
+test('jianpu: noteRhythm reads a dotted eighth as an underline plus a dot', () => {
+  assertEq(JSON.stringify(J().noteRhythm(0.375, BEAT)), JSON.stringify({ dashes: 0, underline: 1, dot: true }));
+});
+
+test('jianpu: noteRhythm reads a half note as one sustain dash', () => {
+  assertEq(JSON.stringify(J().noteRhythm(1.0, BEAT)), JSON.stringify({ dashes: 1, underline: 0, dot: false }));
+});
+
+test('jianpu: noteRhythm reads a dotted quarter as a dot with no dash', () => {
+  assertEq(JSON.stringify(J().noteRhythm(0.75, BEAT)), JSON.stringify({ dashes: 0, underline: 0, dot: true }));
+});
+
+test('jianpu: noteRhythm reads a whole note as three sustain dashes', () => {
+  assertEq(JSON.stringify(J().noteRhythm(2.0, BEAT)), JSON.stringify({ dashes: 3, underline: 0, dot: false }));
+});
+
+test('jianpu: noteRhythm floors a duration shorter than a sixteenth to one', () => {
+  assertEq(JSON.stringify(J().noteRhythm(0.01, BEAT)), JSON.stringify({ dashes: 0, underline: 2, dot: false }));
+});
+
+// ---------------------------------------------------------------- layoutBars
+
+test('jianpu: layoutBars keeps a note that fits in one bar as a single, untied fragment', () => {
+  const notes = [{ start: 0, end: 0.5, midi: C4 }];
+  const bars = J().layoutBars(notes, [0, 1, 2], 0, 'major', J().degreeOf(C4, 0, 'major').octaveIndex, BEAT);
+  assertEq(bars.length, 2, 'two bars from three boundaries');
+  assertEq(bars[0].length, 1, 'one fragment in bar 0');
+  assertEq(bars[0][0].token, '1');
+  assertEq(bars[0][0].octave, 0, 'a note at the reference octave has no dots');
+  assertEq(bars[0][0].tie, false, 'a note that does not cross a boundary is not tied');
+  assertEq(bars[1].length, 0, 'bar 1 has no notes');
+});
+
+test('jianpu: layoutBars reports octave as a signed count of dots from the reference, not punctuation', () => {
   const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
-  // C4+3 = Eb4 = b3 in 1=C major (see the worked-examples test above).
-  assertEq(J().degreeToken(C4 + 3, 0, 'major', ref), 'b3', 'flat degree, reference octave');
-  assertEq(J().degreeToken(C4 + 3 + 12, 0, 'major', ref), "b3'", 'flat degree, one octave up');
-  assertEq(J().degreeToken(C4 + 3 - 12, 0, 'major', ref), ',b3', 'flat degree, one octave down');
+  const notes = [
+    { start: 0, end: 0.5, midi: C4 + 12 },   // one octave above
+    { start: 0.5, end: 1, midi: C4 - 24 },   // two octaves below
+  ];
+  const bars = J().layoutBars(notes, [0, 1], 0, 'major', ref, BEAT);
+  assertEq(bars[0][0].token, '1', 'token carries no apostrophe/comma marks');
+  assertEq(bars[0][0].octave, 1, 'one octave above the reference');
+  assertEq(bars[0][1].octave, -2, 'two octaves below the reference');
+});
+
+test('jianpu: layoutBars splits a note that crosses a barline and ties the first fragment', () => {
+  const notes = [{ start: 0, end: 1.5, midi: C4 }];
+  const bars = J().layoutBars(notes, [0, 1, 2], 0, 'major', J().degreeOf(C4, 0, 'major').octaveIndex, BEAT);
+  assertEq(bars[0].length, 1, 'bar 0 gets the first fragment');
+  assertEq(bars[0][0].tie, true, 'the fragment before the split is tied into the next bar');
+  assertEq(JSON.stringify({ dashes: bars[0][0].dashes, underline: bars[0][0].underline, dot: bars[0][0].dot }),
+    JSON.stringify({ dashes: 1, underline: 0, dot: false }), 'bar 0 fragment is a full 1s (half note) sustain');
+  assertEq(bars[1].length, 1, 'bar 1 gets the second fragment');
+  assertEq(bars[1][0].tie, false, 'the last fragment of a split note is not tied further');
+  assertEq(bars[1][0].token, '1', 'the tied fragment carries the same pitch');
+});
+
+test('jianpu: layoutBars does not spawn a phantom sliver from float drift when a snapped note lands on a barline', () => {
+  /* Reproduces a real report: after "Snap range" on the whole song, a note landing exactly
+   * on a barline showed up as two notes — a real one, plus a ghost sixteenth-note tied in
+   * from the PREVIOUS bar. Root cause: barBounds (from lib/ribbon.js's beatTimes(), raw,
+   * unrounded floats built by accumulating +=periodSec in a loop) and a snapped note's
+   * start (rounded to millisecond precision via roundSeconds, same as every stored note
+   * time in the app) are computed by different arithmetic paths and can disagree by a
+   * fraction of a millisecond — see 133 BPM, bar 6 below, where the raw boundary is
+   * 10.827067... and roundSeconds stores 10.827, ~68 microseconds EARLIER. Comparing a
+   * rounded note time against an unrounded boundary put that sliver in the wrong bar. */
+  const bpm = 133;
+  const beatsPerBar = 4;
+  const periodSec = 60 / bpm;
+  const barBoundaryRaw = beatTimes({ bpmValue: bpm, phaseMs: 0, beatsPerBar }, 30)
+    .filter((b) => b.bar)[6].t;
+  const noteStart = Math.round(barBoundaryRaw * 1000) / 1000; // roundSeconds, as snap-to-grid stores it
+  assert(noteStart < barBoundaryRaw, 'the reproduction depends on rounding landing below the raw boundary');
+
+  const notes = [{ start: noteStart, end: noteStart + 0.5, midi: C4 }];
+  const barBounds = [0, barBoundaryRaw, barBoundaryRaw + periodSec * beatsPerBar];
+  const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
+  const bars = J().layoutBars(notes, barBounds, 0, 'major', ref, periodSec);
+
+  assertEq(bars[0].length, 0, 'no phantom fragment in the bar before the note actually starts');
+  assertEq(bars[1].length, 1, 'the note lands cleanly, whole, in the bar it starts');
+  assertEq(bars[1][0].tie, false, 'not tied — this is one ordinary note, not a split one');
 });

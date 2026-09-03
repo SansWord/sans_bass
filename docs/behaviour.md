@@ -16,8 +16,7 @@ than run in that session, so treat them as the least trustworthy rows here.
 ## The test harness
 
 There is no runner. `tests/test.html` covers the pure functions; everything below is
-observed in a real browser. `./scripts/serve.sh` first — separation and ES modules need
-HTTP.
+observed in a real browser. `npm run dev` first — separation and ES modules need HTTP.
 
 Five things that will waste an hour if you don't know them:
 
@@ -26,9 +25,10 @@ Five things that will waste an hour if you don't know them:
   user still sees the button is exactly the bug that shipped in v1.2.1.
 - **Take a screenshot.** Four property assertions passed against a visibly broken panel in
   v1.2.2. The picture caught it immediately.
-- **A same-URL navigation can reuse the cached stylesheet**, even though `serve.sh` sends
-  `no-store` and `curl` shows the new bytes. Force it:
-  `link.href = 'styles.css?v=' + Date.now()`.
+- **A same-URL navigation can reuse the cached stylesheet.** This is a browser navigation
+  cache quirk, independent of which dev server serves the page. Force it:
+  `link.href = 'styles.css?v=' + Date.now()` (a one-off diagnostic override — unrelated to
+  the retired production `?v=` convention).
 - **`setInterval` is throttled to ~1 Hz in a backgrounded tab**, and an automation tab is
   always backgrounded. `separate.js` polls `refresh()` every 400 ms; under automation give
   it several seconds before concluding anything. Same for `requestAnimationFrame`, which
@@ -487,8 +487,8 @@ The inline Start/End/Pitch fields beside the toolbar (rows E27-E32) are a later 
 |---|---|---|
 | G1 | A missing element does not stop `app.js`. Every top-level listener goes through `on()`, which warns and continues. | Serve a copy of `index.html` with `id="play"` renamed. `window.sansBass` is still an object and drag & drop still works — before v1.4.0 this killed every listener below it. |
 | G2 | An uncaught error puts a message on screen naming the force-reload, instead of leaving a page that looks fine and does nothing. | Throw from the console; `#status` is visible and mentions Cmd-Shift-R. |
-| G3 | Every local asset URL carries `?v=<version>`, and all of them agree. | `tests/versions.test.js`. GitHub Pages pins everything to `max-age=600` with no way to change it, so without this a returning visitor can hold a stale `app.js` against a fresh `index.html` for ten minutes. |
-| G4 | The page is served over HTTP — GitHub Pages, or `./scripts/serve.sh` locally. `file://` is no longer supported (dropped in v1.5.0); opening `index.html` from disk is not expected to work. | `separate.js` now loads as a plain `<script type="module">` with no protocol guard. |
+| G3 | Every asset Vite's build touches is content-hashed, and a fresh `index.html` never references a stale hashed file. | Run `npm run build`, inspect `dist/index.html` — every `<script src>`/`<link href>` points at a `-<hash>.js`/`.css` filename that matches a file actually present in `dist/assets/`. |
+| G4 | The page is served over HTTP — GitHub Pages, or `npm run dev` locally. `file://` is no longer supported (dropped in v1.5.0); opening `index.html` from disk is not expected to work. | `separate.js` now loads as a plain `<script type="module">` with no protocol guard. |
 
 ## Analytics
 
@@ -507,8 +507,8 @@ The inline Start/End/Pitch fields beside the toolbar (rows E27-E32) are a later 
 Breaking any of these breaks the project, not just a behaviour.
 
 - The site is served over HTTP. `file://` support was dropped in v1.5.0 — local use goes
-  through `./scripts/serve.sh`, which separation already required.
-- No build step, no dependencies, no npm, no framework.
+  through `npm run dev`, which separation already required.
+- npm-managed dependencies and a Vite build step; still no UI framework.
 - No audio ever leaves the machine, and no filename or song title does either. The one
   outbound beacon is GoatCounter, carrying event names from a fixed set — see the
   Analytics section above. Inbound fetches (ORT from jsDelivr, model from Hugging Face)

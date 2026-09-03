@@ -68,26 +68,24 @@ and printing, persistence of the chosen key across loads, and surfacing detectio
 
 ## Migrate to npm + a build step
 
-Wanted: drop the "no build step, no npm" hard constraint (see `CLAUDE.md`) in favour of a real
-package manager and bundler (Vite or esbuild), so third-party code (SoundTouchJS in
-[`lib/vendor/soundtouch-core.js`](../lib/vendor/soundtouch-core.js), the ONNX runtime currently
-pulled from jsDelivr in `separate.js`) can be installed as a normal dependency instead of
-vendored or CDN-loaded.
+**Built in v1.20.0** — [spec](superpowers/specs/2026-09-02-npm-vite-migration-design.md),
+[plan](superpowers/plans/2026-09-02-npm-vite-migration.md). See `vite.config.js`.
 
-**What this touches, once picked up.** This is a project-wide change, not a one-file swap:
-`app.js` and every `lib/*.js` classic script would become bundled modules; `tests/test.html`'s
-plain `<script>` tags would need to load through the same bundle (or the test harness would
-need its own build step); the CI workflows in `.github/workflows/` would gain a build stage
-before publishing to `gh-pages`, for both the `main` release and every per-PR `/pr-<N>/`
-preview (see [`deployment.md`](deployment.md)); and `CLAUDE.md`, `README.md`, and
-`deployment.md` would all need their "no build step" language rewritten.
+Dropped the "no build step, no npm" hard constraint in favour of npm + Vite: `soundtouchjs`
+installs as a normal dependency instead of the vendored `lib/vendor/soundtouch-core.js`, and
+`npm run build` produces `dist/`, which both CI workflows now publish instead of the raw
+repo. `app.js` and the classic-script `lib/*.js` files did **not** need any source changes
+— they're still `window.SansX`-assigning IIFEs, not a real module graph with
+`import`/`export` — but they **did** need their `<script>` tags switched to
+`type="module"`: Vite's HTML plugin only bundles and content-hashes a script tag carrying
+that attribute, and leaves a plain classic `<script src>` completely untouched (not even
+copied into `dist/`), which 404s in the built output. That was the plan's own top risk item,
+and it materialized on the first real build.
 
-**Open questions before design:** Vite vs. esbuild vs. something else; whether the whole app
-bundles as one entry point or stays split (player / separation / notes) the way it is today;
-whether `tests/test.html` keeps working unbundled during the transition or migrates in the
-same pass. Raised while executing the v1.19.0 playback-speed plan — SoundTouchJS ended up
-vendored under LGPL-2.1 rather than installed, precisely because this migration hadn't
-happened yet.
+**Still wanted:** the ONNX runtime and separation model stay CDN/runtime-fetched by design
+(out of scope for this migration — see its spec's non-goals); converting `app.js` and the
+classic-script `lib/*.js` files to a real ES module graph (actual `import`/`export`, not
+just the `type="module"` loading mechanism) is still separate, deferred work.
 
 ## Paste a YouTube link, extract the audio for separation
 

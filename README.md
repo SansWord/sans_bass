@@ -3,12 +3,12 @@
 A local HTML/JS player for punk rock stems. Load a song, see its waveform, and play the
 full mix or solo the vocals, guitar, bass and drums.
 
-Everything runs in the browser. No build step and no upload — your audio never leaves your
-machine. In-browser separation fetches a model *in*, but nothing about your audio ever goes
-*out*. It is built for learning a part: solo one instrument, set an A–B loop around the
-phrase you keep fluffing, and drill it.
+Everything runs in the browser. No upload — your audio never leaves your machine.
+In-browser separation fetches a model *in*, but nothing about your audio ever goes *out*.
+It is built for learning a part: solo one instrument, set an A–B loop around the phrase you
+keep fluffing, and drill it.
 
-**Already have stems?** Zip the folder, start the server with `./scripts/serve.sh`, open
+**Already have stems?** Zip the folder, start the server with `npm run dev`, open
 <http://localhost:8777>, click **Load song or zip**, pick the zip, and skip to [Controls](#controls).
 Steps 1–3 below are the one-time job of getting stems out of a CD.
 
@@ -195,7 +195,7 @@ Homebrew and Demucs entirely and let the browser do it — on a desktop; see the
 bullet below.
 
 ```bash
-./scripts/serve.sh          # http://localhost:8777
+npm run dev                 # http://localhost:8777
 ```
 
 Open that URL, click **Load song or zip**, pick any audio file, then **Separate into 6 stems**.
@@ -237,8 +237,9 @@ Details worth knowing:
 
 ### Hosting it
 
-The whole thing is static, so GitHub Pages serves it with no backend and no build step —
-push the repo and enable Pages. Inference runs on the visitor's GPU.
+GitHub Pages serves the built `dist/` output with no backend — CI runs `npm run build`
+before every deploy, so nothing unbuilt reaches `gh-pages`. Inference runs on the visitor's
+GPU.
 
 This works only because `numThreads = 1` avoids SharedArrayBuffer and therefore COOP/COEP,
 which Pages cannot set. Do not "optimise" that setting without re-reading
@@ -254,7 +255,7 @@ Two rules for a public deployment:
 ## Step 4 — Play
 
 ```bash
-./scripts/serve.sh          # then open http://localhost:8777
+npm run dev                 # then open http://localhost:8777
 ```
 
 Then zip one song's folder — `stems/<song>/`, or `stems/<album>/<song>/` if you batched an
@@ -290,12 +291,11 @@ The page is served over HTTP — there is no `file://` mode. Either use the host
 <https://sansword.github.io/sans_bass/>, or run it locally:
 
 ```bash
-./scripts/serve.sh          # http://localhost:8777
+npm run dev                 # http://localhost:8777
 ```
 
-Use `ThreadingHTTPServer` (as `serve.sh` does) rather than a plain `python3 -m http.server`.
-The default server is single-threaded, and with files this size the browser can wedge it —
-`fetch` then hangs forever while `curl` on the same URL returns instantly.
+Vite's dev server is non-blocking, so it doesn't wedge on the ~285 MB model fetch the way
+a naive single-threaded static server would.
 
 ### Controls
 
@@ -441,7 +441,8 @@ icons/*.png               rasterised from icon.svg by scripts/make-icons.sh
 tests/test.html           unit tests   (read window.__testResults)
 tests/parity.html         separation accuracy vs native stems (read window.__parity)
 tests/notes.html          note + key detection bench (read window.__notes)
-scripts/serve.sh          serve over http://localhost:8777
+package.json              npm scripts: dev, build, preview
+vite.config.js             Vite multi-page build config
 scripts/make-icons.sh     icons/icon.svg    → the committed PNG icons (needs librsvg)
 scripts/rip-cd.sh         mounted audio CD  → lossless FLAC
 scripts/prep-stems.sh     one song          → separated, web-ready stems

@@ -18,12 +18,19 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
 
 ## Hard constraints — do not break these
 
-- **No build step, no dependencies, no framework.** Vanilla JS, no bundler, no npm, nothing
-  installed. The player core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js`
-  and `lib/unzip.js`. The site is served over HTTP — GitHub Pages, or `./scripts/serve.sh`
-  locally. `file://` support was dropped in v1.5.0; `lib/stems.js`, `lib/unzip.js` and
-  `lib/i18n.js` are still classic scripts only because the ESM migration is a separate
-  change.
+- **npm + Vite build the site; no UI framework.** `npm run dev` for local dev, `npm run
+  build` for `dist/`, both CI workflows build before publishing. The player core is
+  `index.html`, `styles.css`, `app.js` plus `lib/stems.js` and `lib/unzip.js`. Vanilla JS
+  stays the default for code this project writes — React/Vue/etc. are still out. `file://`
+  support was dropped in v1.5.0. `app.js` and every classic-script `lib/*.js` file
+  (`stems.js`, `i18n.js`, `platform.js`, `unzip.js`, `ribbon.js`, `jianpu.js`,
+  `transport-math.js`, `analytics.js`) load with `type="module"` now — Vite's HTML plugin
+  only bundles and content-hashes a `<script>` tag that carries that attribute; a plain
+  classic `<script src>` is left completely untouched and never copied into `dist/`, so it
+  404s in the built output. None of their source changed to make this work — they're still
+  self-contained `(function (global) {...})(window)` IIFEs assigning `window.SansX`, not a
+  real ES module graph with `import`/`export` — only the `<script>` tag's loading mechanism
+  did.
 - **Nothing leaves the machine.** No audio egress ever. No uploads of user content. One
   cookieless, anonymous usage beacon (GoatCounter) reports **event names only** — never
   audio, never filenames, never song titles. Every event name is a compile-time constant
@@ -92,7 +99,8 @@ tests/test.html                    units      → window.__testResults
 tests/parity.html                  accuracy   → window.__parity
 tests/notes.html                   notes+key  → window.__notes
 .github/workflows/                 Pages deploy + per-PR previews (see docs/deployment.md)
-scripts/serve.sh                   http://localhost:8777 (required for separation)
+package.json  vite.config.js       npm scripts (dev/build/preview), Vite multi-page config
+dist/                               build output (git-ignored; CI builds it, never committed)
 scripts/rip-cd.sh                  CD → rips/*.flac
 scripts/prep-stems.sh              one song → stems/<song>/*.m4a
 rips/    <track>.flac, <album>/<track>.flac      ~560 MB, local only
@@ -155,8 +163,6 @@ out of the project; never commit them.
   works. If the clock reads 0 while `playing` is true, this is why.
 - **A looping source never fires `onended`** — end-of-song detection is attached only when
   `!src.loop`.
-- **Serve with `ThreadingHTTPServer`, not `python3 -m http.server`.** The single-threaded
-  default wedges on files this size: browser `fetch` hangs forever while `curl` returns instantly.
 - **The AudioContext must be 44.1 kHz.** `decodeAudioData` resamples to the context rate,
   and the separation model requires 44100. A default context is often 48 kHz on macOS,
   which would feed the model stretched audio and produce wrong stems with no error at all.
@@ -166,16 +172,14 @@ out of the project; never commit them.
   at double volume. Covered by a test in `tests/stems.test.js`. In-browser separation avoids
   the question by dropping the original: `loadSeparated` builds lanes from the six stems
   only, which is also why `__hasStems` is false there and every lane starts unmuted.
-- **Every local asset URL carries `?v=<version>` and they must all match.** GitHub Pages pins
-  everything to `max-age=600` with no way to override it, so for ten minutes after a deploy a
-  returning visitor can run a stale `app.js` against a fresh `index.html`. That is not a
-  degraded page — the old script throws on an element the new markup dropped, and because
-  `app.js` wires everything from one flat run of top-level statements, every listener *below*
-  the throw silently never registers. Bump the version in `index.html` (16), `app.js` (1),
-  `lib/stretch-processor.js` (1), `separate.js` (3), `separate.worker.js` (1), `notes.js` (4)
-  and `notes.worker.js` (2) — 28 in all; `tests/versions.test.js` fails if they drift — and
-  it covers `.png` and `.svg` as well as `.js`/`.css`, so the icons are included. Currently
-  `v1.19.0`.
+- **Cache-busting is now Vite's content hash, not a hand-written `?v=`.** GitHub Pages still
+  pins everything to `max-age=600` with no way to override it, but every asset Vite's build
+  touches — every entry HTML's `<script src>`/`<link href>`/`<img src>`, and every
+  `new Worker(new URL(...))` / `addModule(new URL(...))` reference — gets a content hash
+  baked into its filename, so a stale `app.js` against a fresh `index.html` is no longer
+  reachable: the fresh `index.html` points at the fresh `app.js`'s hashed name, not the old
+  one. There is no version to bump by hand, and no `tests/versions.test.js`-shaped test is
+  needed — it was deleted along with the manual `?v=` convention it guarded.
 - **Separation is desktop-only, and that is not fixable from this repo.** On iOS the first
   `session.run()` kills the tab; the accumulators, the 285 MB model, the memory floor,
   WebGPU and asyncify were each ruled out by measurement, and `N_SAMPLES = 343980` is baked
@@ -208,9 +212,6 @@ out of the project; never commit them.
 - **The overlap window barely matters.** Overlap-add normalises by the weight sum, so the
   output is a weighted average of near-identical predictions. Trapezoid and raised cosine
   measured identical to three decimals. Don't spend time tuning it.
-- **`serve.sh` sends `Cache-Control: no-store`** because Chrome otherwise serves a stale
-  ES module after you edit it, and the test page silently checks the old code — which looks
-  exactly like a correct fix failing.
 - **Check a workflow's *conclusion*, not that it ran.** Two workflows sharing a concurrency
   group let GitHub cancel one as "pending"; the v1.2.0 merge deployed nothing and reported
   no failure anywhere. Same rule as audio here: observe the outcome, not the parameters.
@@ -223,12 +224,8 @@ out of the project; never commit them.
 - **Near-silent `piano`/`other` stems are correct** for a guitar band, not a bug. Verify with
   `ffmpeg -af volumedetect` before chasing it.
 - **`htdemucs_6s` is the only model that splits out guitar.** Don't switch to plain `htdemucs`.
-- **GoatCounter's script tag must be `https://`, not protocol-relative.** Their docs give
-  `//gc.zgo.at/count.js`. `tests/versions.test.js` exempts external URLs with
-  `url.startsWith('http')`, so a protocol-relative URL is treated as a local asset missing
-  its `?v=` and fails the suite.
 - **`allow_local` is deliberately not set.** GoatCounter filters localhost and private-IP
-  requests, so events fired from `scripts/serve.sh` silently vanish — which looks exactly
+  requests, so events fired from `npm run dev` silently vanish — which looks exactly
   like broken instrumentation. Verify with `SansAnalytics.setSink(console.log)` instead;
   flip `allow_local` only if the network leg itself needs proving, and never commit it.
 - **`play` is instrumented in `toggle()`, not `play()`.** `play()` is re-entered by `seek()`
@@ -254,9 +251,10 @@ out of the project; never commit them.
   the code is.
 - **Tests are browser pages, not a runner.** `tests/test.html` for units (read
   `window.__testResults`), `tests/parity.html` for separation accuracy against the native
-  stems in the repo (read `window.__parity`). Both need `./scripts/serve.sh`. There is no
-  npm and none may be added. Everything the unit tests cannot reach — the whole UI — is
-  specified in [`docs/behaviour.md`](docs/behaviour.md), harness included.
+  stems in the repo (read `window.__parity`). Both need `npm run dev` (or `npm run build`
+  plus `npm run preview`, for a production-parity check). Everything the unit tests cannot
+  reach — the whole UI — is specified in [`docs/behaviour.md`](docs/behaviour.md), harness
+  included.
 - **Versioning:** three-part semver. `vX.Y.0` for releases, `vX.Y.1` for follow-up sessions,
   `vX.Y.0-design` for design-only sessions. Devlog headings, TL;DR anchors, and any tags match.
 - **Devlog at end of session.** Newest-first, update the TL;DR table with an anchor link, and

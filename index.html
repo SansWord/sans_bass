@@ -18,8 +18,8 @@
      rather than on load, so tests/test.html can read the dictionary without having its own
      title rewritten. The literal English in the markup below is the no-JS fallback and the
      readable source of truth; it matches DICT.en exactly. -->
-<script src="lib/i18n.js"></script>
-<script>window.SansI18n.init();</script>
+<script type="module" src="lib/i18n.js"></script>
+<script type="module">window.SansI18n.init();</script>
 <!-- Anonymous, cookieless usage counts. External, so Vite leaves the URL alone — and
      https:// rather than the protocol-relative //gc.zgo.at from GoatCounter's docs, to
      keep it an unambiguous absolute URL. -->
@@ -371,13 +371,13 @@
   </div>
 </div>
 
-<script src="lib/stems.js"></script>
-<script src="lib/unzip.js"></script>
-<script src="lib/analytics.js"></script>
-<script src="lib/platform.js"></script>
-<script src="lib/ribbon.js"></script>
-<script src="lib/jianpu.js"></script>
-<script src="lib/transport-math.js"></script>
+<script type="module" src="lib/stems.js"></script>
+<script type="module" src="lib/unzip.js"></script>
+<script type="module" src="lib/analytics.js"></script>
+<script type="module" src="lib/platform.js"></script>
+<script type="module" src="lib/ribbon.js"></script>
+<script type="module" src="lib/jianpu.js"></script>
+<script type="module" src="lib/transport-math.js"></script>
 <script type="module" src="app.js"></script>
 <script type="module" src="separate.js"></script>
 <script type="module" src="notes.js"></script>

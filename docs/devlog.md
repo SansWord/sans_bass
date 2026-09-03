@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.23.0](#v1230--shared-exportimport-edits--multi-stem-json-format-2026-09-03-0231) | The per-stem Export/Import-edits button pairs (vocals, bass) become one shared pair in the zoomed pane, beside the Edit-notes toggle — matching how editing itself is already single-target. A new JSON format keys each stem's edits under `stems.<id>` with `tempo`/`tempoRange` hoisted to the top as one shared object instead of duplicated per stem, so a future note-capable stem needs no format change. No back-compat with the old per-stem files — deliberately dropped. |
 | [v1.22.1](#v1221--fix-note-list-export-ordering-for-edited-in-notes-2026-09-03-0149) | An `add`/split-off note from `applyEdits()` was landing at the end of its 10-second block in **Export list**'s Markdown instead of its chronological position, because `applyEdits()` appends it to the end of the note array and the export handler bucketed notes in that raw array order. Fixed by sorting a copy before bucketing — the same pattern `lib/sonify.js` already used for the identical playback-side issue. |
 | [v1.22.0](#v1220--snap-note-drag-to-the-tempo-grid-2026-09-03-0014) | Dragging a note's edge (resize) or body (move) in the zoomed pane now snaps to the beat grid whenever it's on, at the finest resolution the ½/¼ toggles have enabled — a move preserves duration exactly, a resize snaps only the edge being dragged. New `lib/ribbon.js` function `snapToGrid` answers the nearest grid line in O(1), cheap enough for every `pointermove`. |
 | [v1.21.1](#v1211--drop-the-last-windowsansx-bridges-2026-09-02-2331) | `separate.js` and `notes.js` converted from reading `window.SansI18n`/`SansPlatform`/`SansAnalytics`/`SansJianpu` to importing `lib/i18n.js`/`platform.js`/`analytics.js`/`jianpu.js` directly, closing the item v1.21.0 deliberately left open. All five remaining `window.SansX` bridges deleted, including `window.SansPitch` — whose real (and only) reader turned out to be `app.js`, not `notes.js` as its own comment claimed. No `lib/*.js` file in this repo carries a `window` bridge any more. |
@@ -60,6 +61,57 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.23.0 — Shared export/import edits + multi-stem JSON format (2026-09-03 02:31)
+
+**Review:** not yet
+
+**What was built:**
+- One shared **Export edits** / **Import edits** button pair replaces the per-stem pairs
+  (vocals, bass) — built by `app.js` in the zoomed pane, beside the Edit-notes toggle,
+  rather than in each stem's own panel in `index.html`. Hidden/enabled together with that
+  toggle, on the same gate (`syncNotesChipsVisibility()`).
+- A new edits format, in a new pure module `lib/notes-edits.js`
+  (`buildEditsPayload`/`planImport`): `stems` keyed by stem id, each holding its own
+  `interpreter`/`params`/`clip`/`jianpu`/`edits`, with `tempo`/`tempoRange` hoisted to the
+  top as one shared object rather than duplicated into every stem's file. No back-compat
+  with the old per-stem single-stem files (`{version:1, stem, edits, ...}`) — deliberately
+  dropped rather than carried forward, so `planImport()` just rejects one as an
+  unrecognized file, same as any other malformed JSON.
+- `app.js`/`notes.js` talk to each other via two new `window` CustomEvents,
+  `sansbass:exportedits`/`sansbass:importedits` — the same pattern `sansbass:noteedit`/
+  `editundo` already used, since neither module can see the other's internal state.
+- `docs/behaviour.md` E17/E35/E36/T14 updated for the shared control and the new format;
+  `lib/pitch.js`'s `stemMismatch()` (and its test) deleted — it only served the old
+  format's warn-but-import behavior, which has no equivalent now that there's nothing to
+  be back-compatible with.
+
+**Key technical learnings:**
+- `[insight]` Tempo was already genuinely shared, single module-level state in `notes.js`
+  (derived from drums) — the old per-stem export payload duplicated a full copy of it into
+  every exported file. Hoisting it to the top of the new format wasn't just tidying; it
+  removed a real duplication that had existed since tempo detection first shipped
+  (v1.17.0).
+- `[gotcha]` Dynamically-built DOM text (a `tr()` call at element-construction time) is not
+  automatically kept in sync on a language switch — `app.js` has a dedicated
+  `retranslate()` function that manually re-sets every dynamic element's text on
+  `sansbass:langchange`, and a newly added dynamic element has to be wired into it
+  explicitly or it stays frozen in whichever language was active when it was built. The new
+  Export/Import buttons shipped with this bug on the first pass; caught by toggling the
+  language in a live browser check, not by any unit test — nothing in `npm test` renders
+  the zoomed pane at all.
+- `[note]` A shared button removes the implicit "which panel is this file for" that a
+  per-stem import button used to supply just by being the one you clicked. `planImport()`
+  makes that explicit for the stems it does recognize: a stem named in the file but not
+  loaded in the current song is skipped with a named warning, while every stem the file
+  and the song both have still applies.
+
+**Process learnings:**
+- `[note]` Pulling the payload build/parse logic into its own pure module
+  (`lib/notes-edits.js`) instead of leaving it inline in the button click handlers made it
+  directly unit-testable — 8 new Vitest cases covering both format versions and their
+  reject/skip paths — even though the DOM wiring around it still needed a real browser
+  check per `docs/behaviour.md`'s convention (nothing in this app's UI is jsdom-testable).
 
 ## v1.22.1 — Fix note-list export ordering for edited-in notes (2026-09-03 01:49)
 

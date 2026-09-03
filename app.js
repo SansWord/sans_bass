@@ -53,6 +53,11 @@ let zoomNotesChipEls = {}; // stem -> { chip, select, spk } for the zoomed pane'
 let editToggleEl = null;   // the one global Edit-notes checkbox, beside the two Notes chips
 let editToggleLabelEl = null; // its wrapping <label> — hidden until any channel has notes,
                                // same gate as the Notes chips above (syncNotesChipsVisibility)
+let editIoGroupEl = null;  // wrapping element for the shared Export/Import-edits buttons,
+                            // beside the Edit-notes toggle — same visibility gate as it
+let editIoImportFileEl = null; // its hidden <input type=file>, click-proxied by the Import button
+let editIoExportBtnEl = null;  // the two buttons' text is re-set on language change — see retranslate()
+let editIoImportBtnEl = null;
 let ribbonVolume = { vocals: 1, bass: 1 };
 let ribbonHeight = { vocals: readStoredNumber(`${RIBBON_H_KEY}.vocals`, RIBBON_H_DEFAULT, clampRibbonH),
                       bass: readStoredNumber(`${RIBBON_H_KEY}.bass`, RIBBON_H_DEFAULT, clampRibbonH) };
@@ -670,6 +675,10 @@ function buildUI(title) {
   zoomNotesChipEls = {};
   editToggleEl = null;
   editToggleLabelEl = null;
+  editIoGroupEl = null;
+  editIoImportFileEl = null;
+  editIoExportBtnEl = null;
+  editIoImportBtnEl = null;
   let anchorTrack = null;   // the first (vocals-priority) stem with a note lane — the zoomed
                              // pane's DOM anchor
   for (const stem of NOTE_STEMS) {
@@ -892,6 +901,43 @@ function buildUI(title) {
       window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: editToggleEl.checked, stem: zoomNotesStem } }));
     });
     zLaneSel.appendChild(editLabel);
+
+    /* Export/Import edits, beside the Edit-notes toggle — one shared pair combining every
+     * analysed channel's edits into a single file, replacing the old per-panel pair (see
+     * index.html's comment above #notes-detect). The actual state lives in notes.js, which
+     * has no reach into this module and vice versa, so these dispatch events the same way
+     * the edit toolbar below already dispatches 'sansbass:noteedit'/'editundo' for notes.js
+     * to act on. Hidden/disabled together with editLabel — same gate, see syncZoomChips. */
+    const ioGroup = document.createElement('span');
+    ioGroup.className = 'notes-ctl zoom-edit-io';
+    ioGroup.hidden = true;
+    editIoGroupEl = ioGroup;
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'mini';
+    exportBtn.textContent = tr('notes.export');
+    editIoExportBtnEl = exportBtn;
+    exportBtn.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('sansbass:exportedits'));
+    });
+    const importBtn = document.createElement('button');
+    importBtn.type = 'button';
+    importBtn.className = 'mini';
+    importBtn.textContent = tr('notes.import');
+    editIoImportBtnEl = importBtn;
+    const importFile = document.createElement('input');
+    importFile.type = 'file';
+    importFile.accept = 'application/json,.json';
+    importFile.hidden = true;
+    editIoImportFileEl = importFile;
+    importBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', () => {
+      const file = importFile.files[0];
+      importFile.value = '';
+      if (file) window.dispatchEvent(new CustomEvent('sansbass:importedits', { detail: { file } }));
+    });
+    ioGroup.append(exportBtn, importBtn, importFile);
+    zLaneSel.appendChild(ioGroup);
 
     syncZoomChips();
 
@@ -2305,6 +2351,7 @@ function syncNotesChipsVisibility() {
     if (ready) anyReady = true;
   }
   if (editToggleLabelEl) editToggleLabelEl.hidden = !anyReady;
+  if (editIoGroupEl) editIoGroupEl.hidden = !anyReady;
 }
 
 /* The one global Edit-notes toggle is enabled only once the currently-selected chip's
@@ -2428,6 +2475,8 @@ function retranslate() {
     editToggleEl.nextSibling.textContent = tr('notes.edit');
     editToggleEl.parentElement.title = tr('notes.editTip');
   }
+  if (editIoExportBtnEl) editIoExportBtnEl.textContent = tr('notes.export');
+  if (editIoImportBtnEl) editIoImportBtnEl.textContent = tr('notes.import');
   syncTempoRangeHint();
   renderLoopBadge();
   // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset

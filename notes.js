@@ -71,9 +71,12 @@ function fragmentHtml(frag) {
 }
 
 /** A self-contained HTML page for a 簡譜 export: `bars` (from lib/jianpu.js's layoutBars)
- *  wrapped into lines of `barsPerLine`, each bar a bordered cell of rhythm-marked fragments.
- *  No external assets — every rule needed to read it lives in the inlined <style>. */
-function jianpuHtml({ title, bars, barsPerLine }) {
+ *  wrapped into lines of `barsPerLine`, each bar a bordered cell of rhythm-marked fragments,
+ *  under a tempo/time-signature line (`♩ = <bpm>  <beatsPerBar>/4` — every bar in this app's
+ *  grid is `beatsPerBar` quarter-note beats, so the note value is always fixed at 4, same
+ *  assumption noteRhythm's GRID_UNITS_PER_BEAT already makes). No external assets — every
+ *  rule needed to read it lives in the inlined <style>. */
+function jianpuHtml({ title, bars, barsPerLine, bpm, beatsPerBar }) {
   const lines = [];
   for (let i = 0; i < bars.length; i += barsPerLine) {
     const cells = bars.slice(i, i + barsPerLine)
@@ -86,7 +89,8 @@ function jianpuHtml({ title, bars, barsPerLine }) {
 <style>
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
        background: #faf9f6; color: #1a1a1a; padding: 32px; line-height: 2.2; }
-h1 { font-size: 18px; margin: 0 0 20px; font-weight: 600; }
+h1 { font-size: 18px; margin: 0 0 4px; font-weight: 600; }
+.tempo { font-size: 14px; color: #555; margin: 0 0 20px; }
 /* Every bar keeps its own right border and the line itself carries a left border, so each
    line reads as a self-contained "| bar | bar | bar |" — the wrap between one line's last
    bar and the next line's first is never mistaken for the absence of a barline. A full
@@ -114,6 +118,7 @@ h1 { font-size: 18px; margin: 0 0 20px; font-weight: 600; }
 </style></head>
 <body>
 <h1>${escapeHtml(title)}</h1>
+<p class="tempo">♩ = ${bpm.toFixed(1)} &nbsp;&nbsp; ${beatsPerBar}/4</p>
 ${lines.join('\n')}
 </body></html>
 `;
@@ -684,7 +689,8 @@ function createNotesChannel(stem, els) {
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
     const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`;
 
-    const blob = new Blob([jianpuHtml({ title, bars, barsPerLine })], { type: 'text/html' });
+    const blob = new Blob([jianpuHtml({ title, bars, barsPerLine, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar })],
+      { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

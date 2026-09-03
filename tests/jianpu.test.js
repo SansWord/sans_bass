@@ -1,5 +1,6 @@
-import { test, assertEq } from './assert.js';
+import { test, assert, assertEq } from './assert.js';
 import * as SansJianpu from '../lib/jianpu.js';
+import { beatTimes } from '../lib/ribbon.js';
 
 const J = () => SansJianpu;
 
@@ -156,4 +157,32 @@ test('jianpu: layoutBars splits a note that crosses a barline and ties the first
   assertEq(bars[1].length, 1, 'bar 1 gets the second fragment');
   assertEq(bars[1][0].tie, false, 'the last fragment of a split note is not tied further');
   assertEq(bars[1][0].token, '1', 'the tied fragment carries the same pitch');
+});
+
+test('jianpu: layoutBars does not spawn a phantom sliver from float drift when a snapped note lands on a barline', () => {
+  /* Reproduces a real report: after "Snap range" on the whole song, a note landing exactly
+   * on a barline showed up as two notes — a real one, plus a ghost sixteenth-note tied in
+   * from the PREVIOUS bar. Root cause: barBounds (from lib/ribbon.js's beatTimes(), raw,
+   * unrounded floats built by accumulating +=periodSec in a loop) and a snapped note's
+   * start (rounded to millisecond precision via roundSeconds, same as every stored note
+   * time in the app) are computed by different arithmetic paths and can disagree by a
+   * fraction of a millisecond — see 133 BPM, bar 6 below, where the raw boundary is
+   * 10.827067... and roundSeconds stores 10.827, ~68 microseconds EARLIER. Comparing a
+   * rounded note time against an unrounded boundary put that sliver in the wrong bar. */
+  const bpm = 133;
+  const beatsPerBar = 4;
+  const periodSec = 60 / bpm;
+  const barBoundaryRaw = beatTimes({ bpmValue: bpm, phaseMs: 0, beatsPerBar }, 30)
+    .filter((b) => b.bar)[6].t;
+  const noteStart = Math.round(barBoundaryRaw * 1000) / 1000; // roundSeconds, as snap-to-grid stores it
+  assert(noteStart < barBoundaryRaw, 'the reproduction depends on rounding landing below the raw boundary');
+
+  const notes = [{ start: noteStart, end: noteStart + 0.5, midi: C4 }];
+  const barBounds = [0, barBoundaryRaw, barBoundaryRaw + periodSec * beatsPerBar];
+  const ref = J().degreeOf(C4, 0, 'major').octaveIndex;
+  const bars = J().layoutBars(notes, barBounds, 0, 'major', ref, periodSec);
+
+  assertEq(bars[0].length, 0, 'no phantom fragment in the bar before the note actually starts');
+  assertEq(bars[1].length, 1, 'the note lands cleanly, whole, in the bar it starts');
+  assertEq(bars[1][0].tie, false, 'not tied — this is one ordinary note, not a split one');
 });

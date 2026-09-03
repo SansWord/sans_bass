@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.21.0](#v1210--esm-modules-2026-09-02-2205) | `app.js` and the 8 classic-script `lib/*.js` files (`stems.js`, `i18n.js`, `platform.js`, `unzip.js`, `ribbon.js`, `jianpu.js`, `transport-math.js`, `analytics.js`) became real ES modules with `import`/`export`, closing the item the npm + Vite migration (v1.20.0) deliberately deferred. Four of them (`i18n.js`, `platform.js`, `analytics.js`, `jianpu.js`) keep a documented `window.SansX` bridge for `separate.js`/`notes.js`, which are already ESM and out of scope; the other four lose the global entirely. `index.html` needed zero changes — module singletons mean app.js importing the same files its own `<script>` tags load causes no duplicate evaluation, and execution order is spec-guaranteed rather than a document-order coincidence. |
 | [Meta](#meta--deployment-smoke-test-in-behaviourmd-2026-09-02-2123) | Extracted the checks used to verify the v1.20.0 deploy into a named **Deployment smoke test** section in `docs/behaviour.md` — a fast wiring check (module loading, real Worker/AudioWorklet instantiation, asset resolution) distinct from the full behaviour matrix. Fixed a stale `?v=` reference left over from the npm + Vite migration in the same file, and pointed `CLAUDE.md`'s own docs list at the new section so a fresh session can find it without reading `behaviour.md` end to end. |
 | [v1.20.0](#v1200--npm--vite-migration-2026-09-02-1754) | Dropped the vendored SoundTouch DSP core and the hand-written `?v=` cache-busting convention for a real npm + Vite pipeline: `soundtouchjs` installs as a normal dependency, `npm run build` produces the `dist/` both CI workflows now publish, and every asset Vite touches gets a content hash instead of a manually-bumped version string. No UI framework added; `app.js` and the classic-script `lib/*.js` files stay `window.SansX` scripts in substance, but all of them (plus `app.js`) had to switch their `<script>` tag to `type="module"` — Vite's HTML plugin only bundles/hashes a tag carrying that attribute, silently dropping a plain classic `<script src>` from the build entirely. |
 | [v1.19.0](#v1190--pitch-preserving-playback-speed-control-2026-09-02-1612) | A speed slider (50–150%, step 5, keyboard `[`/`]`/`\`) time-stretches playback without shifting pitch, via a vendored SoundTouchJS DSP core wrapped in a per-stem `AudioWorkletNode`. The native 100% path is byte-for-byte unchanged; crossing the 100% boundary rebuilds the audio graph, staying on one side of it live-rebases with no restart. |
@@ -53,6 +54,57 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.21.0 — ESM modules (2026-09-02 22:05)
+
+**Review:** not yet
+
+**Design docs:**
+- ESM modules: [Spec](superpowers/specs/2026-09-02-esm-modules-design.md) [Plan](superpowers/plans/2026-09-02-esm-modules.md)
+
+**What was built:**
+- `app.js` and the 8 classic-script `lib/*.js` files converted to real ES modules — actual
+  `import`/`export`, not just the `type="module"` script-tag mechanism the npm + Vite
+  migration (v1.20.0) already switched them to.
+- Four files (`lib/i18n.js`, `lib/platform.js`, `lib/analytics.js`, `lib/jianpu.js`) keep a
+  documented `window.SansX` bridge, because `separate.js`/`notes.js` — already ESM, out of
+  scope for this conversion — can only reach them that way.
+- The other four (`lib/stems.js`, `lib/unzip.js`, `lib/ribbon.js`, `lib/transport-math.js`)
+  lose the global entirely: nothing outside this project's own module graph read them.
+- All 8 named test files (`tests/*.test.js`) and `tests/notes.html` import directly instead
+  of reading `window.SansX`, and `tests/test.html`'s 8 now-redundant `<script>` tags for
+  the lib files are gone.
+- `index.html` needed zero changes.
+
+**Key technical learnings:**
+- `[insight]` Execution order across `index.html`'s script tags and app.js's new imports is
+  spec-guaranteed, not a document-order coincidence this project happened to rely on: a
+  module script's dependency subgraph evaluates before its own top-level body runs, and
+  independent top-level module scripts still execute in relative document order. Verified
+  directly (the page boots with translated text visible before first paint), not just
+  reasoned about.
+- `[insight]` A static `import` can't be conditional the way `window.SansAnalytics?.track()`
+  and `window.SansPlatform?.isHandheld()` used to be — if `lib/analytics.js` or
+  `lib/platform.js` failed to load, the whole `app.js` module now fails to evaluate instead
+  of degrading to a no-op for just that one feature. Accepted trade-off: production already
+  bundles everything into one atomic chunk (since the npm + Vite migration), so this
+  scenario was already impossible there; only dev-mode-only robustness for these two files
+  was traded away.
+- `[note]` A module's public surface is its exports; a `window.SansX` global is a
+  deliberate, narrow, commented bridge for a specific out-of-scope consumer that genuinely
+  cannot `import` yet — never a default kept "in case something needs it." Four files keep
+  one for exactly that reason; the other four don't, because nothing reads them that way.
+
+**Process learnings:**
+- `[insight]` Converting a lib file's export shape and switching its consumers to import it
+  can't safely happen in the same commit when another *lib* file also reads it via
+  `window` (here: `lib/unzip.js` reading `lib/stems.js`'s `AUDIO_RE`). The safe order was:
+  add real exports while keeping the `window.SansX` assignment temporarily on every file
+  (even the four that ultimately drop it), convert every consumer to import directly, then
+  remove the temporary bridge only once nothing reads it anymore — verified with a `grep`
+  before deleting each one.
 
 ---
 

@@ -1,6 +1,7 @@
 import { test, assert, assertEq, assertClose } from './assert.js';
+import * as SansRibbon from '../lib/ribbon.js';
 
-const R = () => window.SansRibbon;
+const R = () => SansRibbon;
 
 // A melody sitting in C4..G4, plus one 100 ms octave error far below it.
 function melodyWithOutlier() {

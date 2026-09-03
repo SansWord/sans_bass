@@ -1,5 +1,5 @@
 import { test, assertEq, assertClose } from './assert.js';
-const M = window.SansTransportMath;
+import * as M from '../lib/transport-math.js';
 
 test('transport-math: clampRatePercent rounds and clamps to range, without snapping to RATE_STEP', () => {
   assertEq(M.clampRatePercent(100), 100);

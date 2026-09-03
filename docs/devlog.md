@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.28.0](#v1280--bass-derived-chords-in-the-簡譜-export-2026-09-03-1342) | **Export list** now prints a chord guess above each bar, derived from the bass channel's own notes/key regardless of which channel is being exported — split at the bar's time midpoint so a mid-bar chord change (e.g. G → Gsus4) shows both halves. Triads + sus2/sus4 only; a chromatic passing tone gets a bare root name. An export with no analysed bass stem is unaffected. |
 | [v1.27.0](#v1270--簡譜-export-as-bars-rhythm-and-html-2026-09-03-1251) | **Export list** now lays the 簡譜 reading onto the tempo grid — lines wrap every N bars (not seconds), each note's duration renders as standard rhythm notation (underlines, sustain dashes, dots), a note held across a barline splits into tied fragments, and octave is drawn as real dots above/below the digit. A `♩ = <bpm> <beatsPerBar>/4` line now heads the page, and both it and Export edits download as `sans_bass_..._<timestamp>` files. The export itself is a self-contained HTML file now, not Markdown, which is what makes any of the above renderable at all. |
 | [v1.26.1](#v1261--mutually-exclusive-note-and-range-selection-2026-09-03-1143) | Selecting a note now clears any active range selection, and creating or committing a range selection (drag, or the Whole song button) now clears any selected note — previously the two could coexist silently. |
 | [v1.26.0](#v1260--snap-notes-to-the-beat-grid-2026-09-03-0522) | A **⊞ Snap** button (or the `G` key) snaps the selected note to the beat grid; **Snap range** does the same for every note in a selected range as one grouped edit — one row, one undo, regardless of note count. Range-select now also works on the Overview lane. Found and fixed a real bug along the way: the single-note path had no minimum-duration floor, so snapping a short note could collapse it to zero width and permanently orphan the next edit that touched it. |
@@ -65,6 +66,58 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.28.0 — Bass-derived chords in the 簡譜 export (2026-09-03 13:42)
+
+**Review:** not yet
+
+**Design docs:**
+- Bass Chord Detection: [Spec](superpowers/specs/2026-09-03-bass-chord-detection-design.md) [Plan](superpowers/plans/2026-09-03-bass-chord-detection.md)
+
+**What was built:**
+- A new pure module, `lib/chords.js`, guesses a chord label for each half of each bar from
+  the BASS channel's notes — independent of which channel (vocals or bass) is being
+  exported.
+- **Export list** now prints that guess above each bar: the first half's label top-left, the
+  second half's label (only when it differs from the first) centered above the bar — so a
+  bar where the bass line moves mid-bar (e.g. a walk up to the 4th) shows both.
+- Chord quality is triads (major/minor/diminished) plus sus2/sus4 only — no 7ths,
+  extensions, or inversions — with a bare root name (no suffix) when the longest-duration
+  note in a half is chromatic to the bass channel's own detected key. The sus2/sus4 override
+  requires the candidate 2nd/4th to sound simultaneously (overlapping) with the root, which
+  ordinary notes from a **Find notes** run never do — it can only fire after a manual edit
+  introduces overlap.
+- An export from a song with no bass stem loaded, or a bass stem never analysed, is
+  unaffected in appearance: no `.chords` element renders on any bar, and `.bar` renders
+  identically (visually) to before this feature. The underlying markup is not unchanged —
+  `jianpuHtml` now always wraps a bar's note fragments in a `.frags` span, chord data or not.
+
+**Key technical learnings:**
+- `[note]` Each half is split at the bar's time MIDPOINT, not by beat count — the same
+  reasoning `lib/jianpu.js`'s `layoutBars` already applies to bar boundaries themselves —
+  so this stays correct under a non-4/4 `beatsPerBar` with no special-casing.
+- `[note]` The suspension override (sus4/sus2) only ever runs after a diatonic quality was
+  already found for the root; a chromatic root's label is always just the bare root name,
+  since there's no diatonic 3rd to compare a candidate 4th/2nd against.
+- `[insight]` The `.chords` row is rendered as a reserved (possibly empty) slot on every bar
+  whenever an export carries chord data at all — same convention `fragmentHtml`'s
+  `.oct-up`/`.oct-down` spans already use for octave dots — so bars stay aligned along a
+  line even when one bar's bass line is silent through both halves.
+- `[note]` `jianpuHtml`'s new `.frags` wrapper (holding what `.bar`'s own CSS used to do
+  directly) keeps a chord-less export visually identical to before: with `chords` omitted,
+  no `.chords` element exists at all. Getting `.frags` to lay out exactly as `.bar` used to
+  wasn't automatic from the restructuring alone, though — `.frags` only takes its own
+  content height inside the new flex-column `.bar` unless it also carries `flex: 1 1 auto`
+  to stretch and center within the column, which had to be added explicitly.
+- `[gotcha]` `lib/chords.js`'s sus2/sus4 override requires the candidate 2nd/4th to
+  temporally overlap the root note — but `lib/pitch.js`'s segmenters (`segmentNotes`,
+  `segmentNotesHmm`) always emit strictly sequential, non-overlapping notes from a
+  monophonic line, so sus2/sus4 never actually fires on notes from an ordinary Find-notes
+  run; it can only appear after a manual note edit introduces overlap. A future redesign of
+  the suspension rule (e.g. requiring the 4th/2nd to be the final note of the half, rather
+  than requiring simultaneity) is separate design work, not attempted here.
 
 ---
 

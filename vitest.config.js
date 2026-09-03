@@ -14,7 +14,7 @@ import { playwright } from '@vitest/browser-playwright';
 //   still needs no manual browser interaction.
 const NODE_TESTS = [
   'soundtouch', 'transport-math', 'overlap', 'tempo', 'pitch', 'ribbon', 'zip', 'unzip', 'stems',
-  'jianpu', 'platform', 'notes-edits',
+  'jianpu', 'platform', 'notes-edits', 'time',
 ].map((name) => `tests/${name}.test.js`);
 
 const JSDOM_TESTS = ['analytics', 'i18n'].map((name) => `tests/${name}.test.js`);

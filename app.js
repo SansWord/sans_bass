@@ -6,6 +6,7 @@
 import { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } from './lib/stems.js';
 import { extract } from './lib/unzip.js';
 import { parseNoteName } from './lib/pitch.js';
+import { roundSeconds } from './lib/time.js';
 import * as SansI18n from './lib/i18n.js';
 import * as SansPlatform from './lib/platform.js';
 import * as SansAnalytics from './lib/analytics.js';
@@ -2783,7 +2784,7 @@ function attachZoom(canvas) {
       addDrag = null;
       addArmed = false;
       syncAddButton();
-      dispatchEdit([{ type: 'add', start: +start.toFixed(4), end: +finalEnd.toFixed(4), midi }]);
+      dispatchEdit([{ type: 'add', start, end: finalEnd, midi }]);
       selectedNote = { at: (start + finalEnd) / 2, midi };
       draw();
       return;
@@ -2919,13 +2920,24 @@ function noteAt(list, at, midi) {
   return null;
 }
 
+/* Every time-valued field an edit object can carry, across all six primitive types (see
+ * lib/pitch.js's applyEdits doc comment) — rounded here, once, rather than at each call
+ * site, so a drag/arithmetic-derived value like 207.45864999999998 never reaches the edit
+ * list, the in-memory edit history, or the exported edits JSON (notes.js's exportEntry). */
+const EDIT_TIME_FIELDS = ['at', 'dStart', 'dEnd', 'start', 'end', 'from', 'to'];
+
 /** `meta` (optional) is `{ label, timeLabel }` — an i18n KEY and a preformatted time string
  *  overriding how the resulting edit-list row reads; see groupLabel/groupTimeLabel in
  *  notes.js. Used by the Snap-range/Whole-song batch so the row says "Snap to grid · 4.00–
  *  8.00s" instead of falling through to the generic multi-edit "Split" label and the first
  *  edit's own timestamp. */
 function dispatchEdit(edits, meta) {
-  window.dispatchEvent(new CustomEvent('sansbass:noteedit', { detail: { edits, ...meta } }));
+  const rounded = edits.map((e) => {
+    const out = { ...e };
+    for (const f of EDIT_TIME_FIELDS) if (typeof out[f] === 'number') out[f] = roundSeconds(out[f]);
+    return out;
+  });
+  window.dispatchEvent(new CustomEvent('sansbass:noteedit', { detail: { edits: rounded, ...meta } }));
 }
 
 /* Reassigning selectedNote BEFORE dispatching, here and below: dispatchEdit's event round-trips
@@ -3207,7 +3219,7 @@ function attachSeek(canvas, opts) {
       const from = Math.min(tempoRangeDrag.startT, tempoRangeDrag.curT);
       const to = Math.max(tempoRangeDrag.startT, tempoRangeDrag.curT);
       tempoRangeDrag = null;
-      tempoRange = (to - from > 0.01) ? { from, to } : null;
+      tempoRange = (to - from > 0.01) ? { from: roundSeconds(from), to: roundSeconds(to) } : null;
       syncTempoRangeHint();
       window.dispatchEvent(new CustomEvent('sansbass:temporange', { detail: tempoRange }));
       draw();

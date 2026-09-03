@@ -14,29 +14,18 @@
 <meta name="theme-color" content="#0d0d10">
 <!-- i18n loads in <head>, before anything paints, so `lang` and the tab title are already
      right and the DOM walk can run the moment the body exists. init() is called explicitly
-     rather than on load, so tests/test.html can read the dictionary without having its own
-     title rewritten. The literal English in the markup below is the no-JS fallback and the
-     readable source of truth; it matches DICT.en exactly. -->
+     rather than on load, so tests/i18n.test.js can import lib/i18n.js directly (under
+     Vitest's jsdom environment) without having its own title rewritten. The literal English
+     in the markup below is the no-JS fallback and the readable source of truth; it matches
+     DICT.en exactly. -->
 <!-- Anonymous, cookieless usage counts. External, so Vite leaves the URL alone — and
      https:// rather than the protocol-relative //gc.zgo.at from GoatCounter's docs, to
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/main-CRqLZ_38.js"></script>
+  <script type="module" crossorigin src="./assets/main-oAfwbgX7.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
-  <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-DK3Fl9T5.js">
-  <link rel="modulepreload" crossorigin href="./assets/i18n-CHqDCq7S.js">
-  <link rel="modulepreload" crossorigin href="./assets/stems-JBkQqy3l.js">
-  <link rel="modulepreload" crossorigin href="./assets/unzip-DLfR59c7.js">
-  <link rel="modulepreload" crossorigin href="./assets/analytics-CNr5wNjp.js">
-  <link rel="modulepreload" crossorigin href="./assets/platform-WWFIT0Yh.js">
-  <link rel="modulepreload" crossorigin href="./assets/ribbon-CJFPuOtw.js">
-  <link rel="modulepreload" crossorigin href="./assets/jianpu-DKj6rnpH.js">
-  <link rel="modulepreload" crossorigin href="./assets/transport-math-Dqne9veW.js">
-  <link rel="modulepreload" crossorigin href="./assets/wav-BWfpFjQM.js">
-  <link rel="modulepreload" crossorigin href="./assets/zip-C6HNq5Vh.js">
-  <link rel="modulepreload" crossorigin href="./assets/pitch-DDgXI8FM.js">
-  <link rel="modulepreload" crossorigin href="./assets/sonify-gJKWSQwY.js">
+  <link rel="modulepreload" crossorigin href="./assets/sonify-B7y56qNP.js">
   <link rel="stylesheet" crossorigin href="./assets/main-BwB0ktrd.css">
 </head>
 <body>

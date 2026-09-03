@@ -995,10 +995,16 @@ function buildUI(title) {
     const addBtn = mkEditBtn('+ ' + tr('notes.editAdd'), 'notes.editAddTip', toggleAddArmed);
     addBtn.disabled = false;   // always available while edit mode is on, selection or not
 
+    const snapNote = mkEditBtn('⊞', 'notes.editSnapTip', editSnapNote);
+
     const rangeDel = mkEditBtn(tr('notes.editRangeDelete'), 'notes.editRangeDeleteTip', editRangeDelete);
     rangeDel.classList.add('note-tbtn-danger');
+    const rangeSnap = mkEditBtn(tr('notes.editRangeSnap'), 'notes.editRangeSnapTip', editSnapRange);
+    const wholeSong = mkEditBtn(tr('notes.editWholeSong'), 'notes.editWholeSongTip', setWholeSongRange);
+    wholeSong.disabled = false;   // always available while edit mode is on, range or not
 
-    zToolbar.append(addBtn, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, split, del, rangeDel);
+    zToolbar.append(addBtn, octUp, octDown, pitchUp, pitchDown, timeBack, timeFwd, snapNote,
+                     split, del, rangeDel, rangeSnap, wholeSong);
 
     /* Inline Start/End/Pitch fields, next to the toolbar. Same hidden-until-edit-mode and
      * disabled-until-selected rules as the toolbar buttons above — see docs/superpowers/
@@ -1098,8 +1104,8 @@ function buildUI(title) {
     zFields.append(startGroup, endGroup, pitchGroup, applyBtn);
 
     zoomToolbar = { root: zToolbar, fields: zFields, add: addBtn, octUp, octDown, pitchUp,
-                     pitchDown, timeBack, timeFwd, split, del, rangeDel,
-                     fieldStart, fieldEnd, fieldPitchLetter, fieldPitchAccidental,
+                     pitchDown, timeBack, timeFwd, snapNote, split, del, rangeDel, rangeSnap,
+                     wholeSong, fieldStart, fieldEnd, fieldPitchLetter, fieldPitchAccidental,
                      fieldPitchOctave, applyBtn };
 
     zLane.append(zName, zCanvas, zRangeHint, zToolbar, zFields, zSpacer, zGrip);
@@ -1144,10 +1150,17 @@ function buildUI(title) {
     oVol.appendChild(oSlider);
     overviewVolEl = oSlider;
 
-    oLane.append(oName, oCanvas, oVol);
+    /* Same caption as each stem's own lane (see rHint above) — shown whenever an edit
+     * target is selected, since the Overview lane isn't tied to one particular stem. */
+    const oRangeHint = document.createElement('div');
+    oRangeHint.className = 'note-range-hint';
+    oRangeHint.textContent = tr('notes.rangeTip');
+    oRangeHint.hidden = true;
+
+    oLane.append(oName, oCanvas, oRangeHint, oVol);
     el.lanes.insertBefore(oLane, zLane);
-    attachSeek(oCanvas);
-    overviewEl = { lane: oLane, canvas: oCanvas, time: oTime };
+    attachSeek(oCanvas, { rangeBand: true, overview: true });
+    overviewEl = { lane: oLane, canvas: oCanvas, time: oTime, rangeHint: oRangeHint };
   }
 
   syncRangeHints();
@@ -1841,7 +1854,10 @@ function syncEditToolbar() {
                     zoomToolbar.applyBtn]) {
     b.disabled = !sel;
   }
+  const gridOn = !!(ribbon && ribbon.tempo && ribbon.tempo.on);
+  zoomToolbar.snapNote.disabled = !sel || !gridOn;
   zoomToolbar.rangeDel.disabled = !rangeSelection;
+  zoomToolbar.rangeSnap.disabled = !rangeSelection || !gridOn;
   syncNoteFields(sel);
 }
 
@@ -1921,6 +1937,7 @@ function paint(canvas, frac) {
   paintLoopRegion(c, canvas, dpr, canvas === el.mainWave);
   const selLane = zoomNotesStem && noteLanes[zoomNotesStem];
   if (selLane && canvas === selLane.el.canvas) paintRangeBand(c, canvas, dpr);
+  if (overviewEl && canvas === overviewEl.canvas) paintRangeBand(c, canvas, dpr);
   if (tempoDrumsCanvas && canvas === tempoDrumsCanvas) paintTempoRangeBand(c, canvas, dpr);
 
   c.fillStyle = 'rgba(255,255,255,.85)';
@@ -2381,6 +2398,7 @@ function syncRangeHints() {
     const lane = noteLanes[stem];
     if (lane) lane.rangeHint.hidden = !(editMode && stem === zoomNotesStem);
   }
+  if (overviewEl) overviewEl.rangeHint.hidden = !(editMode && zoomNotesStem);
 }
 
 function toggleRibbon(stem) {
@@ -2901,8 +2919,13 @@ function noteAt(list, at, midi) {
   return null;
 }
 
-function dispatchEdit(edits) {
-  window.dispatchEvent(new CustomEvent('sansbass:noteedit', { detail: { edits } }));
+/** `meta` (optional) is `{ label, timeLabel }` — an i18n KEY and a preformatted time string
+ *  overriding how the resulting edit-list row reads; see groupLabel/groupTimeLabel in
+ *  notes.js. Used by the Snap-range/Whole-song batch so the row says "Snap to grid · 4.00–
+ *  8.00s" instead of falling through to the generic multi-edit "Split" label and the first
+ *  edit's own timestamp. */
+function dispatchEdit(edits, meta) {
+  window.dispatchEvent(new CustomEvent('sansbass:noteedit', { detail: { edits, ...meta } }));
 }
 
 /* Reassigning selectedNote BEFORE dispatching, here and below: dispatchEdit's event round-trips
@@ -2938,6 +2961,27 @@ function editTimeNudge(dir) {
   const midi = selectedNote.midi;
   selectedNote = { at: at + d, midi };
   dispatchEdit([{ type: 'timeAdjust', at, dStart: d, dEnd: d, midi }]);
+}
+
+/** Snaps the selected note's start and end to the current beat grid, at whatever resolution
+ *  the ½/¼ toggle currently shows — same divisions the live drag-snap uses. One ordinary
+ *  timeAdjust edit, indistinguishable from a manual resize that happened to land on grid
+ *  values; no batch label, no group metadata — see editSnapRange for the batch version. */
+function editSnapNote() {
+  const ribbon = currentRibbon();
+  if (!selectedNote || !ribbon || !ribbon.tempo || !ribbon.tempo.on) return;
+  const n = noteAt(ribbon.notes, selectedNote.at, selectedNote.midi);
+  if (!n) return;
+  const divisions = showQuarterBeat ? 4 : showHalfBeat ? 2 : 1;
+  // Shares snapNoteEdges with the batch path (lib/ribbon.js) rather than reimplementing the
+  // floor/rounding here — see lib/ribbon.js's comment on snapNoteEdges for why the two paths
+  // drifting apart is exactly what caused a short note to collapse to zero width and orphan
+  // a later edit.
+  const { newStart, newEnd } = SansRibbon.snapNoteEdges(ribbon.tempo, n.start, n.end, divisions);
+  if (newStart === n.start && newEnd === n.end) return;   // already on grid
+  const at = (n.start + n.end) / 2;
+  dispatchEdit([{ type: 'timeAdjust', at, dStart: newStart - n.start, dEnd: newEnd - n.end, midi: n.midi }]);
+  selectedNote = { at: (newStart + newEnd) / 2, midi: n.midi };
 }
 
 /** Commits the Start/End fields: Enter in either of them, or a click on Apply, calls this.
@@ -3018,6 +3062,34 @@ function editRangeDelete() {
   dispatchEdit([{ type: 'rangeDelete', from, to }]);
 }
 
+/** Snaps every note overlapping the selected range to the current beat grid — one
+ *  timeAdjust primitive per note that actually moves, all dispatched together in a SINGLE
+ *  'sansbass:noteedit' event so they land as one edit-list row and one undo, how ever many
+ *  notes were touched. See lib/ribbon.js's snapNotesToGrid for why no overlap-avoidance
+ *  logic is needed here. Cleared before dispatching, same reasoning as editRangeDelete. */
+function editSnapRange() {
+  const ribbon = currentRibbon();
+  if (!rangeSelection || !ribbon || !ribbon.tempo || !ribbon.tempo.on) return;
+  const { from, to } = rangeSelection;
+  rangeSelection = null;
+  const divisions = showQuarterBeat ? 4 : showHalfBeat ? 2 : 1;
+  const moves = SansRibbon.snapNotesToGrid(ribbon.notes, ribbon.tempo, divisions, { from, to });
+  if (!moves.length) return;
+  const edits = moves.map(({ note, newStart, newEnd }) => ({
+    type: 'timeAdjust', at: (note.start + note.end) / 2,
+    dStart: newStart - note.start, dEnd: newEnd - note.end, midi: note.midi,
+  }));
+  dispatchEdit(edits, { label: 'notes.editSnapLabel', timeLabel: `${from.toFixed(2)}–${to.toFixed(2)}s` });
+}
+
+/** Sets the range selection to the whole song — a shortcut into editSnapRange (and Delete
+ *  range) that doesn't require dragging across the full width. */
+function setWholeSongRange() {
+  if (!duration) return;
+  rangeSelection = { from: 0, to: duration };
+  draw();
+}
+
 /* Splitting at the playhead composes from two primitives, or one at either edge — see "The
  * one thing to understand before starting" and the design spec's "Six edit types, not
  * seven". 5ms keeps the two pieces unambiguously separate rather than zero-gap touching
@@ -3094,6 +3166,7 @@ function attachSeek(canvas, opts) {
   const rangeBand = !!(opts && opts.rangeBand);
   const tempoLane = !!(opts && opts.tempoLane);
   const stem = opts && opts.stem;
+  const overview = !!(opts && opts.overview);
   const posToTime = (e) => {
     const r = canvas.getBoundingClientRect();
     return ((e.clientX - r.left) / r.width) * duration;
@@ -3108,8 +3181,10 @@ function attachSeek(canvas, opts) {
     /* Only the lane currently selected for editing accepts a range-drag — dragging on the
      * OTHER stem's full-song lane while it isn't the edit target must not silently edit the
      * SELECTED stem's notes. See syncRangeHints(), which hides the caption on the other lane
-     * for the same reason. */
-    if (rangeBand && editMode && stem === zoomNotesStem) {
+     * for the same reason. The Overview lane has no single stem identity (it can combine
+     * several), so for it the requirement is just "an edit target is selected at all",
+     * matching how the range it draws is a plain time range, not tied to a particular stem. */
+    if (rangeBand && editMode && (overview ? zoomNotesStem : stem === zoomNotesStem)) {
       const r = canvas.getBoundingClientRect();
       if (e.clientY - r.top > r.height - RULER_BAND_PX) {
         const t = posToTime(e);
@@ -3227,6 +3302,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowUp') { e.preventDefault(); e.shiftKey ? editOctave(1) : editPitchNudge(1); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); e.shiftKey ? editOctave(-1) : editPitchNudge(-1); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); editDeleteNote(); return; }
+    if (e.key === 'g' || e.key === 'G') { e.preventDefault(); editSnapNote(); return; }
   }
   if (e.key === ' ') { e.preventDefault(); toggle(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }

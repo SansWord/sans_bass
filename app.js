@@ -2659,6 +2659,25 @@ function attachZoom(canvas) {
       const dt = zoomTimeAt(canvas, e.clientX) - noteDrag.startT;
       let newStart = noteDrag.origStart + (noteDrag.mode === 'resize-end' ? 0 : dt);
       let newEnd = noteDrag.origEnd + (noteDrag.mode === 'resize-start' ? 0 : dt);
+
+      /* Snap to the same beat/bar grid the zoomed pane draws — finest enabled resolution
+       * (¼ implies ½, see toggleQuarterBeat) — only while the tempo grid is actually on.
+       * 'move' snaps the start and carries the same offset into the end, so duration is
+       * preserved exactly; a resize snaps only the edge being dragged. */
+      const gridTempo = currentRibbon()?.tempo;
+      if (gridTempo && gridTempo.on) {
+        const divisions = showQuarterBeat ? 4 : showHalfBeat ? 2 : 1;
+        if (noteDrag.mode === 'move') {
+          const snappedStart = SansRibbon.snapToGrid(gridTempo, newStart, divisions);
+          newEnd += snappedStart - newStart;
+          newStart = snappedStart;
+        } else if (noteDrag.mode === 'resize-start') {
+          newStart = SansRibbon.snapToGrid(gridTempo, newStart, divisions);
+        } else {
+          newEnd = SansRibbon.snapToGrid(gridTempo, newEnd, divisions);
+        }
+      }
+
       const MIN_DUR = 0.02;   // the analysis frame hop floor — see docs/transcription.md
       if (newEnd - newStart < MIN_DUR) {
         if (noteDrag.mode === 'resize-start') newStart = newEnd - MIN_DUR;

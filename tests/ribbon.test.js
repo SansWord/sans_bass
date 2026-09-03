@@ -228,3 +228,28 @@ test('ribbon: subdivisionTimes tolerates a missing tempo or a division below 2',
   assertEq(R().subdivisionTimes(null, 10, 2).length, 0, 'no tempo, no grid');
   assertEq(R().subdivisionTimes({ bpmValue: 120, phaseMs: 0, beatsPerBar: 4 }, 10, 1).length, 0, 'divisionsPerBeat < 2 is meaningless');
 });
+
+test('ribbon: snapToGrid(1) snaps to the nearest beat', () => {
+  // 120 BPM = 0.5s/beat, on-beat at 0, 0.5, 1, 1.5, ...
+  const tempo = { bpmValue: 120, phaseMs: 0, beatsPerBar: 4 };
+  assertClose(R().snapToGrid(tempo, 0.62, 1), 0.5, 1e-9, 'closer to 0.5 than 1.0');
+  assertClose(R().snapToGrid(tempo, 0.76, 1), 1.0, 1e-9, 'closer to 1.0 than 0.5');
+});
+
+test('ribbon: snapToGrid respects divisionsPerBeat (half/quarter)', () => {
+  const tempo = { bpmValue: 120, phaseMs: 0, beatsPerBar: 4 };
+  assertClose(R().snapToGrid(tempo, 0.2, 2), 0.25, 1e-9, 'half-beat grid at 0.25 steps');
+  assertClose(R().snapToGrid(tempo, 0.15, 4), 0.125, 1e-9, 'quarter-beat grid at 0.125 steps');
+});
+
+test('ribbon: snapToGrid normalises a phase outside [0, period)', () => {
+  const inRange = R().snapToGrid({ bpmValue: 120, phaseMs: 100, beatsPerBar: 4 }, 0.11, 1);
+  const negative = R().snapToGrid({ bpmValue: 120, phaseMs: 100 - 500, beatsPerBar: 4 }, 0.11, 1);
+  assertClose(inRange, 0.1, 1e-9);
+  assertClose(negative, 0.1, 1e-9, 'a phase pushed negative still lands on the same grid');
+});
+
+test('ribbon: snapToGrid tolerates a missing or zero bpmValue', () => {
+  assertEq(R().snapToGrid(null, 0.62, 1), 0.62, 'no tempo, no snap');
+  assertEq(R().snapToGrid({ bpmValue: 0, phaseMs: 0, beatsPerBar: 4 }, 0.62, 1), 0.62, 'zero BPM would divide by zero');
+});

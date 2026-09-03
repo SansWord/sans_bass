@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [Meta](#meta--migrate-unit-tests-to-vitest-gate-on-ci-2026-09-02-2256) | `tests/test.html` (a browser page read via `window.__testResults`) is gone; `npm test` runs the same 271 tests via Vitest, split into three tiers (plain Node, jsdom, headless Chromium) by what each file actually needs, gated on every PR by a new `test.yml` CI workflow. No browser tool needed to check results anymore. |
 | [v1.21.0](#v1210--esm-modules-2026-09-02-2205) | `app.js` and the 8 classic-script `lib/*.js` files (`stems.js`, `i18n.js`, `platform.js`, `unzip.js`, `ribbon.js`, `jianpu.js`, `transport-math.js`, `analytics.js`) became real ES modules with `import`/`export`, closing the item the npm + Vite migration (v1.20.0) deliberately deferred. Four of them (`i18n.js`, `platform.js`, `analytics.js`, `jianpu.js`) keep a documented `window.SansX` bridge for `separate.js`/`notes.js`, which are already ESM and out of scope; the other four lose the global entirely. `index.html` needed zero changes — module singletons mean app.js importing the same files its own `<script>` tags load causes no duplicate evaluation, and execution order is spec-guaranteed rather than a document-order coincidence. |
 | [Meta](#meta--deployment-smoke-test-in-behaviourmd-2026-09-02-2123) | Extracted the checks used to verify the v1.20.0 deploy into a named **Deployment smoke test** section in `docs/behaviour.md` — a fast wiring check (module loading, real Worker/AudioWorklet instantiation, asset resolution) distinct from the full behaviour matrix. Fixed a stale `?v=` reference left over from the npm + Vite migration in the same file, and pointed `CLAUDE.md`'s own docs list at the new section so a fresh session can find it without reading `behaviour.md` end to end. |
 | [v1.20.0](#v1200--npm--vite-migration-2026-09-02-1754) | Dropped the vendored SoundTouch DSP core and the hand-written `?v=` cache-busting convention for a real npm + Vite pipeline: `soundtouchjs` installs as a normal dependency, `npm run build` produces the `dist/` both CI workflows now publish, and every asset Vite touches gets a content hash instead of a manually-bumped version string. No UI framework added; `app.js` and the classic-script `lib/*.js` files stay `window.SansX` scripts in substance, but all of them (plus `app.js`) had to switch their `<script>` tag to `type="module"` — Vite's HTML plugin only bundles/hashes a tag carrying that attribute, silently dropping a plain classic `<script src>` from the build entirely. |
@@ -54,6 +55,58 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## Meta — Migrate unit tests to Vitest, gate on CI (2026-09-02 22:56)
+
+**Review:** not yet
+
+**What was built:**
+- `tests/test.html` (a browser page read via `window.__testResults`, needing `npm run dev`
+  plus a browser tool to check results) is gone. `npm test` runs the same 16 test files
+  (271 tests) via Vitest from the CLI.
+- `vitest.config.js` splits the suite into three tiers by what each file's test bodies
+  actually touch: plain Node for pure logic (9 files), jsdom for the files whose `lib/*.js`
+  under test assigns a `window.SansX` bridge or touches `document` at module load (4 files:
+  `analytics`, `jianpu`, `i18n`, `platform`), and headless Chromium via
+  `@vitest/browser-playwright` for real `AudioContext`/`OfflineAudioContext` or a real
+  module `Worker` (3 files: `wav`, `sonify`, `notes`) — neither Node nor jsdom implements
+  either, and faking them would defeat tests meant to verify real audio/worker behaviour.
+- `tests/assert.js` becomes a thin adapter re-exporting Vitest's own `test()` alongside the
+  project's original `assert`/`assertEq`/`assertClose` helpers, so none of the 16 test
+  files needed to change their imports or assertion style.
+- New `.github/workflows/test.yml` runs `npm test` on every PR and on push to `main`,
+  installing the Playwright Chromium binary first. Writes nothing to `gh-pages`.
+- `tests/parity.html` is untouched — it needs local-only `rips/`/`stems/` audio CI never
+  has, so it stays a manual browser page, not part of `npm test`.
+
+**Key technical learnings:**
+- `[gotcha]` Under Vitest's `jsdom` environment, the global `URL` constructor is jsdom's
+  own polyfill, not `node:url`'s. `new URL('../index.html', import.meta.url)` produced a
+  `file:` URL that *looked* right (`.protocol` read `'file:'`), but `fs.readFile()` still
+  rejected it with "The URL must be of scheme file" — Node's internal check doesn't accept
+  a URL-shaped object from a different realm/implementation. `import.meta.url` itself was
+  never the problem (it resolves to the real `file://` path even under jsdom); a plain
+  `path.resolve(process.cwd(), ...)` sidesteps the whole issue.
+- `[insight]` Keeping the 16 existing test files' `import { test, assert, assertEq,
+  assertClose } from './assert.js'` unchanged — by rewriting `assert.js` itself to wrap
+  Vitest instead of switching every call site to `expect()` — turned a 16-file rewrite into
+  a near-zero-diff migration. A thrown `Error` already failed a test under the old
+  browser `runAll()` loop exactly the same way it fails a Vitest `test()`, so the adapter
+  needed no new behaviour, just a new export source.
+- `[note]` The three-way test tier split isn't a style choice — it's forced by what each
+  file's test bodies literally call. Grepping every test file for
+  `window.\|document.\|AudioContext\|OfflineAudioContext\|new Worker` before writing
+  `vitest.config.js` found the exact three groups, and an independent review pass re-ran
+  the same grep and confirmed the same three groups.
+
+**Process learnings:**
+- `[note]` A subagent review caught two things the same session had missed: a comment in
+  `tests/i18n.test.js` stating the wrong reason for a workaround (see the jsdom/URL gotcha
+  above — the comment originally blamed `import.meta.url` itself), and a missing
+  `permissions:` block on the new `test.yml` workflow that the other three workflows all
+  declare. Both fixed before merge.
 
 ---
 

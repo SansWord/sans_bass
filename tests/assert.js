@@ -1,10 +1,8 @@
-/* Minimal browser test runner. No dependencies — this project has no build step. */
-
-const tests = [];
-
-export function test(name, fn) {
-  tests.push({ name, fn });
-}
+// Thin adapter over Vitest's own `test`, so every *.test.js file keeps importing
+// `test`/`assert`/`assertEq`/`assertClose` from here unchanged. A thrown Error already
+// fails a Vitest test the same way it failed the old browser runAll() loop, so these
+// stay plain functions rather than switching every call site to expect().
+export { test } from 'vitest';
 
 export function assert(cond, msg) {
   if (!cond) throw new Error(msg || 'assertion failed');
@@ -20,23 +18,4 @@ export function assertClose(actual, expected, tol, msg) {
   if (!(Math.abs(actual - expected) <= tol)) {
     throw new Error(`${msg || 'assertClose'}: expected ${expected} +/- ${tol}, got ${actual}`);
   }
-}
-
-export async function runAll(outEl) {
-  const results = [];
-  for (const t of tests) {
-    try {
-      await t.fn();
-      results.push({ name: t.name, ok: true });
-    } catch (e) {
-      results.push({ name: t.name, ok: false, error: e.message });
-    }
-  }
-  const failed = results.filter((r) => !r.ok);
-  outEl.textContent =
-    results.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '\n      ' + r.error}`).join('\n') +
-    `\n\n${results.length - failed.length}/${results.length} passed`;
-  window.__testResults = { total: results.length, failed: failed.length, results };
-  console.log('[tests]', JSON.stringify(window.__testResults));
-  return window.__testResults;
 }

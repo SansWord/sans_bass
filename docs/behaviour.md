@@ -15,8 +15,11 @@ than run in that session, so treat them as the least trustworthy rows here.
 
 ## The test harness
 
-There is no runner. `tests/test.html` covers the pure functions; everything below is
-observed in a real browser. `npm run dev` first — separation and ES modules need HTTP.
+`npm test` (Vitest) covers the pure functions and runs from the CLI, no browser tool
+needed — see `vitest.config.js` and [`docs/deployment.md`](deployment.md) for how it splits
+tests across node/jsdom/headless-Chromium tiers. Everything below is a different thing:
+behaviour that only shows up in a real, interactive browser, observed by hand or via
+browser automation. `npm run dev` first — separation and ES modules need HTTP.
 
 Five things that will waste an hour if you don't know them:
 

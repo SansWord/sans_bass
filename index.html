@@ -15,9 +15,10 @@
 <link rel="stylesheet" href="styles.css">
 <!-- i18n loads in <head>, before anything paints, so `lang` and the tab title are already
      right and the DOM walk can run the moment the body exists. init() is called explicitly
-     rather than on load, so tests/test.html can read the dictionary without having its own
-     title rewritten. The literal English in the markup below is the no-JS fallback and the
-     readable source of truth; it matches DICT.en exactly. -->
+     rather than on load, so tests/i18n.test.js can import lib/i18n.js directly (under
+     Vitest's jsdom environment) without having its own title rewritten. The literal English
+     in the markup below is the no-JS fallback and the readable source of truth; it matches
+     DICT.en exactly. -->
 <script type="module" src="lib/i18n.js"></script>
 <script type="module">window.SansI18n.init();</script>
 <!-- Anonymous, cookieless usage counts. External, so Vite leaves the URL alone — and

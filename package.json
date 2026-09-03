@@ -5,12 +5,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview --port 8777"
+    "preview": "vite preview --port 8777",
+    "test": "vitest run"
   },
   "dependencies": {
     "soundtouchjs": "^0.3.0"
   },
   "devDependencies": {
-    "vite": "^8.2.2"
+    "@vitest/browser-playwright": "^4.1.11",
+    "jsdom": "^30.0.1",
+    "playwright": "^1.62.1",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }

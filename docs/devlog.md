@@ -118,6 +118,18 @@ Running log of what was built and what was learned building it.
   but it does trade away the independent-failure isolation three separate script tags had
   (an error in one no longer leaves the others unaffected). Accepted as a reasonable
   build-tool default rather than fought, since manual testing found no actual regression.
+- `[gotcha]` **Vite's default `base: '/'` emits root-absolute asset paths
+  (`/assets/main-*.js`), which 404 anywhere the site isn't served from a domain root** —
+  and this site never is: production is `https://sansword.github.io/sans_bass/`, and every
+  PR preview is a further `/pr-<N>/` under that. Missed in local `npm run dev`/`npm run
+  preview` testing because both happen to serve from `http://localhost:8777/`, a real root —
+  the bug was invisible in every environment this plan's manual verification pass actually
+  used, and only showed up after the first real PR-preview deploy came back with the app
+  half-loading (HTML 200, every asset 404). Fixed with `base: './'` in `vite.config.js`,
+  which makes Vite emit paths relative to each output HTML file instead
+  (`./assets/...` from `index.html`, `../assets/...` from `tests/test.html`) — the same
+  "relative, never root-relative" rule `index.html`'s hand-written icon links already
+  followed, just not yet applied to Vite's own output.
 
 **Process learnings:**
 

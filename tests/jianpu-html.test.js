@@ -40,6 +40,16 @@ describe('numbered-notation HTML export', () => {
       .not.toContain('class="chords"');
   });
 
+  it('exports the selected capo with precomputed play keys and slash chords', () => {
+    const html = jianpuHtml({ title: 'Song', bars: [[frag('1')]], barsPerLine: 4,
+      bpm: 120, beatsPerBar: 4, tonic: 10, capo: 3,
+      chords: [{ first: 'A#/D', second: null }] });
+    expect(html).toContain('<option value="3" selected>3</option>');
+    expect(html).toContain('>演奏調 G</span>');
+    expect(html).toContain('>G/B</span>');
+    expect(html).not.toMatch(/<(?:script|link)[^>]+(?:src|href)=/i);
+  });
+
   it('formats channel-specific timestamped filenames separately from rendering', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 8, 3, 14, 5));

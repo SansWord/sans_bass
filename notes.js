@@ -23,7 +23,7 @@ import * as SansI18n from './lib/i18n.js';
 import * as SansJianpu from './lib/jianpu.js';
 import { beatTimes } from './lib/ribbon.js';
 import { buildEditsPayload, planImport } from './lib/notes-edits.js';
-import { detectChordTimeline, transposeChordLabel, transposePitchClass } from './lib/chords.js';
+import { detectChordTimeline } from './lib/chords.js';
 import { chordDetectionReady, detectionView } from './lib/detection-state.js';
 import { addBatch, undoBatch } from './lib/editor-state.js';
 import { STEM_WORD, exportTimestamp, jianpuExportFilename, jianpuHtml } from './lib/jianpu-html.js';
@@ -694,8 +694,13 @@ function createNotesChannel(stem, els) {
      * regardless of its own start time — layoutBars (lib/jianpu.js) sorts its own copy
      * before walking it, the same guard lib/sonify.js needed for the same reason. */
     const stemAudio = window.sansBass.stemBuffer(stem);
-    const duration = stemAudio ? stemAudio.buffer.duration
-      : notes.reduce((max, n) => Math.max(max, n.end), 0);
+    const loadedHarmonic = HARMONIC_STEMS
+      .map((stemId) => window.sansBass.stemBuffer(stemId))
+      .filter(Boolean);
+    // Keep accompaniment-only bars, including an outro beyond this channel's audio.
+    const duration = Math.max(stemAudio?.buffer.duration || 0,
+      notes.reduce((max, n) => Math.max(max, n.end), 0),
+      ...loadedHarmonic.map((audio) => audio.buffer.duration));
     const beatSec = tempo.bpmValue > 0 ? 60 / tempo.bpmValue : 0.5;
 
     // Bar-start times from the shared tempo grid (same beatTimes() the ribbon draws from),
@@ -709,24 +714,17 @@ function createNotesChannel(stem, els) {
 
     // Export reuses the displayed timeline, including manual corrections, rather than
     // silently running a second detector with potentially different results.
-    const loadedHarmonic = HARMONIC_STEMS
-      .map((stemId) => window.sansBass.stemBuffer(stemId))
-      .filter(Boolean);
     const chords = loadedHarmonic.length ? barStarts.slice(0, -1).map((start, i) => {
       const mid = (start + barStarts[i + 1]) / 2;
       const first = chordTimeline.find((chord) => chord.start <= start && chord.end > start)?.label || null;
       const secondLabel = chordTimeline.find((chord) => chord.start <= mid && chord.end > mid)?.label || null;
-      const playFirst = transposeChordLabel(first, -capo);
-      const playSecond = transposeChordLabel(secondLabel, -capo);
-      return { first: playFirst, second: playSecond === playFirst ? null : playSecond };
+      return { first, second: secondLabel === first ? null : secondLabel };
     }) : undefined;
 
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
-    const playKey = PITCH_CLASSES[transposePitchClass(jianpu.tonic, -capo)];
-    const capoText = capo ? ` — Capo ${capo}, play key ${playKey}` : '';
-    const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}${capoText}`;
+    const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`;
 
-    const blob = new Blob([jianpuHtml({ title, bars, barsPerLine, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar, chords })],
+    const blob = new Blob([jianpuHtml({ title, bars, barsPerLine, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar, chords, tonic: jianpu.tonic, capo })],
       { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

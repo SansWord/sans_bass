@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.33.0](#v1330--interactive-capo-in-html-export-2026-09-04) | Exported notation carries its own capo selector and retains accompaniment-only bars. |
 | [v1.32.0](#v1320--hierarchical-barhalf-bar-chord-evidence-2026-09-04) | Half-bars remain the chord-change detector, but full-bar evidence now merges agreeing halves, carries one strong half across a weak partner, preserves real mid-bar and inversion changes, and leaves fully weak bars blank. This removes confident-looking labels from the nearly silent tail of `南國的風.zip`. |
 | [v1.31.0](#v1310--capo-aware-play-chords-2026-09-04) | A song-level capo selector keeps detected and corrected chords in concert pitch while showing playable chord shapes and play key in the zoom pane. Capo transposition covers slash bass notes and notation export, round-trips in version-5 edits JSON, and chord analysis now waits for every running note channel with an honest waiting-vs-detecting status. |
 | [v1.30.0](#v1300--editable-chords-in-the-zoomed-timeline-2026-09-04) | Chord analysis moves from export-time into the requested detection workflow and appears as half-bar labels in the zoomed pane. Ambiguous results are visibly distinct and expose their near-confidence alternatives; corrections flow into both notation HTML and the version-4 shared edits JSON. BPM/phase/meter changes refresh the intervals, with an explicit re-detect control and progress indicator. |
@@ -73,6 +74,19 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.33.0 — Interactive capo in HTML export (2026-09-04)
+
+- [note] Exported HTML starts at the player's capo and offers frets 0–11. Play key and
+  chord shapes (including slash bass) change locally; concert key and numbered notes stay fixed.
+- [insight] Precomputing all twelve shapes with the existing transposer keeps downloaded
+  HTML self-contained and avoids maintaining a second transposition implementation.
+- [note] Empty melody bars retain their chord rows, and export duration includes harmonic
+  stems so an accompaniment outro survives a shorter melodic stem.
+- [note] Validation: 379 automated tests passed across Node, jsdom, and Chromium; production
+  build passed with the existing stretch-processor URL warning. New synthetic export coverage
+  exercises capo defaults, repeated changes, slash chords, and empty bars. No deployed smoke,
+  real-song, physical-handheld, or manual visual/auditory acceptance was run.
 
 ## v1.32.0 — Hierarchical bar/half-bar chord evidence (2026-09-04)
 

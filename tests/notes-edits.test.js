@@ -9,6 +9,7 @@ test('notes-edits: buildEditsPayload writes the current version with stems keyed
     tempo: { on: true, bpmValue: 120, phaseMs: 0, beatsPerBar: 4 },
     tempoRange: null,
     chordEdits: [{ start: 1.25, label: 'E/G#' }],
+    capo: 3,
     stems: {
       vocals: { interpreter: 'hmm-v1', edits: [] },
       bass: { interpreter: 'hmm-v1', edits: [['x']] },
@@ -20,6 +21,7 @@ test('notes-edits: buildEditsPayload writes the current version with stems keyed
   assert('vocals' in payload.stems && 'bass' in payload.stems, 'both stems land under stems{}');
   assertEq(payload.stems.bass.edits.length, 1, 'a stem entry keeps its own edits');
   assertEq(payload.chordEdits[0].label, 'E/G#', 'shared chord corrections are carried through');
+  assertEq(payload.capo, 3, 'song-level capo is carried through');
 });
 
 test('notes-edits: buildEditsPayload omits song when none is given', () => {
@@ -79,6 +81,14 @@ test('notes-edits: v3 imports with no opinion about chord corrections', () => {
   assert(plan.ok);
   assert(!plan.hasChordEdits);
   assertEq(plan.chordEdits.length, 0);
+});
+
+test('notes-edits: capo round-trips and older v4 files leave it unchanged', () => {
+  const current = planImport({ version: NOTES_EDITS_VERSION, stems: {}, capo: 3 }, []);
+  assert(current.hasCapo);
+  assertEq(current.capo, 3);
+  const old = planImport({ version: 4, stems: {} }, []);
+  assert(!old.hasCapo);
 });
 
 // ---------------------------------------------------------------- planImport: invalid input

@@ -556,7 +556,9 @@ input[type=range] { width: 110px; }
 .zoom-chip-mute.muted { text-decoration: line-through; opacity: .55; }
 .zoom-notes-chip { font: 10px var(--mono); padding: 2px 8px; }
 .zoom-notes-chip.active { border-color: var(--loop); color: var(--loop); }
-.zoom-chord-editor { display: inline-flex; align-items: center; gap: 5px; }
+.zoom-chord-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 1px; }
+.capo-select { width: 48px; }
+.capo-play-key { white-space: nowrap; }
 .chord-field { width: 74px; color: #5ecbff; font-weight: 700; }
 .chord-field.ambiguous { color: #ffd166; border-color: #ffd166; }
 .chord-field.edited { color: #c99bf0; border-color: #c99bf0; }

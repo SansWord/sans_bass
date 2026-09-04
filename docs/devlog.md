@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.31.0](#v1310--capo-aware-play-chords-2026-09-04) | A song-level capo selector keeps detected and corrected chords in concert pitch while showing playable chord shapes and play key in the zoom pane. Capo transposition covers slash bass notes and notation export, round-trips in version-5 edits JSON, and chord analysis now waits for every running note channel with an honest waiting-vs-detecting status. |
 | [v1.30.0](#v1300--editable-chords-in-the-zoomed-timeline-2026-09-04) | Chord analysis moves from export-time into the requested detection workflow and appears as half-bar labels in the zoomed pane. Ambiguous results are visibly distinct and expose their near-confidence alternatives; corrections flow into both notation HTML and the version-4 shared edits JSON. BPM/phase/meter changes refresh the intervals, with an explicit re-detect control and progress indicator. |
 | [test strategy](#behaviour-test-strategy--deterministic-pyramid-2026-09-03) | The 255-row behaviour memory is preserved in a permanent coverage map and consolidated into globally unique executable scenarios. Pure state, generated fixtures, and the real-page Chromium harness move deterministic evidence under offline `npm test`; deployed-model, physical-device, visual, and auditory boundaries remain explicit release checks. |
 | [v1.29.0](#v1290--key-aware-harmonic-chroma-chords-in-the-export-2026-09-03-1701) | **Export list** now identifies harmony from the combined guitar/piano/bass audio rather than deriving it solely from detected bass notes. Half-bars are scored against 72 chord templates, biased by the vocal key (including the user's override), sequence-decoded across the progression, then optionally annotated with a bass slash. It is a materially better guess, not a verified chart: the real-song check reaches `A` / `E/G#` early on, while some later ambiguous labels remain open for tuning. |
@@ -69,6 +70,48 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.31.0 — Capo-aware play chords (2026-09-04)
+
+**Review:** pending
+
+**What was built:**
+
+- The zoom pane has a song-level capo selector on its own row between the zoom controls and
+  lane/note selectors. It shows the resulting play key and transposes every displayed chord
+  shape down by the selected fret count: concert A# becomes A at capo 1 and G at capo 3.
+- Chord quality and slash bass notation survive transposition. Manual edits are entered as
+  the visible play shape but converted back to concert pitch internally, so changing capo
+  never corrupts the detector result or correction history.
+- Numbered-notation HTML exports use the playable chord row and identify the capo/play key.
+  Shared edits JSON is now version 5 and preserves capo; version-3 and version-4 files remain
+  readable with no opinion about that setting.
+- Chord analysis waits until all running vocals/bass note workers finish, avoiding an early
+  incomplete pass without vocal-key or bass-inversion evidence. Its status says **Waiting for
+  note detection…** during that dependency and switches to **Detecting chords…** only when
+  chord computation starts.
+
+**Verification:**
+
+- `npm test` passed all 374 Node, jsdom, and headless-Chromium tests.
+- `npm run build` passed. The existing Vite warning for the runtime-resolved
+  `stretch-processor.js` URL is unchanged.
+- PR-preview and production smoke evidence will be recorded in the pull request rather than
+  claimed before those deployments exist.
+
+**Key technical learnings:**
+
+- `[insight]` A capo changes the shapes a player reads, not the sounding/concert harmony.
+  Keeping one concert-pitch source of truth and transposing only at UI/export boundaries lets
+  the player change capo freely without re-detecting or accumulating transposition drift.
+- `[gotcha]` A generic “Detecting chords…” state was being published while chord work was
+  deliberately blocked on a slower bass worker. Pipeline-busy and computation-running are
+  different states; naming the phase prevents truthful scheduling from producing a false UI.
+- `[note]` Waiting for every note worker costs no extra analysis time: both already start in
+  parallel. It removes a redundant partial chord pass and ensures the first visible result has
+  every available key and inversion input.
 
 ---
 

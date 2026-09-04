@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectionView } from '../lib/detection-state.js';
+import { chordDetectionReady, detectionView } from '../lib/detection-state.js';
 
 describe('notes detection state', () => {
   it.each([
@@ -17,5 +17,11 @@ describe('notes detection state', () => {
     ])).toEqual({
       sectionVisible: true, buttonDisabled: true, spinnerVisible: true, busyStems: ['bass'],
     });
+  });
+
+  it('waits to detect chords until every running note channel finishes', () => {
+    expect(chordDetectionReady([{ state: 'complete' }, { state: 'running' }])).toBe(false);
+    expect(chordDetectionReady([{ state: 'complete' }, { state: 'complete' }])).toBe(true);
+    expect(chordDetectionReady([{ state: 'complete' }, { state: 'absent' }])).toBe(true);
   });
 });

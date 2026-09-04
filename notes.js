@@ -23,8 +23,8 @@ import * as SansI18n from './lib/i18n.js';
 import * as SansJianpu from './lib/jianpu.js';
 import { beatTimes } from './lib/ribbon.js';
 import { buildEditsPayload, planImport } from './lib/notes-edits.js';
-import { detectChordTimeline } from './lib/chords.js';
-import { detectionView } from './lib/detection-state.js';
+import { detectChordTimeline, transposeChordLabel, transposePitchClass } from './lib/chords.js';
+import { chordDetectionReady, detectionView } from './lib/detection-state.js';
 import { addBatch, undoBatch } from './lib/editor-state.js';
 import { STEM_WORD, exportTimestamp, jianpuExportFilename, jianpuHtml } from './lib/jianpu-html.js';
 
@@ -72,6 +72,7 @@ const channels = [];   // filled at the bottom of this file; tempo handlers re-d
 let chordTimeline = [];
 let chordEdits = new Map();
 let chordTimer = 0;
+let capo = 0;
 
 /** The drums stem's audio, sliced to `tempoRange` if one is set — sliced BEFORE handing to
  *  the worker, not after, so the protocol stays simple (the worker never knows about ranges)
@@ -122,9 +123,10 @@ function chordBounds(duration) {
   return starts;
 }
 
-function publishChords(running = false) {
+function publishChords(phase = null) {
+  const key = channels.find((channel) => channel.stem === 'vocals')?.keySource() || null;
   window.dispatchEvent(new CustomEvent('sansbass:chords', {
-    detail: { chords: chordTimeline, running },
+    detail: { chords: chordTimeline, running: phase !== null, phase, capo, key },
   }));
 }
 
@@ -133,12 +135,21 @@ function publishChords(running = false) {
 function scheduleChordDetection() {
   clearTimeout(chordTimer);
   const loaded = HARMONIC_STEMS.map((id) => window.sansBass.stemBuffer(id)).filter(Boolean);
-  if (!loaded.length || !channels.some((channel) => channel.hasFrames())) {
+  const channelStates = channels.map((channel) => ({ state: channel.state() }));
+  if (!loaded.length || !channelStates.some(({ state }) => state === 'complete')) {
     chordTimeline = [];
     publishChords();
     return;
   }
-  publishChords(true);
+  /* The shared Find notes action starts vocals and bass together. If one worker finishes
+   * first, wait for the other: vocal key context and analysed bass inversions both affect
+   * the chord result, and an early partial pass would only be discarded moments later. The
+   * last channel to finish calls this function again and starts the one complete pass. */
+  if (!chordDetectionReady(channelStates)) {
+    publishChords('waiting');
+    return;
+  }
+  publishChords('detecting');
   chordTimer = setTimeout(() => {
     const harmonic = mixDown(loaded.map((source) => source.buffer));
     const duration = harmonic.samples.length / harmonic.sampleRate;
@@ -168,6 +179,10 @@ window.addEventListener('sansbass:chordredetect', () => {
   scheduleChordDetection();
 });
 
+window.addEventListener('sansbass:capochange', (event) => {
+  capo = Math.max(0, Math.min(11, Number(event.detail?.capo) || 0));
+});
+
 /** Restores the tempo grid to its defaults for a freshly loaded song. Tempo is derived from
  *  THIS song's drums stem, so nothing about it — including a range selection or a manual
  *  BPM/phase override — should survive into the next song. Idempotent: safe to call more
@@ -183,6 +198,7 @@ function resetTempo() {
   syncTempoControls();
   chordTimeline = [];
   chordEdits = new Map();
+  capo = 0;
 }
 
 /** Adopts a fresh { bpmValue, phaseSec, confidence } from the worker. */
@@ -700,11 +716,15 @@ function createNotesChannel(stem, els) {
       const mid = (start + barStarts[i + 1]) / 2;
       const first = chordTimeline.find((chord) => chord.start <= start && chord.end > start)?.label || null;
       const secondLabel = chordTimeline.find((chord) => chord.start <= mid && chord.end > mid)?.label || null;
-      return { first, second: secondLabel === first ? null : secondLabel };
+      const playFirst = transposeChordLabel(first, -capo);
+      const playSecond = transposeChordLabel(secondLabel, -capo);
+      return { first: playFirst, second: playSecond === playFirst ? null : playSecond };
     }) : undefined;
 
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
-    const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`;
+    const playKey = PITCH_CLASSES[transposePitchClass(jianpu.tonic, -capo)];
+    const capoText = capo ? ` — Capo ${capo}, play key ${playKey}` : '';
+    const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}${capoText}`;
 
     const blob = new Blob([jianpuHtml({ title, bars, barsPerLine, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar, chords })],
       { type: 'text/html' });
@@ -888,6 +908,7 @@ window.addEventListener('sansbass:exportedits', () => {
     chordEdits: [...chordEdits.entries()]
       .map(([start, label]) => ({ start, label }))
       .sort((a, b) => a.start - b.start),
+    capo,
     stems,
   });
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -938,6 +959,7 @@ window.addEventListener('sansbass:importedits', async (e) => {
   if (plan.hasChordEdits) {
     chordEdits = new Map(plan.chordEdits.map((edit) => [edit.start, edit.label]));
   }
+  if (plan.hasCapo) capo = plan.capo;
 
   const entryByStem = new Map(plan.apply.map((x) => [x.stem, x.entry]));
   for (const c of channels) {

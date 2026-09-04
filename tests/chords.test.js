@@ -1,6 +1,6 @@
 import { test, assertEq } from './assert.js';
 import { hzFromCents } from '../lib/pitch.js';
-import { decodeChordProgression, detectChords, detectChordTimeline } from '../lib/chords.js';
+import { decodeChordProgression, detectChords, detectChordTimeline, transposeChordLabel, transposePitchClass } from '../lib/chords.js';
 
 const SR = 44100;
 const n = (start, end, midi) => ({ start, end, midi });
@@ -23,6 +23,15 @@ function concat(...arrays) {
 const A_MAJ = [57, 61, 64];
 const E_MAJ = [64, 68, 71];
 const ONE_BAR = [0, 2];
+
+test('chords: capo transposes play chords and slash bass notes down by fret count', () => {
+  assertEq(transposeChordLabel('A#', -1), 'A');
+  assertEq(transposeChordLabel('A#', -3), 'G');
+  assertEq(transposeChordLabel('A#m7/G#', -3), 'Gm7/F');
+  assertEq(transposeChordLabel('Bb', -1), 'A');
+  assertEq(transposeChordLabel('not a chord', -3), 'not a chord');
+  assertEq(transposePitchClass(10, -3), 7);
+});
 
 test('chords: vocal-key context resolves an E-versus-C#m ambiguity toward I-V-vi', () => {
   const candidateSets = [

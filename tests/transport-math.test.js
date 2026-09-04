@@ -44,3 +44,14 @@ test('transport-math: currentTimeAtRate wraps inside the loop at a scaled pace',
   const t = M.currentTimeAtRate({ offset: 11, elapsed: 3, ratePercent: 50, loopA: 10, loopB: 12, duration: 300 });
   assertClose(t, 10.5, 1e-9);
 });
+
+test('transport-math: a new song resets speed to the default', () => {
+  assertEq(M.resetRatePercent(), 100);
+});
+
+test('transport-math: crossing native and stretched playback requires a graph rebuild', () => {
+  assertEq(M.rateChangePlan(100, 95), 'rebuild');
+  assertEq(M.rateChangePlan(95, 100), 'rebuild');
+  assertEq(M.rateChangePlan(95, 90), 'update');
+  assertEq(M.rateChangePlan(100, 100), 'none');
+});

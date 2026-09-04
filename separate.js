@@ -6,6 +6,7 @@ import { buildZip } from './lib/zip.js';
 import * as SansI18n from './lib/i18n.js';
 import * as SansPlatform from './lib/platform.js';
 import * as SansAnalytics from './lib/analytics.js';
+import { separationView } from './lib/separation-state.js';
 
 const el = {
   panel:  document.getElementById('sep'),
@@ -27,6 +28,17 @@ const MB = 1e6;
 let worker = null;
 let lastStems = null;
 let lastName = 'song';
+let phase = 'idle';
+
+function renderControls(singleTrack = window.sansBass?.isSingleTrack?.()) {
+  const view = separationView({ state: phase, singleTrack, handheld: HANDHELD });
+  el.panel.hidden = !view.panel;
+  el.go.hidden = !view.go;
+  el.cancel.hidden = !view.cancel;
+  el.save.hidden = !view.save;
+  el.go.disabled = view.goDisabled;
+  el.save.disabled = view.saveDisabled;
+}
 
 function setProgress(frac) {
   el.bar.hidden = frac === null;
@@ -64,11 +76,8 @@ window.addEventListener('sansbass:langchange', () => {
 });
 
 function busy(on) {
-  el.go.disabled = on;
-  el.cancel.hidden = !on;
-  // Save must not be reachable mid-run: the stems it would write are the *previous*
-  // track's, and encoding them competes with the worker for memory.
-  el.save.disabled = on;
+  phase = on ? 'running' : 'idle';
+  renderControls();
 }
 
 function getWorker() {
@@ -86,7 +95,7 @@ function refresh() {
     // Same visibility rule as below — the panel belongs to a single unseparated song —
     // but its contents are the explanation, and the controls never come back.
     const single = window.sansBass?.isSingleTrack?.();
-    el.panel.hidden = !single;
+    renderControls(single);
     // once(), not track(): refresh() runs on a 400 ms interval and track() would fire all
     // session. This counts visitors who were shown the message, exactly once each.
     if (single) gcOnce('separate-handheld-blocked');
@@ -95,12 +104,11 @@ function refresh() {
 
   const single = window.sansBass?.isSingleTrack?.();
   if (single) {
-    el.panel.hidden = false;
-    el.go.hidden = false;             // a fresh unseparated song can be separated again
-    el.save.hidden = true;
+    phase = 'idle';
+    renderControls(true);
     lastStems = null;                 // a newly loaded song invalidates old results
   } else if (!lastStems) {
-    el.panel.hidden = true;           // a stems folder was loaded directly
+    renderControls(false);            // a stems folder was loaded directly
   }
 }
 
@@ -131,7 +139,8 @@ el.go.addEventListener('click', () => {
   // would sit on a progress bar for ever.
   w.onerror = (err) => {
     gcTrack('separate-fail');
-    busy(false);
+    phase = 'error';
+    renderControls();
     setProgress(null);
     status('sep.workerFailed', { msg: err.message || (() => tr('sep.oom')) });
     worker = null;
@@ -158,16 +167,16 @@ el.go.addEventListener('click', () => {
     } else if (m.type === 'result') {
       gcTrack('separate-done');
       lastStems = m.stems;
-      busy(false);
+      phase = 'success';
+      renderControls(false);
       setProgress(null);
       status('');                      // the six lanes appearing is the confirmation
-      el.go.hidden = true;             // this song is separated; nothing left to separate
-      el.save.hidden = false;
       window.sansBass.loadSeparated({ name: lastName, buffer: mix.buffer }, m.stems);
-      el.panel.hidden = false;         // keep the panel up so Save stays reachable
+      renderControls(false);           // keep the panel up so Save stays reachable
     } else if (m.type === 'error') {
       gcTrack(m.message === 'cancelled' ? 'separate-cancel' : 'separate-fail');
-      busy(false);
+      phase = m.message === 'cancelled' ? 'cancel' : 'error';
+      renderControls();
       setProgress(null);
       status(m.message === 'cancelled' ? 'sep.cancelled' : 'sep.failed', { msg: m.message });
     }
@@ -216,7 +225,7 @@ if (HANDHELD) {
   // #sep-go is the only control the markup leaves visible; save, cancel and the progress
   // bar already start hidden. styles.css carries the global
   // [hidden] { display: none !important } that this depends on.
-  el.go.hidden = true;
+  renderControls();
 }
 
 setInterval(refresh, 400);

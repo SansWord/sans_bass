@@ -52,6 +52,31 @@ test('i18n: detectLocale is pure — it never reads storage', () => {
   assertEq(I18N.detectLocale(['en-US']), 'en', 'a stored choice must not leak in here');
 });
 
+test('i18n: a stored explicit choice wins and a clean first visit is not persisted', () => {
+  const values = new Map();
+  Object.defineProperty(window, 'localStorage', { configurable: true, value: {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    clear: () => values.clear(),
+  } });
+  window.localStorage.clear();
+  assertEq(I18N.storedLocale(), null, 'clean profile has no implicit choice');
+  I18N.setLocale('zh-TW', { persist: false });
+  assertEq(window.localStorage.getItem('sans_bass.lang'), null, 'detection-style selection is not stored');
+  I18N.setLocale('en');
+  assertEq(I18N.storedLocale(), 'en', 'explicit selection is stored');
+  window.localStorage.clear();
+});
+
+test('i18n: blocked storage reads and writes do not escape', () => {
+  Object.defineProperty(window, 'localStorage', { configurable: true, value: {
+    getItem: () => { throw new Error('blocked'); },
+    setItem: () => { throw new Error('blocked'); },
+  } });
+  assertEq(I18N.storedLocale(), null);
+  I18N.setLocale('en');
+});
+
 test('i18n: setLocale rejects an unknown locale rather than blanking the UI', () => {
   I18N.setLocale('klingon', { persist: false });
   assertEq(I18N.getLocale(), 'zh-TW', 'falls back to the default locale');

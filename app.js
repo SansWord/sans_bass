@@ -13,6 +13,9 @@ import * as SansAnalytics from './lib/analytics.js';
 import * as SansRibbon from './lib/ribbon.js';
 import * as SansJianpu from './lib/jianpu.js';
 import * as SansTransportMath from './lib/transport-math.js';
+import { allToggleLabel, initialRouting, route } from './lib/routing-state.js';
+import * as SansLoopState from './lib/loop-state.js';
+import { commandState, wholeSong } from './lib/editor-state.js';
 
 const BUCKETS = 1400;   // waveform resolution
 const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
@@ -127,8 +130,7 @@ let scrubbing = false;
 let raf = 0;
 let loopA = null;          // A-B repeat start, seconds (null = unset)
 let loopB = null;          // A-B repeat end, seconds
-let muteSnapshot = null;   // lane mutes to return to when "unmute all" is undone
-const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
+let routingState = initialRouting([]);
 let workletReady = null;   // Promise: resolves once lib/stretch-processor.js is registered
 
 const $ = (id) => document.getElementById(id);
@@ -144,7 +146,8 @@ const el = {
   buildSha: $('build-sha'),
 };
 
-if (el.buildSha) el.buildSha.textContent = __COMMIT_SHA__;
+const BUILD_SHA = typeof __COMMIT_SHA__ === 'undefined' ? 'dev' : __COMMIT_SHA__;
+if (el.buildSha) el.buildSha.textContent = BUILD_SHA;
 
 /* Null-safe wiring. Every listener in this file is registered from one flat run of
  * top-level statements, so a single missing element used to abort the whole script at its
@@ -328,9 +331,9 @@ async function loadFiles(fileList, fallbackName, source) {
 
   ensureAudio();
   stop(true);
-  loopA = loopB = null;            // A-B points belong to the previous song
+  ({ a: loopA, b: loopB } = SansLoopState.clearLoop());
   renderLoopBadge();
-  ratePercent = SansTransportMath.RATE_DEFAULT;
+  ratePercent = SansTransportMath.resetRatePercent();
   tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
   say(files.length > 1 ? 'status.decodingMany' : 'status.decodingOne', { n: files.length });
@@ -464,10 +467,12 @@ function buildTracks(items, title) {
   });
 
   window.__hasStems = hasMixPlusStems(tracks);
-  muteSnapshot = null;          // a snapshot indexes the old lanes; it cannot survive a load
+  routingState = initialRouting(tracks.map(laneKey), {
+    hasMixPlusStems: window.__hasStems,
+  });
 
   buildUI(title);
-  setMode('mix');
+  syncRoutingState(routingState);
 }
 
 /**
@@ -494,9 +499,9 @@ function loadSeparated(original, stems) {
   // a stale startedAt. stop(false) silences them and returns the playhead to the start.
   stop(false);
 
-  loopA = loopB = null;
+  ({ a: loopA, b: loopB } = SansLoopState.clearLoop());
   renderLoopBadge();
-  ratePercent = SansTransportMath.RATE_DEFAULT;
+  ratePercent = SansTransportMath.resetRatePercent();
   tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
   // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks
@@ -1856,9 +1861,10 @@ function syncEditToolbar() {
     b.disabled = !sel;
   }
   const gridOn = !!(ribbon && ribbon.tempo && ribbon.tempo.on);
-  zoomToolbar.snapNote.disabled = !sel || !gridOn;
-  zoomToolbar.rangeDel.disabled = !rangeSelection;
-  zoomToolbar.rangeSnap.disabled = !rangeSelection || !gridOn;
+  const commands = commandState({ note: sel, range: rangeSelection, gridOn });
+  zoomToolbar.snapNote.disabled = !commands.noteSnap;
+  zoomToolbar.rangeDel.disabled = !commands.rangeDelete;
+  zoomToolbar.rangeSnap.disabled = !commands.rangeSnap;
   syncNoteFields(sel);
 }
 
@@ -2050,7 +2056,7 @@ function paintTempoRangeBand(c, canvas, dpr) {
 
 /** A-B repeat is armed only when both points exist and enclose a usable span. */
 function loopOn() {
-  return loopA !== null && loopB !== null && loopB - loopA >= MIN_LOOP;
+  return SansLoopState.isLoopActive({ a: loopA, b: loopB });
 }
 
 function currentTime() {
@@ -2115,11 +2121,15 @@ async function play() {
 
   const t0 = audio.currentTime + LOOKAHEAD;
   const longest = tracks.reduce((a, b) => (b.buffer.duration > a.buffer.duration ? b : a));
+  const loopPlans = SansLoopState.loopPlan(
+    tracks.map((track) => track.buffer.duration),
+    { a: loopA, b: loopB },
+  );
 
   if (stretched) {
-    stretchNodes = tracks.map(t => {
+    stretchNodes = tracks.map((t, index) => {
       if (offset >= t.buffer.duration) return null;
-      const willLoop = looping && t.buffer.duration >= loopB;
+      const willLoop = loopPlans[index].loop;
       const node = createStretchNode(t, willLoop, t0);
       if (t === longest && !willLoop) {
         node.port.onmessage = (e) => { if (e.data.type === 'ended' && playing) stop(false); };
@@ -2128,7 +2138,7 @@ async function play() {
     }).filter(Boolean);
     sources = [];
   } else {
-    sources = tracks.map(t => {
+    sources = tracks.map((t, index) => {
       if (offset >= t.buffer.duration) return null;   // this stem already ended
       const src = audio.createBufferSource();
       src.buffer = t.buffer;
@@ -2138,10 +2148,10 @@ async function play() {
       // every stem, and it keeps running when the tab is in the background.
       // A stem shorter than loopEnd would wrap at its own end and drift out of sync,
       // so it is left unlooped and simply falls silent instead.
-      if (looping && t.buffer.duration >= loopB) {
+      if (loopPlans[index].loop) {
         src.loop = true;
-        src.loopStart = loopA;
-        src.loopEnd = loopB;
+        src.loopStart = loopPlans[index].loopStart;
+        src.loopEnd = loopPlans[index].loopEnd;
       }
 
       // End of song is detected on the audio graph, not in the animation loop:
@@ -2226,22 +2236,16 @@ function setLoopPoint(which) {
   if (!tracks.length) return;
   gcBump('loop');
   const t = currentTime();
-  if (which === 'a') loopA = t; else loopB = t;
-
-  // Tolerate them being set in either order.
-  if (loopA !== null && loopB !== null && loopA > loopB) {
-    const swap = loopA; loopA = loopB; loopB = swap;
-  }
-  if (loopA !== null && loopB !== null && loopB - loopA < MIN_LOOP) {
-    say('status.loopTooShort', { min: MIN_LOOP }, true);
-    if (which === 'a') loopA = null; else loopB = null;
-  }
+  const next = SansLoopState.setLoopPoint({ a: loopA, b: loopB }, which, t);
+  loopA = next.a;
+  loopB = next.b;
+  if (next.rejected) say('status.loopTooShort', { min: SansLoopState.MIN_LOOP_SECONDS }, true);
 
   refreshLoop();
 }
 
 function clearLoop() {
-  loopA = loopB = null;
+  ({ a: loopA, b: loopB } = SansLoopState.clearLoop());
   refreshLoop();
 }
 
@@ -2286,8 +2290,7 @@ function setRate(newPercent) {
     return;
   }
 
-  const crossingBoundary = (ratePercent === 100) !== (clamped === 100);
-  if (crossingBoundary) {
+  if (SansTransportMath.rateChangePlan(ratePercent, clamped) === 'rebuild') {
     stop(true);          // captures offset under the OLD rate
     ratePercent = clamped;
     play();
@@ -2445,9 +2448,7 @@ function applyGains() {
  * press was always the dead one. Split out of applyGains so retranslate() can re-render
  * the label without touching gain. */
 function renderAllToggle() {
-  const on = allLanesOn();
-  el.allToggle.textContent =
-    !on ? tr('btn.unmuteAll') : muteSnapshot ? tr('btn.restorePrevious') : tr('btn.muteAll');
+  el.allToggle.textContent = tr(`btn.${allToggleLabel(routingState)}`);
   el.allToggle.disabled = false;
 }
 
@@ -2519,18 +2520,13 @@ function renderLangToggle() {
 }
 
 /** Lanes the all-on/all-off button acts on — the stems, never a full-mix file. */
-function stemLanes() {
-  return window.__hasStems ? tracks.filter(t => t.stem !== 'mix') : tracks;
-}
-
-function allLanesOn() {
-  const lanes = stemLanes();
-  return lanes.length > 0 && lanes.every(t => !t.muted);
-}
-
-function allLanesOff() {
-  const lanes = stemLanes();
-  return lanes.length > 0 && lanes.every(t => t.muted);
+function syncRoutingState(next) {
+  routingState = next;
+  tracks.forEach((track, index) => {
+    track.muted = !!next.muted[laneKey(track, index)];
+  });
+  el.mode.value = next.mode;
+  applyGains();
 }
 
 /**
@@ -2553,62 +2549,18 @@ function allLanesOff() {
  */
 function toggleAllTracks() {
   gcOnce('unmute-all');
-  if (allLanesOn()) {
-    if (muteSnapshot) {
-      const snap = muteSnapshot;
-      muteSnapshot = null;
-      stemLanes().forEach((t, i) => { t.muted = snap[i]; });
-    } else {
-      stemLanes().forEach(t => { t.muted = true; });
-    }
-    el.mode.value = 'custom';
-    applyGains();
-    return;
-  }
-
-  muteSnapshot = allLanesOff() ? null : stemLanes().map(t => t.muted);
-  if (window.__hasStems) {
-    // Unmuting the stems is what silences the mix file, via applyGains.
-    stemLanes().forEach(t => { t.muted = false; });
-    el.mode.value = 'custom';
-    applyGains();
-  } else {
-    setMode('mix');   // every lane on *is* the full mix, so keep the dropdown honest
-  }
+  syncRoutingState(route(routingState, { type: 'all' }));
 }
 
 function setMode(mode) {
-  const hasStems = window.__hasStems;
-  if (mode === 'mix') {
-    tracks.forEach(t => {
-      // With both a mix file and stems, the mix file wins; otherwise sum the stems.
-      t.muted = hasStems ? (t.stem !== 'mix') : false;
-    });
-  } else if (mode !== 'custom') {
-    tracks.forEach((t, i) => { t.muted = laneKey(t, i) !== mode; });
-  }
-  el.mode.value = mode;
-  applyGains();
+  syncRoutingState(route(routingState, { type: 'mode', mode }));
 }
 
 function toggleTrack(t) {
   gcBump('toggle');
   if (t.stem) gcOnce(`toggle-${t.stem}`);   // stem ids, never labels — never a filename
-  // The mix lane is the exception: a full-mix file must never sound on top of its own
-  // stems, so toggling it switches the whole routing instead of just its own gain.
-  if (window.__hasStems && t.stem === 'mix') {
-    if (el.mode.value === 'mix') {
-      tracks.forEach(o => { o.muted = o.stem === 'mix'; });   // hand over to the stems
-      el.mode.value = 'custom';
-      applyGains();
-    } else {
-      setMode('mix');
-    }
-    return;
-  }
-  t.muted = !t.muted;
-  el.mode.value = 'custom';
-  applyGains();
+  const index = tracks.indexOf(t);
+  syncRoutingState(route(routingState, { type: 'toggle', key: laneKey(t, index) }));
 }
 
 // ---------------------------------------------------------------- input
@@ -3101,8 +3053,9 @@ function editSnapRange() {
  *  range) that doesn't require dragging across the full width. */
 function setWholeSongRange() {
   if (!duration) return;
-  rangeSelection = { from: 0, to: duration };
-  selectedNote = null;
+  ({ note: selectedNote, range: rangeSelection } = wholeSong(
+    { note: selectedNote, range: rangeSelection }, duration,
+  ));
   draw();
 }
 

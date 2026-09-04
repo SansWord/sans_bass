@@ -15,6 +15,7 @@ import * as SansJianpu from './lib/jianpu.js';
 import * as SansTransportMath from './lib/transport-math.js';
 import { allToggleLabel, initialRouting, route } from './lib/routing-state.js';
 import * as SansLoopState from './lib/loop-state.js';
+import { commandState, wholeSong } from './lib/editor-state.js';
 
 const BUCKETS = 1400;   // waveform resolution
 const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
@@ -1860,9 +1861,10 @@ function syncEditToolbar() {
     b.disabled = !sel;
   }
   const gridOn = !!(ribbon && ribbon.tempo && ribbon.tempo.on);
-  zoomToolbar.snapNote.disabled = !sel || !gridOn;
-  zoomToolbar.rangeDel.disabled = !rangeSelection;
-  zoomToolbar.rangeSnap.disabled = !rangeSelection || !gridOn;
+  const commands = commandState({ note: sel, range: rangeSelection, gridOn });
+  zoomToolbar.snapNote.disabled = !commands.noteSnap;
+  zoomToolbar.rangeDel.disabled = !commands.rangeDelete;
+  zoomToolbar.rangeSnap.disabled = !commands.rangeSnap;
   syncNoteFields(sel);
 }
 
@@ -3051,8 +3053,9 @@ function editSnapRange() {
  *  range) that doesn't require dragging across the full width. */
 function setWholeSongRange() {
   if (!duration) return;
-  rangeSelection = { from: 0, to: duration };
-  selectedNote = null;
+  ({ note: selectedNote, range: rangeSelection } = wholeSong(
+    { note: selectedNote, range: rangeSelection }, duration,
+  ));
   draw();
 }
 

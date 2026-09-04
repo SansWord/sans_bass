@@ -18,6 +18,8 @@ const NODE_TESTS = [
   'jianpu', 'platform', 'notes-edits', 'time', 'chroma', 'chords',
   'coverage-map', 'audio-fixtures', 'routing-state', 'loop-state', 'detection-state',
   'separation-state',
+  'editor-state',
+  'jianpu-html',
 ].map((name) => `tests/${name}.test.js`);
 
 const JSDOM_TESTS = ['analytics', 'i18n'].map((name) => `tests/${name}.test.js`);

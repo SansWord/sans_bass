@@ -23,7 +23,7 @@ import * as SansI18n from './lib/i18n.js';
 import * as SansJianpu from './lib/jianpu.js';
 import { beatTimes } from './lib/ribbon.js';
 import { buildEditsPayload, planImport } from './lib/notes-edits.js';
-import { detectChords } from './lib/chords.js';
+import { detectChordTimeline } from './lib/chords.js';
 import { detectionView } from './lib/detection-state.js';
 import { addBatch, undoBatch } from './lib/editor-state.js';
 import { STEM_WORD, exportTimestamp, jianpuExportFilename, jianpuHtml } from './lib/jianpu-html.js';
@@ -69,6 +69,9 @@ let tempoRange = null;        // { from, to } in seconds, or null = whole song (
 let tempoRangeArmed = false;  // "Select BPM range" toggle; mirrored to app.js for the drag UI
 
 const channels = [];   // filled at the bottom of this file; tempo handlers re-derive every channel
+let chordTimeline = [];
+let chordEdits = new Map();
+let chordTimer = 0;
 
 /** The drums stem's audio, sliced to `tempoRange` if one is set — sliced BEFORE handing to
  *  the worker, not after, so the protocol stays simple (the worker never knows about ranges)
@@ -112,17 +115,74 @@ function mixDown(buffers) {
   return { samples, sampleRate: buffers[0].sampleRate };
 }
 
+function chordBounds(duration) {
+  const starts = beatTimes(tempo, duration).filter((beat) => beat.bar).map((beat) => beat.t);
+  if (!starts.length || starts[0] > 0) starts.unshift(0);
+  if (starts[starts.length - 1] < duration) starts.push(duration);
+  return starts;
+}
+
+function publishChords(running = false) {
+  window.dispatchEvent(new CustomEvent('sansbass:chords', {
+    detail: { chords: chordTimeline, running },
+  }));
+}
+
+/** Chords become part of the detection result, instead of being first calculated by Export.
+ * Debouncing coalesces the two note channels completing/reinterpreting in the same turn. */
+function scheduleChordDetection() {
+  clearTimeout(chordTimer);
+  const loaded = HARMONIC_STEMS.map((id) => window.sansBass.stemBuffer(id)).filter(Boolean);
+  if (!loaded.length || !channels.some((channel) => channel.hasFrames())) {
+    chordTimeline = [];
+    publishChords();
+    return;
+  }
+  publishChords(true);
+  chordTimer = setTimeout(() => {
+    const harmonic = mixDown(loaded.map((source) => source.buffer));
+    const duration = harmonic.samples.length / harmonic.sampleRate;
+    const bass = channels.find((channel) => channel.stem === 'bass')?.chordSource();
+    const vocals = channels.find((channel) => channel.stem === 'vocals')?.keySource();
+    chordTimeline = detectChordTimeline(harmonic.samples, harmonic.sampleRate, chordBounds(duration),
+      bass?.notes || null, vocals || null).map((chord) => ({
+        ...chord,
+        label: chordEdits.get(chord.start) ?? chord.label,
+        edited: chordEdits.has(chord.start),
+      }));
+    publishChords();
+  }, 20);
+}
+
+window.addEventListener('sansbass:chordedit', (event) => {
+  const { start, label } = event.detail || {};
+  if (!Number.isFinite(start) || typeof label !== 'string' || !label.trim()) return;
+  chordEdits.set(start, label.trim());
+  chordTimeline = chordTimeline.map((chord) => chord.start === start
+    ? { ...chord, label: label.trim(), edited: true } : chord);
+  publishChords();
+});
+
+window.addEventListener('sansbass:chordredetect', () => {
+  chordEdits = new Map();
+  scheduleChordDetection();
+});
+
 /** Restores the tempo grid to its defaults for a freshly loaded song. Tempo is derived from
  *  THIS song's drums stem, so nothing about it — including a range selection or a manual
  *  BPM/phase override — should survive into the next song. Idempotent: safe to call more
  *  than once for the same load (each channel's reset() calls it, and so does the
  *  'sansbass:songload' listener below, so both paths agreeing is fine). */
 function resetTempo() {
+  clearTimeout(chordTimer);
+  chordTimer = 0;
   tempo = { on: true, auto: true, bpmValue: 120, phaseMs: 0, beatsPerBar: 4, confidence: 0 };
   tempoRange = null;
   tempoRangeArmed = false;
   tempoEl.rangeToggle.classList.remove('note-tbtn-armed');
   syncTempoControls();
+  chordTimeline = [];
+  chordEdits = new Map();
 }
 
 /** Adopts a fresh { bpmValue, phaseSec, confidence } from the worker. */
@@ -419,6 +479,7 @@ function createNotesChannel(stem, els) {
     });
     resync();
     renderEditList();
+    scheduleChordDetection();
   }
 
   /* Start (or restart) the synth against the transport's OWN t0 and offset. */
@@ -630,19 +691,17 @@ function createNotesChannel(stem, els) {
 
     const bars = SansJianpu.layoutBars(notes, barStarts, jianpu.tonic, jianpu.mode, refOct, beatSec);
 
-    // Chords are matched from the harmonic stems' mixed audio, independent of the exported
-    // channel. Bass notes, if analysed, add only optional slash-chord notation.
+    // Export reuses the displayed timeline, including manual corrections, rather than
+    // silently running a second detector with potentially different results.
     const loadedHarmonic = HARMONIC_STEMS
       .map((stemId) => window.sansBass.stemBuffer(stemId))
       .filter(Boolean);
-    const harmonic = loadedHarmonic.length ? mixDown(loadedHarmonic.map((stemAudio) => stemAudio.buffer)) : null;
-    const bassChannel = channels.find((c) => c.stem === 'bass');
-    const vocalChannel = channels.find((c) => c.stem === 'vocals');
-    const chordSrc = bassChannel && bassChannel.chordSource();
-    const keySrc = vocalChannel && vocalChannel.keySource();
-    const chords = harmonic
-      ? detectChords(harmonic.samples, harmonic.sampleRate, barStarts, chordSrc ? chordSrc.notes : null, keySrc)
-      : undefined;
+    const chords = loadedHarmonic.length ? barStarts.slice(0, -1).map((start, i) => {
+      const mid = (start + barStarts[i + 1]) / 2;
+      const first = chordTimeline.find((chord) => chord.start <= start && chord.end > start)?.label || null;
+      const secondLabel = chordTimeline.find((chord) => chord.start <= mid && chord.end > mid)?.label || null;
+      return { first, second: secondLabel === first ? null : secondLabel };
+    }) : undefined;
 
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
     const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`;
@@ -665,7 +724,7 @@ function createNotesChannel(stem, els) {
   function hasFrames() { return !!frames; }
 
   /** This channel's slice of an edits export — everything from the old single-stem payload
-   * except `version`/`stem`/`song`/`tempo`/`tempoRange`, which the shared export wraps around
+   * except `version`/`stem`/`song`/`tempo`/`tempoRange`/`chordEdits`, which the shared export wraps around
    * every channel's entry once (see the module-level 'sansbass:exportedits' listener below). */
   function exportEntry() {
     return {
@@ -826,6 +885,9 @@ window.addEventListener('sansbass:exportedits', () => {
     song: mix ? mix.name : undefined,
     tempo: { on: tempo.on, bpmValue: tempo.bpmValue, phaseMs: tempo.phaseMs, beatsPerBar: tempo.beatsPerBar },
     tempoRange,
+    chordEdits: [...chordEdits.entries()]
+      .map(([start, label]) => ({ start, label }))
+      .sort((a, b) => a.start - b.start),
     stems,
   });
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -872,6 +934,9 @@ window.addEventListener('sansbass:importedits', async (e) => {
   if (plan.hasTempoRange) {
     tempoRange = plan.tempoRange || null;
     window.sansBass.setTempoRange(tempoRange);
+  }
+  if (plan.hasChordEdits) {
+    chordEdits = new Map(plan.chordEdits.map((edit) => [edit.start, edit.label]));
   }
 
   const entryByStem = new Map(plan.apply.map((x) => [x.stem, x.entry]));

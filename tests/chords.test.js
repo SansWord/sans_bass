@@ -1,6 +1,6 @@
 import { test, assertEq } from './assert.js';
 import { hzFromCents } from '../lib/pitch.js';
-import { decodeChordProgression, detectChords } from '../lib/chords.js';
+import { decodeChordProgression, detectChords, detectChordTimeline } from '../lib/chords.js';
 
 const SR = 44100;
 const n = (start, end, midi) => ({ start, end, midi });
@@ -39,6 +39,22 @@ test('chords: labels A major then E major per half-bar', () => {
   const [bar] = detectChords(concat(chordTone(A_MAJ, 1), chordTone(E_MAJ, 1)), SR, ONE_BAR, null);
   assertEq(bar.first, 'A');
   assertEq(bar.second, 'E');
+});
+
+test('chords: exposes time bounds and only near-confidence editing candidates', () => {
+  const timeline = detectChordTimeline(
+    concat(chordTone(A_MAJ, 1), chordTone(E_MAJ, 1)), SR, ONE_BAR, null,
+  );
+  assertEq(timeline.length, 2);
+  assertEq(timeline[0].start, 0);
+  assertEq(timeline[0].end, 1);
+  assertEq(timeline[0].barStart, true);
+  assertEq(timeline[1].barStart, false);
+  assertEq(timeline[0].label, 'A');
+  assertEq(timeline[0].candidates[0].label, 'A');
+  if (timeline[0].candidates.length > 4) throw new Error('too many chord candidates exposed');
+  if (timeline[0].candidates.some((candidate) => !Number.isFinite(candidate.confidence)))
+    throw new Error('candidate confidence is missing');
 });
 
 test('chords: fuses a differing bass note as a slash chord', () => {

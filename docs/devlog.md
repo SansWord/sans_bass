@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.30.0](#v1300--editable-chords-in-the-zoomed-timeline-2026-09-04) | Chord analysis moves from export-time into the requested detection workflow and appears as half-bar labels in the zoomed pane. Ambiguous results are visibly distinct and expose their near-confidence alternatives; corrections flow into both notation HTML and the version-4 shared edits JSON. BPM/phase/meter changes refresh the intervals, with an explicit re-detect control and progress indicator. |
 | [test strategy](#behaviour-test-strategy--deterministic-pyramid-2026-09-03) | The 255-row behaviour memory is preserved in a permanent coverage map and consolidated into globally unique executable scenarios. Pure state, generated fixtures, and the real-page Chromium harness move deterministic evidence under offline `npm test`; deployed-model, physical-device, visual, and auditory boundaries remain explicit release checks. |
 | [v1.29.0](#v1290--key-aware-harmonic-chroma-chords-in-the-export-2026-09-03-1701) | **Export list** now identifies harmony from the combined guitar/piano/bass audio rather than deriving it solely from detected bass notes. Half-bars are scored against 72 chord templates, biased by the vocal key (including the user's override), sequence-decoded across the progression, then optionally annotated with a bass slash. It is a materially better guess, not a verified chart: the real-song check reaches `A` / `E/G#` early on, while some later ambiguous labels remain open for tuning. |
 | [v1.28.0](#v1280--bass-derived-chords-in-the-簡譜-export-2026-09-03-1342) | **Export list** now prints a chord guess above each bar, derived from the bass channel's own notes/key regardless of which channel is being exported — split at the bar's time midpoint so a mid-bar chord change (e.g. G → Gsus4) shows both halves. Triads + sus2/sus4 only; a chromatic passing tone gets a bare root name. An export with no analysed bass stem is unaffected. |
@@ -68,6 +69,46 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.30.0 — Editable chords in the zoomed timeline (2026-09-04)
+
+**Review:** pending
+
+**What was built:**
+- Chord analysis now runs after the user-requested note analysis instead of waiting for a
+  notation export. Its half-bar results are drawn in a dedicated band at the top of the
+  zoomed pane, with full-bar lines continued through the band and lighter half-bar dividers.
+- A chord with one retained candidate is cyan; one with multiple near-confidence candidates
+  is yellow. A real **Other candidates** select always shows every retained alternative and
+  its score, while the adjacent text field accepts an arbitrary correction. Manual results
+  are purple.
+- Chord work has its own spinner and status, including recalculation after BPM, phase, or
+  meter changes. **Re-detect chords** explicitly discards corrections and starts fresh from
+  the current grid.
+- Notation HTML consumes the edited timeline. Shared edits JSON is now version 4 and stores
+  manual chord corrections as stable `{start, label}` entries; version-3 files still import
+  with no opinion about chord corrections.
+
+**Verification:**
+- `npm test` passed all 369 Node, jsdom, and headless-Chromium tests.
+- `npm run build` passed. The existing Vite warning for the runtime-resolved
+  `stretch-processor.js` URL is unchanged.
+- Deployed preview behavior and real-song musical/visual accuracy remain separate smoke and
+  manual checks; they are not claimed by the automated suite above.
+
+**Key technical learnings:**
+- `[insight]` An `<input list>` is not a reliable candidate picker once it already contains
+  the selected chord: browsers filter the datalist against that value and can hide every
+  genuine alternative. A real `<select>` is the correct control when the promise is that all
+  retained candidates remain inspectable.
+- `[note]` Base chord recognition comes from guitar/piano/bass audio. Vocal notes contribute
+  only key context, and detected bass notes contribute only inversion suffixes such as
+  `E/G#`; neither note channel is the underlying harmonic evidence.
+- `[gotcha]` The chord band is painted after waveforms and note blocks so it remains legible,
+  but that also covers the original beat grid. Bar and half-bar boundaries must therefore be
+  redrawn through the band rather than assumed to remain visible underneath it.
 
 ---
 

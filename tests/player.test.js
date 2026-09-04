@@ -5,6 +5,35 @@ let player;
 afterEach(() => player?.close());
 
 describe('production player integration', () => {
+  it('shows capo-transposed play chords and play key without changing concert data', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:chords', { detail: {
+      capo: 0,
+      key: { tonicPc: 10, mode: 'major' },
+      chords: [{ start: 0, end: 2, barStart: true, label: 'A#', candidates: [{ label: 'A#', confidence: 0.9 }] }],
+    } }));
+    const capo = player.doc.querySelector('.capo-select');
+    capo.value = '3';
+    capo.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    expect(player.doc.querySelector('.chord-field').value).toBe('G');
+    expect(player.doc.querySelector('.capo-play-key').textContent).toBe('Play key G');
+  });
+
+  it('distinguishes waiting for notes from active chord detection', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, bass: 110, guitar: 220 });
+    const status = player.doc.querySelector('.zoom-chord-row .chord-status');
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:chords', {
+      detail: { chords: [], running: true, phase: 'waiting' },
+    }));
+    expect(status.textContent).toBe('Waiting for note detection…');
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:chords', {
+      detail: { chords: [], running: true, phase: 'detecting' },
+    }));
+    expect(status.textContent).toBe('Detecting chords…');
+  });
+
   it('loads generated stems through the one real file input', async () => {
     player = await openPlayer();
     const input = await loadZip(player, { bass: 110, vocals: 440 }, {

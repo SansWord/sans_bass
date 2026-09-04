@@ -7,6 +7,9 @@ Full-bar grid lines continue through that band, with lighter half-bar separators
 adjacent chord windows.
 The shared edits JSON stores manual chord corrections as `{start, label}` entries. The audio-
 derived candidates are recalculated on import and corrections are reapplied by interval start.
+It also stores the song-level capo setting. Detected labels and corrections remain in concert
+pitch; the zoom band and notation export transpose only their displayed play shapes downward
+by the selected fret count, including both sides of slash chords.
 
 The implementation is split between `lib/chroma.js` (audio to chord candidates),
 `lib/chords.js` (candidate sequence to labels), and `notes.js` (audio/key/bass wiring).
@@ -29,6 +32,12 @@ The key is also separate. It comes only from the vocal channel's current 簡譜 
 - before either condition, there is no key prior rather than an invented C-major prior.
 
 The bass key is intentionally never read for chord matching.
+
+When Find notes starts both vocals and bass workers, chord calculation waits for both to
+finish. This lets its first and only pass use all available vocal-key and bass-inversion
+evidence. The chord UI reports **Waiting for note detection…** during that dependency, then
+**Detecting chords…** while the actual chroma/sequence calculation runs. With only one melodic
+stem present, calculation begins as soon as that channel finishes.
 
 ## Local chroma candidates
 
@@ -69,6 +78,14 @@ as `E/G#`. The slash note is not used as the root and does not alter the key.
 
 Each export bar remains `{ first, second }`. `second` is omitted when silent or equal to
 `first`, preserving the renderer's original contract.
+
+## Capo display transform
+
+Capo is a presentation and export transform, never a detector input. For fret `n`, roots and
+slash bass notes are shifted down `n` semitones using the app's sharp pitch-class spelling;
+quality suffixes such as `m7`, `7`, `sus2`, and `sus4` are unchanged. The vocal key remains
+the detected concert key while the zoom UI additionally shows the transposed play key.
+Unrecognized free-form corrections are left unchanged rather than guessed at.
 
 ## Known limitations and future work
 

@@ -104,6 +104,8 @@ where supported, correct.
 - Chord analysis exposes a visible in-progress state until its timeline is ready.
 - Changing BPM, phase, or meter refreshes the chord intervals, and the user can explicitly
   re-detect chords from the current grid.
+- A song-level capo setting preserves detected concert pitch while transposing displayed and
+  exported chord shapes, including slash bass notes, downward by the selected fret count.
 
 ## Editing and persistence
 
@@ -117,7 +119,7 @@ where supported, correct.
 - Overlapping notes are selected and edited by both time and pitch, with exact duplicates
   resolving to the visibly topmost note.
 - Shared edit export/import preserves both supported note channels, interpretation settings,
-  tempo state, manual chord corrections, and human-readable batch labels. Unsupported or
+  tempo state, capo setting, manual chord corrections, and human-readable batch labels. Unsupported or
   absent stems are skipped with an explanation rather than corrupting applicable data.
 
 ## Human-readable export

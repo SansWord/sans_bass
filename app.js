@@ -16,6 +16,7 @@ import * as SansTransportMath from './lib/transport-math.js';
 import { allToggleLabel, initialRouting, route } from './lib/routing-state.js';
 import * as SansLoopState from './lib/loop-state.js';
 import { commandState, wholeSong } from './lib/editor-state.js';
+import { transposeChordLabel, transposePitchClass } from './lib/chords.js';
 
 const BUCKETS = 1400;   // waveform resolution
 const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
@@ -81,8 +82,10 @@ let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
 let zoomLaneSel = new Set(['vocals']);
 let zoomChipEls = [];      // [{ stem, select, label, spk }] for the current song's lane chips
 let chordTimeline = [];    // half-bar results supplied by notes.js after Find notes
-let chordDetectionRunning = false;
+let chordDetectionPhase = null; // null | 'waiting' | 'detecting'
 let chordEditor = null;    // { group, input, list, segmentStart } for the chord under the playhead
+let capo = 0;
+let detectedKey = null;
 /* Sub-beat dotted lines in the zoomed pane, off by default — the beat/bar grid is the
  * reference most songs need, and quarter-beat ticks are clutter until asked for. Not
  * persisted, same as zoomLaneSel: every fresh page load starts back at the default. */
@@ -593,7 +596,9 @@ function buildUI(title) {
    * duration they would be silently wrong. Drop them before the lanes are rebuilt. */
   zoomPeaksByStem = {};
   chordTimeline = [];
-  chordDetectionRunning = false;
+  chordDetectionPhase = null;
+  capo = 0;
+  detectedKey = null;
   tempoRangeDrag = null;
   tempoRange = null;
   tempoRangeArmed = false;
@@ -954,11 +959,30 @@ function buildUI(title) {
     ioGroup.append(exportBtn, importBtn, importFile);
     zLaneSel.appendChild(ioGroup);
 
-    const chordGroup = document.createElement('label');
-    chordGroup.className = 'notes-ctl zoom-chord-editor';
+    const chordGroup = document.createElement('div');
+    chordGroup.className = 'zoom-chord-row';
     chordGroup.hidden = true;
     const chordCaption = document.createElement('span');
     chordCaption.textContent = tr('notes.chord');
+    const capoCaption = document.createElement('span');
+    capoCaption.textContent = tr('notes.capo');
+    const capoSelect = document.createElement('select');
+    capoSelect.className = 'capo-select';
+    capoSelect.title = tr('notes.capoTip');
+    capoSelect.setAttribute('aria-label', tr('notes.capoTip'));
+    for (let fret = 0; fret <= 11; fret++) {
+      const option = document.createElement('option');
+      option.value = String(fret);
+      option.textContent = String(fret);
+      capoSelect.appendChild(option);
+    }
+    capoSelect.addEventListener('change', () => {
+      capo = Number(capoSelect.value);
+      window.dispatchEvent(new CustomEvent('sansbass:capochange', { detail: { capo } }));
+      draw();
+    });
+    const playKey = document.createElement('span');
+    playKey.className = 'notes-count capo-play-key';
     const chordInput = document.createElement('input');
     chordInput.type = 'text';
     chordInput.className = 'note-field chord-field';
@@ -967,7 +991,7 @@ function buildUI(title) {
     const commitChord = () => {
       if (chordEditor?.segmentStart == null || !chordInput.value.trim()) return;
       window.dispatchEvent(new CustomEvent('sansbass:chordedit', {
-        detail: { start: chordEditor.segmentStart, label: chordInput.value.trim() },
+        detail: { start: chordEditor.segmentStart, label: transposeChordLabel(chordInput.value.trim(), capo) },
       }));
     };
     chordInput.addEventListener('change', commitChord);
@@ -998,17 +1022,17 @@ function buildUI(title) {
     chordSpinner.className = 'notes-spinner';
     chordSpinner.hidden = true;
     const chordStatus = document.createElement('span');
-    chordStatus.className = 'notes-count';
+    chordStatus.className = 'notes-count chord-status';
     chordStatus.textContent = tr('notes.chordDetecting');
     chordStatus.hidden = true;
-    chordGroup.append(chordCaption, chordInput, chordCandidates, chordRedetect, chordSpinner, chordStatus);
-    zLaneSel.appendChild(chordGroup);
+    chordGroup.append(capoCaption, capoSelect, playKey, chordCaption, chordInput,
+      chordCandidates, chordRedetect, chordSpinner, chordStatus);
     chordEditor = { group: chordGroup, input: chordInput, candidates: chordCandidates, segmentStart: null,
-      caption: chordCaption, redetect: chordRedetect, spinner: chordSpinner, status: chordStatus };
+      caption: chordCaption, capoCaption, capoSelect, playKey, redetect: chordRedetect, spinner: chordSpinner, status: chordStatus };
 
     syncZoomChips();
 
-    zName.append(zTopRow, zLaneSel);
+    zName.append(zTopRow, chordGroup, zLaneSel);
 
     const zCanvas = document.createElement('canvas');
     zCanvas.className = 'wave zoomwave';
@@ -1863,7 +1887,7 @@ function renderZoom(canvas) {
       if (chord.label) {
         c.fillStyle = chord.edited ? '#c99bf0'
           : chord.candidates?.length > 1 ? '#ffd166' : '#5ecbff';
-        c.fillText(chord.label, left + 4, 10);
+        c.fillText(transposeChordLabel(chord.label, -capo), left + 4, 10);
       }
       /* Continue the tempo grid through the opaque chord band: strong full-bar lines and
        * lighter half-bar boundaries make adjacent chord windows visibly distinct. */
@@ -1933,24 +1957,29 @@ function draw() {
 function syncChordEditor(time) {
   if (!chordEditor) return;
   const chord = chordTimeline.find((item) => item.start <= time && time < item.end);
-  chordEditor.group.hidden = !chord && !chordDetectionRunning;
-  chordEditor.spinner.hidden = !chordDetectionRunning;
-  chordEditor.status.hidden = !chordDetectionRunning;
-  chordEditor.input.hidden = !chord || chordDetectionRunning;
-  chordEditor.candidates.hidden = !chord || chordDetectionRunning || chord.candidates?.length <= 1;
-  chordEditor.redetect.hidden = !chord || chordDetectionRunning;
+  const chordBusy = chordDetectionPhase !== null;
+  chordEditor.group.hidden = !chord && !chordBusy;
+  chordEditor.spinner.hidden = !chordBusy;
+  chordEditor.status.hidden = !chordBusy;
+  chordEditor.status.textContent = tr(chordDetectionPhase === 'waiting'
+    ? 'notes.chordWaiting' : 'notes.chordDetecting');
+  chordEditor.input.hidden = !chord || chordBusy;
+  chordEditor.candidates.hidden = !chord || chordBusy || chord.candidates?.length <= 1;
+  chordEditor.redetect.hidden = !chord || chordBusy;
   chordEditor.segmentStart = chord ? chord.start : null;
+  chordEditor.playKey.textContent = detectedKey
+    ? tr('notes.playKey', { key: NOTE_LETTERS[transposePitchClass(detectedKey.tonicPc, -capo)] }) : '';
   if (!chord) return;
   chordEditor.input.classList.toggle('ambiguous', !chord.edited && chord.candidates?.length > 1);
   chordEditor.input.classList.toggle('edited', !!chord.edited);
-  if (document.activeElement !== chordEditor.input) chordEditor.input.value = chord.label || '';
+  if (document.activeElement !== chordEditor.input) chordEditor.input.value = transposeChordLabel(chord.label, -capo) || '';
   const prompt = document.createElement('option');
   prompt.value = '';
   prompt.textContent = tr('notes.chordCandidates');
   chordEditor.candidates.replaceChildren(prompt, ...(chord.candidates || []).map((candidate) => {
     const option = document.createElement('option');
-    option.value = candidate.label;
-    option.textContent = `${candidate.label} (${candidate.confidence.toFixed(2)})`;
+    option.value = transposeChordLabel(candidate.label, -capo);
+    option.textContent = `${option.value} (${candidate.confidence.toFixed(2)})`;
     return option;
   }));
   chordEditor.candidates.value = '';
@@ -1958,7 +1987,11 @@ function syncChordEditor(time) {
 
 window.addEventListener('sansbass:chords', (event) => {
   chordTimeline = Array.isArray(event.detail?.chords) ? event.detail.chords : [];
-  chordDetectionRunning = !!event.detail?.running;
+  chordDetectionPhase = event.detail?.phase
+    || (event.detail?.running ? 'detecting' : null);
+  capo = Number(event.detail?.capo) || 0;
+  detectedKey = event.detail?.key || null;
+  if (chordEditor) chordEditor.capoSelect.value = String(capo);
   draw();
 });
 
@@ -2599,6 +2632,9 @@ function retranslate() {
   if (zoomEl) zoomEl.lane.querySelector('.txt').textContent = tr('notes.zoom');
   if (chordEditor) {
     chordEditor.caption.textContent = tr('notes.chord');
+    chordEditor.capoCaption.textContent = tr('notes.capo');
+    chordEditor.capoSelect.title = tr('notes.capoTip');
+    chordEditor.capoSelect.setAttribute('aria-label', tr('notes.capoTip'));
     chordEditor.input.title = tr('notes.chordEditTip');
     chordEditor.input.setAttribute('aria-label', tr('notes.chordEditTip'));
     chordEditor.candidates.setAttribute('aria-label', tr('notes.chordCandidates'));

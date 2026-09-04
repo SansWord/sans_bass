@@ -75,7 +75,7 @@ Running log of what was built and what was learned building it.
 
 ## v1.31.0 — Capo-aware play chords (2026-09-04)
 
-**Review:** pending
+**Review:** [PR #58](https://github.com/SansWord/sans_bass/pull/58)
 
 **What was built:**
 
@@ -98,8 +98,21 @@ Running log of what was built and what was learned building it.
 - `npm test` passed all 374 Node, jsdom, and headless-Chromium tests.
 - `npm run build` passed. The existing Vite warning for the runtime-resolved
   `stretch-processor.js` URL is unchanged.
-- PR-preview and production smoke evidence will be recorded in the pull request rather than
-  claimed before those deployments exist.
+- PR preview `https://sansword.github.io/sans_bass/pr-58/` was tested in desktop Chrome
+  against displayed SHA `68d230c`, GitHub's generated merge commit for feature head
+  `000863c`. `examples/nov_you.zip` loaded all six real-song lanes; vocals and bass analysis
+  completed; the chord row appeared between `zoom-top-row` and `zoom-lane-sel`; concert
+  `E/G#` displayed as `C#/F` at capo 3; and detected A displayed play key F#. No browser
+  warning or error was logged during the preview run.
+- Production `https://sansword.github.io/sans_bass/` was tested after merge in desktop Chrome
+  against displayed merge SHA `d914a4c`. The same real-song flow additionally caught the
+  intermediate **Waiting for note detection…** state after vocals completed while bass was
+  still running, followed by the completed chord UI and the same `E/G#` → `C#/F`, A → F#
+  capo-3 results. No application-origin warning or error was logged; warnings injected by an
+  unrelated browser extension were excluded.
+- These deployed checks cover the real-song chord/capo workflow and delivery boundary, not
+  the full behavior matrix. Synthetic-fixture, malformed-input, separation-model, handheld,
+  subjective visual, and auditory acceptance were not performed as deployed/manual checks.
 
 **Key technical learnings:**
 

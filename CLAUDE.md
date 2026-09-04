@@ -134,6 +134,15 @@ out of the project; never commit them.
 
 - [`README.md`](README.md) — the user-facing pipeline: ripping, Demucs setup, batching an
   album, controls, A–B repeat.
+- [`docs/product-contract.md`](docs/product-contract.md) — the durable promises the product
+  makes to users, without selectors or test procedure. Use `docs/behaviour.md` for executable
+  smoke/acceptance scenarios and this contract to decide whether a proposed behaviour change
+  changes what the product promises.
+- [`docs/testing.md`](docs/testing.md) — the authoritative test-layer placement guide: Node
+  for pure logic, jsdom for non-rendering DOM/storage, headless Chromium for browser APIs and
+  player integration, local/deployed smoke for build boundaries, and manual acceptance for
+  irreducibly auditory or physical-device behavior. **Read this before adding or moving
+  tests.**
 - [`docs/devlog.md`](docs/devlog.md) — version-by-version log with tagged learnings
   (`[note]` / `[insight]` / `[gotcha]`). **Read the v1.0.0 and v1.1.0 entries before touching
   the transport or the loader** — most of the non-obvious traps are already written down there.

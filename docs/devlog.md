@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.32.0](#v1320--hierarchical-barhalf-bar-chord-evidence-2026-09-04) | Half-bars remain the chord-change detector, but full-bar evidence now merges agreeing halves, carries one strong half across a weak partner, preserves real mid-bar and inversion changes, and leaves fully weak bars blank. This removes confident-looking labels from the nearly silent tail of `南國的風.zip`. |
 | [v1.31.0](#v1310--capo-aware-play-chords-2026-09-04) | A song-level capo selector keeps detected and corrected chords in concert pitch while showing playable chord shapes and play key in the zoom pane. Capo transposition covers slash bass notes and notation export, round-trips in version-5 edits JSON, and chord analysis now waits for every running note channel with an honest waiting-vs-detecting status. |
 | [v1.30.0](#v1300--editable-chords-in-the-zoomed-timeline-2026-09-04) | Chord analysis moves from export-time into the requested detection workflow and appears as half-bar labels in the zoomed pane. Ambiguous results are visibly distinct and expose their near-confidence alternatives; corrections flow into both notation HTML and the version-4 shared edits JSON. BPM/phase/meter changes refresh the intervals, with an explicit re-detect control and progress indicator. |
 | [test strategy](#behaviour-test-strategy--deterministic-pyramid-2026-09-03) | The 255-row behaviour memory is preserved in a permanent coverage map and consolidated into globally unique executable scenarios. Pure state, generated fixtures, and the real-page Chromium harness move deterministic evidence under offline `npm test`; deployed-model, physical-device, visual, and auditory boundaries remain explicit release checks. |
@@ -70,6 +71,41 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.32.0 — Hierarchical bar/half-bar chord evidence (2026-09-04)
+
+**Review:** pending
+
+**What was built:**
+
+- Chord detection still analyses each half-bar for real mid-bar changes, and now also analyses
+  the full bar as supporting evidence rather than forcing every half-window to carry a label.
+- Two strong agreeing halves merge into one full-bar interval. One strong half can extend
+  across a weak partner when the full bar agrees. Distinct strong halves and slash-bass
+  changes remain separate, while a bar with two weak halves remains blank.
+- A usable interval now needs both -42 dBFS RMS and raw template correlation of at least 0.55;
+  this prevents chroma normalization from promoting low-information residue into a chord.
+
+**Verification:**
+
+- `npm test` passed all 377 Node, jsdom, and headless-Chromium tests.
+- `npm run build` passed. The existing Vite warning for the runtime-resolved
+  `stretch-processor.js` URL is unchanged.
+- A local measurement of `examples/南國的風.zip` at its detected 48 BPM grid changed the
+  repeated low-confidence `G#m` windows from about 3:41 through the end into blank bars,
+  while retaining the preceding supported chord. Deployed preview and production evidence
+  remain to be recorded after those builds exist.
+
+**Key technical learnings:**
+
+- `[insight]` Half-bars are useful opportunities to detect a change, not a requirement to
+  print two chords per bar. Full-bar evidence can stabilize a weak half without averaging
+  away a real two-chord bar when it is used only as corroboration.
+- `[gotcha]` An absolute silence gate is insufficient after chroma normalization: residual
+  audio can be well above the gate yet have such weak template correlation that naming it is
+  still misleading. Energy and tonal evidence answer different questions and both are needed.
 
 ---
 

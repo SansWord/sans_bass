@@ -102,6 +102,9 @@ where supported, correct.
   similar confidence, it is offered as an editing candidate rather than hidden, and the
   ambiguous interval is visually distinct from a single-candidate result.
 - Chord analysis exposes a visible in-progress state until its timeline is ready.
+- Half-bars are analysis opportunities rather than mandatory labels: agreeing halves may
+  collapse into one full-bar chord, distinct strong changes remain separate, and intervals
+  without sufficient tonal evidence remain blank.
 - Changing BPM, phase, or meter refreshes the chord intervals, and the user can explicitly
   re-detect chords from the current grid.
 - A song-level capo setting preserves detected concert pitch while transposing displayed and

@@ -5,11 +5,11 @@ import { decodeChordProgression, detectChords, detectChordTimeline, transposeCho
 const SR = 44100;
 const n = (start, end, midi) => ({ start, end, midi });
 
-function chordTone(midis, seconds) {
+function chordTone(midis, seconds, amp = 0.3) {
   const out = new Float32Array(Math.round(seconds * SR));
   for (const midi of midis) {
     const hz = hzFromCents(midi * 100);
-    for (let i = 0; i < out.length; i++) out[i] += 0.3 * Math.sin((2 * Math.PI * hz * i) / SR);
+    for (let i = 0; i < out.length; i++) out[i] += amp * Math.sin((2 * Math.PI * hz * i) / SR);
   }
   return out;
 }
@@ -87,6 +87,37 @@ test('chords: silence yields null and repeated labels dedupe the second half', (
   const [same] = detectChords(concat(chordTone(A_MAJ, 1), chordTone(A_MAJ, 1)), SR, ONE_BAR, null);
   assertEq(same.first, 'A');
   assertEq(same.second, null);
+  const merged = detectChordTimeline(concat(chordTone(A_MAJ, 1), chordTone(A_MAJ, 1)), SR, ONE_BAR, null);
+  assertEq(merged.length, 1, 'matching halves become one full-bar interval');
+  assertEq(merged[0].start, 0);
+  assertEq(merged[0].end, 2);
+});
+
+test('chords: a strong full bar carries one strong half across a weak partner', () => {
+  const timeline = detectChordTimeline(
+    concat(chordTone(A_MAJ, 1), chordTone(E_MAJ, 1, 0.004)), SR, ONE_BAR, null,
+  );
+  assertEq(timeline.length, 1);
+  assertEq(timeline[0].label, 'A');
+  assertEq(timeline[0].end, 2);
+});
+
+test('chords: matching roots retain separate halves when the bass inversion changes', () => {
+  const timeline = detectChordTimeline(
+    concat(chordTone(A_MAJ, 1), chordTone(A_MAJ, 1)), SR, ONE_BAR,
+    [n(0, 1, 57), n(1, 2, 56)],
+  );
+  assertEq(timeline.length, 2);
+  assertEq(timeline[0].label, 'A');
+  assertEq(timeline[1].label, 'A/G#');
+});
+
+test('chords: a whole weak bar is omitted even when normalized chroma has a shape', () => {
+  const timeline = detectChordTimeline(
+    concat(chordTone(A_MAJ, 1, 0.004), chordTone(A_MAJ, 1, 0.004)), SR, ONE_BAR, null,
+  );
+  assertEq(timeline.length, 1);
+  assertEq(timeline[0].label, null);
 });
 
 test('chords: splits a non-4/4 bar at its time midpoint', () => {

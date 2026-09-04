@@ -1,7 +1,12 @@
 # Chord detection
 
-The 簡譜 export can print a chord label above every half-bar. This is an offline export-time
-analysis: it does not affect playback, the waveform, or note detection.
+The Find notes action also calculates a chord label for every half-bar. Results appear as a
+time-aligned band in the zoomed panel, can be corrected there, and the current edited labels
+are reused by 簡譜 export. Chord calculation does not alter playback or note detection.
+Full-bar grid lines continue through that band, with lighter half-bar separators between
+adjacent chord windows.
+The shared edits JSON stores manual chord corrections as `{start, label}` entries. The audio-
+derived candidates are recalculated on import and corrections are reapplied by interval start.
 
 The implementation is split between `lib/chroma.js` (audio to chord candidates),
 `lib/chords.js` (candidate sequence to labels), and `notes.js` (audio/key/bass wiring).
@@ -36,7 +41,8 @@ half-bar it then:
 4. scores all 72 templates with Pearson correlation.
 
 The vocabulary is deliberately limited to `maj`, `min`, `7`, `min7`, `sus2`, and `sus4`.
-Templates are ranked rather than immediately collapsed to one answer. A diatonic major/minor
+Templates are ranked rather than immediately collapsed to one answer. Matches within 0.12
+of the best local rank (up to four) are retained as editing suggestions. A diatonic major/minor
 triad for the vocal key receives a modest `KEY_BONUS` of 0.25. That is a preference for sparse
 arrangements, not a hard key constraint: a strong borrowed chord such as `Dm7` can still win
 on its audio evidence.
@@ -74,10 +80,8 @@ Each export bar remains `{ first, second }`. `second` is omitted when silent or 
   promising signal-level follow-up.
 - The transition model is a compact hand-written major-key prior. It has no learned corpus,
   no explicit minor-key functional grammar, and no user control.
-- Chords are calculated on export and can make a long export pause briefly. If this becomes
-  noticeable, move the pure calculation to a worker or cache the half-bar candidate sets.
-- There is no correction UI. A future UI should edit labels after detection rather than change
-  the audio or note-analysis data.
+- Chords are currently calculated on the main thread after note detection. If this becomes
+  noticeable on long songs, move the pure calculation to a worker.
 
 ## Regression check
 

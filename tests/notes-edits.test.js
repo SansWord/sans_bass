@@ -8,6 +8,7 @@ test('notes-edits: buildEditsPayload writes the current version with stems keyed
     song: 'My Song',
     tempo: { on: true, bpmValue: 120, phaseMs: 0, beatsPerBar: 4 },
     tempoRange: null,
+    chordEdits: [{ start: 1.25, label: 'E/G#' }],
     stems: {
       vocals: { interpreter: 'hmm-v1', edits: [] },
       bass: { interpreter: 'hmm-v1', edits: [['x']] },
@@ -18,6 +19,7 @@ test('notes-edits: buildEditsPayload writes the current version with stems keyed
   assertEq(payload.tempo.bpmValue, 120, 'tempo is a single shared object, not per-stem');
   assert('vocals' in payload.stems && 'bass' in payload.stems, 'both stems land under stems{}');
   assertEq(payload.stems.bass.edits.length, 1, 'a stem entry keeps its own edits');
+  assertEq(payload.chordEdits[0].label, 'E/G#', 'shared chord corrections are carried through');
 });
 
 test('notes-edits: buildEditsPayload omits song when none is given', () => {
@@ -60,6 +62,25 @@ test('notes-edits: planImport carries shared tempo/tempoRange with explicit pres
   assert(!withoutRange.hasTempoRange, 'no tempoRange key at all means no opinion, not "clear it"');
 });
 
+test('notes-edits: planImport carries validated chord corrections', () => {
+  const plan = planImport({
+    version: NOTES_EDITS_VERSION,
+    stems: {},
+    chordEdits: [{ start: 1.25, label: ' E/G# ' }],
+  }, []);
+  assert(plan.ok);
+  assert(plan.hasChordEdits);
+  assertEq(plan.chordEdits[0].start, 1.25);
+  assertEq(plan.chordEdits[0].label, 'E/G#');
+});
+
+test('notes-edits: v3 imports with no opinion about chord corrections', () => {
+  const plan = planImport({ version: 3, stems: {} }, []);
+  assert(plan.ok);
+  assert(!plan.hasChordEdits);
+  assertEq(plan.chordEdits.length, 0);
+});
+
 // ---------------------------------------------------------------- planImport: invalid input
 
 test('notes-edits: planImport rejects a file that is not a note-edits file at all', () => {
@@ -69,6 +90,9 @@ test('notes-edits: planImport rejects a file that is not a note-edits file at al
     planImport({ version: NOTES_EDITS_VERSION, stems: [] }, ['vocals']).ok, false,
     'stems must be a keyed object, not an array',
   );
+  assertEq(planImport({
+    version: NOTES_EDITS_VERSION, stems: {}, chordEdits: [{ start: 'now', label: '' }],
+  }, []).ok, false, 'malformed chord corrections are rejected');
 });
 
 test('notes-edits: planImport rejects an old single-stem v1 file — no back-compat', () => {

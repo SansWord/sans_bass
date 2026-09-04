@@ -97,6 +97,13 @@ where supported, correct.
   trusted notes.
 - When drums provide reliable evidence, the application exposes an editable tempo grid,
   phase, meter, subdivisions, and an optional analysis range.
+- Chord estimates from available harmonic stems are calculated with the requested detection
+  run, shown on the zoomed timeline, and can be corrected. When another local match has
+  similar confidence, it is offered as an editing candidate rather than hidden, and the
+  ambiguous interval is visually distinct from a single-candidate result.
+- Chord analysis exposes a visible in-progress state until its timeline is ready.
+- Changing BPM, phase, or meter refreshes the chord intervals, and the user can explicitly
+  re-detect chords from the current grid.
 
 ## Editing and persistence
 
@@ -110,15 +117,16 @@ where supported, correct.
 - Overlapping notes are selected and edited by both time and pitch, with exact duplicates
   resolving to the visibly topmost note.
 - Shared edit export/import preserves both supported note channels, interpretation settings,
-  tempo state, and human-readable batch labels. Unsupported or absent stems are skipped with
-  an explanation rather than corrupting applicable data.
+  tempo state, manual chord corrections, and human-readable batch labels. Unsupported or
+  absent stems are skipped with an explanation rather than corrupting applicable data.
 
 ## Human-readable export
 
 - Either analysed notes channel can export a self-contained, readable numbered-notation
   HTML document using the current tempo, meter, key, rhythm, octave, and bar layout.
 - Export filenames are channel-specific and timestamped to avoid silent replacement.
-- When harmonic stems are available, exports may include a chord estimate above each bar.
+- When harmonic stems are available, exports may include the currently displayed and edited
+  chord estimate above each bar.
   Bass analysis may add inversion/slash notation; lack of bass analysis must not suppress
   otherwise available chord estimates.
 - With no harmonic stem, no chord row is invented.

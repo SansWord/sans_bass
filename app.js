@@ -80,6 +80,9 @@ let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
  * contains that the current song doesn't have is simply never drawn. */
 let zoomLaneSel = new Set(['vocals']);
 let zoomChipEls = [];      // [{ stem, select, label, spk }] for the current song's lane chips
+let chordTimeline = [];    // half-bar results supplied by notes.js after Find notes
+let chordDetectionRunning = false;
+let chordEditor = null;    // { group, input, list, segmentStart } for the chord under the playhead
 /* Sub-beat dotted lines in the zoomed pane, off by default — the beat/bar grid is the
  * reference most songs need, and quarter-beat ticks are clutter until asked for. Not
  * persisted, same as zoomLaneSel: every fresh page load starts back at the default. */
@@ -589,6 +592,8 @@ function buildUI(title) {
   /* The previous song's frames describe the previous song's audio; drawn against the new
    * duration they would be silently wrong. Drop them before the lanes are rebuilt. */
   zoomPeaksByStem = {};
+  chordTimeline = [];
+  chordDetectionRunning = false;
   tempoRangeDrag = null;
   tempoRange = null;
   tempoRangeArmed = false;
@@ -682,6 +687,7 @@ function buildUI(title) {
   overviewVolEl = null;
   zoomChipEls = [];
   zoomNotesChipEls = {};
+  chordEditor = null;
   editToggleEl = null;
   editToggleLabelEl = null;
   editIoGroupEl = null;
@@ -947,6 +953,58 @@ function buildUI(title) {
     });
     ioGroup.append(exportBtn, importBtn, importFile);
     zLaneSel.appendChild(ioGroup);
+
+    const chordGroup = document.createElement('label');
+    chordGroup.className = 'notes-ctl zoom-chord-editor';
+    chordGroup.hidden = true;
+    const chordCaption = document.createElement('span');
+    chordCaption.textContent = tr('notes.chord');
+    const chordInput = document.createElement('input');
+    chordInput.type = 'text';
+    chordInput.className = 'note-field chord-field';
+    chordInput.setAttribute('aria-label', tr('notes.chordEditTip'));
+    chordInput.title = tr('notes.chordEditTip');
+    const commitChord = () => {
+      if (chordEditor?.segmentStart == null || !chordInput.value.trim()) return;
+      window.dispatchEvent(new CustomEvent('sansbass:chordedit', {
+        detail: { start: chordEditor.segmentStart, label: chordInput.value.trim() },
+      }));
+    };
+    chordInput.addEventListener('change', commitChord);
+    chordInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); commitChord(); chordInput.blur(); }
+    });
+    /* A real select, not datalist: datalist suggestions are filtered by the text already in
+     * the input, which hides alternatives precisely when a detected chord is populated. */
+    const chordCandidates = document.createElement('select');
+    chordCandidates.className = 'note-field chord-candidates';
+    chordCandidates.setAttribute('aria-label', tr('notes.chordCandidates'));
+    chordCandidates.title = tr('notes.chordCandidatesTip');
+    chordCandidates.hidden = true;
+    chordCandidates.addEventListener('change', () => {
+      if (!chordCandidates.value) return;
+      chordInput.value = chordCandidates.value;
+      commitChord();
+    });
+    const chordRedetect = document.createElement('button');
+    chordRedetect.type = 'button';
+    chordRedetect.className = 'mini';
+    chordRedetect.textContent = tr('notes.chordRedetect');
+    chordRedetect.title = tr('notes.chordRedetectTip');
+    chordRedetect.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('sansbass:chordredetect'));
+    });
+    const chordSpinner = document.createElement('span');
+    chordSpinner.className = 'notes-spinner';
+    chordSpinner.hidden = true;
+    const chordStatus = document.createElement('span');
+    chordStatus.className = 'notes-count';
+    chordStatus.textContent = tr('notes.chordDetecting');
+    chordStatus.hidden = true;
+    chordGroup.append(chordCaption, chordInput, chordCandidates, chordRedetect, chordSpinner, chordStatus);
+    zLaneSel.appendChild(chordGroup);
+    chordEditor = { group: chordGroup, input: chordInput, candidates: chordCandidates, segmentStart: null,
+      caption: chordCaption, redetect: chordRedetect, spinner: chordSpinner, status: chordStatus };
 
     syncZoomChips();
 
@@ -1792,6 +1850,33 @@ function renderZoom(canvas) {
     }
   }
 
+  /* Chords belong to time, not to either pitch lane. Draw this after the waveform and notes
+   * so its compact half-bar band stays readable with either view selected. */
+  if (chordTimeline.length) {
+    c.fillStyle = 'rgba(13,13,16,.78)';
+    c.fillRect(0, 0, w, 20);
+    c.font = '700 11px ui-monospace, Menlo, monospace';
+    c.textBaseline = 'middle';
+    for (const chord of chordTimeline) {
+      if (chord.end <= win.from || chord.start >= win.to) continue;
+      const left = Math.max(0, x(chord.start));
+      if (chord.label) {
+        c.fillStyle = chord.edited ? '#c99bf0'
+        : chord.candidates?.length > 1 ? '#5ecbff' : '#ffd166';
+        c.fillText(chord.label, left + 4, 10);
+      }
+      /* Continue the tempo grid through the opaque chord band: strong full-bar lines and
+       * lighter half-bar boundaries make adjacent chord windows visibly distinct. */
+      c.fillStyle = chord.barStart ? 'rgba(255,255,255,.42)' : 'rgba(255,255,255,.18)';
+      c.fillRect(left, 0, chord.barStart ? 2 : 1, 20);
+    }
+    const last = chordTimeline[chordTimeline.length - 1];
+    if (last.end >= win.from && last.end <= win.to) {
+      c.fillStyle = 'rgba(255,255,255,.42)';
+      c.fillRect(Math.min(w - 2, x(last.end)), 0, 2, 20);
+    }
+  }
+
   // Time ruler, one label per second while there is room for it.
   c.fillStyle = '#8a8a99';
   c.font = '400 9px ui-monospace, Menlo, monospace';
@@ -1837,12 +1922,45 @@ function draw() {
     renderZoom(zoomEl.canvas);
     zoomEl.out.textContent = `${zoomSeconds.toFixed(zoomSeconds < 10 ? 1 : 0)}s`;
     zoomEl.time.textContent = timeCode;
+    syncChordEditor(t);
   }
   if (editMode) syncEditToolbar();
   el.tCur.textContent = fmt(t);
   if (el.tSpeed) el.tSpeed.textContent = speedTag;
   if (el.tBpm) { el.tBpm.hidden = !haveBpm; if (haveBpm) el.tBpm.textContent = bpmText; }
 }
+
+function syncChordEditor(time) {
+  if (!chordEditor) return;
+  const chord = chordTimeline.find((item) => item.start <= time && time < item.end);
+  chordEditor.group.hidden = !chord && !chordDetectionRunning;
+  chordEditor.spinner.hidden = !chordDetectionRunning;
+  chordEditor.status.hidden = !chordDetectionRunning;
+  chordEditor.input.hidden = !chord || chordDetectionRunning;
+  chordEditor.candidates.hidden = !chord || chordDetectionRunning || chord.candidates?.length <= 1;
+  chordEditor.redetect.hidden = !chord || chordDetectionRunning;
+  chordEditor.segmentStart = chord ? chord.start : null;
+  if (!chord) return;
+  chordEditor.input.classList.toggle('ambiguous', !chord.edited && chord.candidates?.length > 1);
+  chordEditor.input.classList.toggle('edited', !!chord.edited);
+  if (document.activeElement !== chordEditor.input) chordEditor.input.value = chord.label || '';
+  const prompt = document.createElement('option');
+  prompt.value = '';
+  prompt.textContent = tr('notes.chordCandidates');
+  chordEditor.candidates.replaceChildren(prompt, ...(chord.candidates || []).map((candidate) => {
+    const option = document.createElement('option');
+    option.value = candidate.label;
+    option.textContent = `${candidate.label} (${candidate.confidence.toFixed(2)})`;
+    return option;
+  }));
+  chordEditor.candidates.value = '';
+}
+
+window.addEventListener('sansbass:chords', (event) => {
+  chordTimeline = Array.isArray(event.detail?.chords) ? event.detail.chords : [];
+  chordDetectionRunning = !!event.detail?.running;
+  draw();
+});
 
 /** Keeps the toolbar's enabled state in sync with the current selection. Called from draw(),
  *  so no handler needs to call it by hand — every edit round-trips through notes.js and back
@@ -2479,6 +2597,16 @@ function retranslate() {
     if (lane) lane.el.txt.textContent = tr('notes.zoomNotesChipFor', { lane: tr('stem.' + stem) });
   }
   if (zoomEl) zoomEl.lane.querySelector('.txt').textContent = tr('notes.zoom');
+  if (chordEditor) {
+    chordEditor.caption.textContent = tr('notes.chord');
+    chordEditor.input.title = tr('notes.chordEditTip');
+    chordEditor.input.setAttribute('aria-label', tr('notes.chordEditTip'));
+    chordEditor.candidates.setAttribute('aria-label', tr('notes.chordCandidates'));
+    chordEditor.candidates.title = tr('notes.chordCandidatesTip');
+    chordEditor.redetect.textContent = tr('notes.chordRedetect');
+    chordEditor.redetect.title = tr('notes.chordRedetectTip');
+    chordEditor.status.textContent = tr('notes.chordDetecting');
+  }
   for (const { stem, select, label: labelEl, spk } of zoomChipEls) {
     const t = tracks.find((tr) => tr.stem === stem);
     const label = t ? laneLabel(t) : stem;

@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [test strategy](#behaviour-test-strategy--deterministic-pyramid-2026-09-03) | The 255-row behaviour memory is preserved in a permanent coverage map and consolidated into globally unique executable scenarios. Pure state, generated fixtures, and the real-page Chromium harness move deterministic evidence under offline `npm test`; deployed-model, physical-device, visual, and auditory boundaries remain explicit release checks. |
 | [v1.29.0](#v1290--key-aware-harmonic-chroma-chords-in-the-export-2026-09-03-1701) | **Export list** now identifies harmony from the combined guitar/piano/bass audio rather than deriving it solely from detected bass notes. Half-bars are scored against 72 chord templates, biased by the vocal key (including the user's override), sequence-decoded across the progression, then optionally annotated with a bass slash. It is a materially better guess, not a verified chart: the real-song check reaches `A` / `E/G#` early on, while some later ambiguous labels remain open for tuning. |
 | [v1.28.0](#v1280--bass-derived-chords-in-the-簡譜-export-2026-09-03-1342) | **Export list** now prints a chord guess above each bar, derived from the bass channel's own notes/key regardless of which channel is being exported — split at the bar's time midpoint so a mid-bar chord change (e.g. G → Gsus4) shows both halves. Triads + sus2/sus4 only; a chromatic passing tone gets a bare root name. An export with no analysed bass stem is unaffected. |
 | [v1.27.0](#v1270--簡譜-export-as-bars-rhythm-and-html-2026-09-03-1251) | **Export list** now lays the 簡譜 reading onto the tempo grid — lines wrap every N bars (not seconds), each note's duration renders as standard rhythm notation (underlines, sustain dashes, dots), a note held across a barline splits into tied fragments, and octave is drawn as real dots above/below the digit. A `♩ = <bpm> <beatsPerBar>/4` line now heads the page, and both it and Export edits download as `sans_bass_..._<timestamp>` files. The export itself is a self-contained HTML file now, not Markdown, which is what makes any of the above renderable at all. |
@@ -67,6 +68,33 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## Behaviour test strategy — deterministic pyramid (2026-09-03)
+
+**What changed:**
+
+- Captured all 255 original behaviour rows by section and old ID in
+  `docs/test-coverage.md`, including reused S/N/T identifiers and both Editing E42 rows.
+- Added generated WAV/ZIP fixtures that use the production encoders, pure routing/loop/rate/
+  detection/separation/editor state tests, and isolated the self-contained 簡譜 renderer.
+- Added a headless-Chromium harness around the real `index.html`, production modules, real
+  file input, computed styles, Web Audio instrumentation, and deterministic fake Workers.
+- Consolidated the browser-facing matrix into globally unique scenario IDs while keeping
+  setup, action, and observable results suitable for a human or browser harness.
+
+**Why:**
+
+- `[insight]` A long manual matrix and a strong automated suite are not substitutes for each
+  other unless every old contract is mapped. The immutable map makes consolidation auditable
+  and keeps historical devlog references decipherable.
+- `[gotcha]` A real-song ZIP cannot represent malformed archives, absent stem combinations,
+  worker failures, handheld gates, or subjective listening. Evidence must name which layer
+  ran instead of calling one fixture the full matrix.
+- `[note]` Ordinary `npm test` stays offline. Real separator inference, deployed hashes,
+  physical handheld behavior, background throttling, and human hearing remain a deliberately
+  separate release checklist.
 
 ---
 

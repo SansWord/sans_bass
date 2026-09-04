@@ -67,34 +67,14 @@ extension.
 
 No fixture files are committed for this. Most rows need a different stem combination
 (vocals-only, bass-only, both, ± drums, …), so a folder of pre-built `.zip`s either stays
-incomplete or grows into a large parallel matrix — and a checked-in binary fixture can drift
-silently out of sync with `encodeWav`/`buildZip`'s actual current output, with nothing to
-catch it the way `versions.test.js` catches a stale `?v=`. This recipe has no such file to go
-stale: it always calls the real encoder fresh. Paste it once per page load, then call
+incomplete or grows into a large parallel matrix. The shared helper always calls the real
+encoder and ZIP writer fresh. Paste this adapter once per page load, then call
 `loadStemsZip()` for whatever row is being exercised:
 
 ```js
-function sine(freq, seconds, sr = 44100) {
-  const n = Math.floor(seconds * sr);
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) out[i] = 0.3 * Math.sin(2 * Math.PI * freq * i / sr);
-  return out;
-}
-
-/** A synthetic stems .zip Blob, built straight in the page. `stems` is `{name: freqHz}` —
- *  e.g. `{ vocals: 440, bass: 110, drums: 80 }` — each becoming `<name>.wav`, mono duplicated
- *  to stereo, `seconds` long (default 3; use longer for tempo detection, which needs several
- *  beats). Imports lib/wav.js and lib/zip.js by their real dev-server path — needs
- *  `npm run dev` (see above); Vite serves both as real files there, no build/hash step
- *  in the way, unlike a `npm run build` + `npm run preview` copy. */
 async function buildStemsZip(stems, seconds = 3) {
-  const { encodeWav } = await import('/lib/wav.js');
-  const { buildZip } = await import('/lib/zip.js');
-  const entries = Object.entries(stems).map(([name, freq]) => {
-    const ch = sine(freq, seconds);
-    return { name: `${name}.wav`, bytes: encodeWav(ch, ch, 44100) };
-  });
-  return buildZip(entries);
+  const { stemsZip } = await import('/tests/helpers/audio-fixtures.js');
+  return stemsZip(stems, { seconds, layout: 'flat' });
 }
 
 /** Builds the zip above and feeds it through the real picker, exactly like a user drop. */

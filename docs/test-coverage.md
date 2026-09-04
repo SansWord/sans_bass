@@ -67,24 +67,24 @@ release integrity.
 | Transport | `T4` | `TRN-004` | ⚠ Seeking while playing resumes playing; seeking while stopped stays stopped. | retain | — | `Transport / T4` |
 | Transport | `T5` | `TRN-005` | `←`/`→` nudge 5 s. | retain | — | `Transport / T5` |
 | A–B repeat | `R1` | `LOOP-001` | ⚠ `a` and `b` set points at the playhead; the region repeats until cleared. | retain | — | `A–B repeat / R1` |
-| A–B repeat | `R2` | `LOOP-002` | ⚠ Points set in either order work — a B before an A swaps itself. | retain | — | `A–B repeat / R2` |
-| A–B repeat | `R3` | `LOOP-003` | ⚠ Points closer than 0.1 s are rejected with a message, and the second point is discarded. | retain | — | `A–B repeat / R3` |
+| A–B repeat | `R2` | `LOOP-002` | ⚠ Points set in either order work — a B before an A swaps itself. | automate | `tests/loop-state.test.js#orders A and B regardless of entry order` | `A–B repeat / R2` |
+| A–B repeat | `R3` | `LOOP-003` | ⚠ Points closer than 0.1 s are rejected with a message, and the second point is discarded. | automate | `tests/loop-state.test.js#rejects a second point less than 100ms away` | `A–B repeat / R3` |
 | A–B repeat | `R4` | `LOOP-004` | ⚠ Looping runs on the audio thread (`loop`/`loopStart`/`loopEnd`), so it survives a backgrounded tab. | retain | — | `A–B repeat / R4` |
-| A–B repeat | `R5` | `LOOP-005` | ⚠ A stem shorter than `loopEnd` is left unlooped and falls silent rather than wrapping early and drifting. | retain | — | `A–B repeat / R5` |
+| A–B repeat | `R5` | `LOOP-005` | ⚠ A stem shorter than `loopEnd` is left unlooped and falls silent rather than wrapping early and drifting. | automate | `tests/loop-state.test.js#loops only sources long enough to reach B` | `A–B repeat / R5` |
 | A–B repeat | `R6` | `LOOP-006` | The badge is hidden when no point is set. | retain | — | `A–B repeat / R6` |
-| A–B repeat | `R7` | `LOOP-007` | ⚠ Loading a song clears both points. | retain | — | `A–B repeat / R7` |
-| A–B repeat | `R8` | `LOOP-008` | A note **still sounding at A** plays its remainder rather than being skipped, on every lap. | retain | — | `A–B repeat / R8` |
-| A–B repeat | `R9` | `LOOP-009` | It **resumes** the envelope rather than re-attacking — quieter at A than the same note played from its start. | retain | — | `A–B repeat / R9` |
-| A–B repeat | `R10` | `LOOP-010` | A note is **cut at B**, not left ringing across the restart. | retain | — | `A–B repeat / R10` |
-| A–B repeat | `R11` | `LOOP-011` | **Seeking** into a note does the same thing as entering at A. | retain | — | `A–B repeat / R11` |
-| A–B repeat | `R12` | `LOOP-012` | A remainder under **10 ms** is dropped, and no whole note ever is. | retain | — | `A–B repeat / R12` |
-| A–B repeat | `R13` | `LOOP-013` | An untrusted note straddling A stays **silent**, as N36 requires. | retain | — | `A–B repeat / R13` |
+| A–B repeat | `R7` | `LOOP-007` | ⚠ Loading a song clears both points. | automate | `tests/loop-state.test.js#clears both points` | `A–B repeat / R7` |
+| A–B repeat | `R8` | `LOOP-008` | A note **still sounding at A** plays its remainder rather than being skipped, on every lap. | automate | `tests/sonify.test.js#the note straddling A resumes on every lap, not just the first` | `A–B repeat / R8` |
+| A–B repeat | `R9` | `LOOP-009` | It **resumes** the envelope rather than re-attacking — quieter at A than the same note played from its start. | automate | `tests/sonify.test.js#a resumed note enters the envelope partway, it does not re-attack` | `A–B repeat / R9` |
+| A–B repeat | `R10` | `LOOP-010` | A note is **cut at B**, not left ringing across the restart. | automate | `tests/sonify.test.js#a note is cut at B rather than ringing across the loop restart` | `A–B repeat / R10` |
+| A–B repeat | `R11` | `LOOP-011` | **Seeking** into a note does the same thing as entering at A. | automate | `tests/sonify.test.js#seeking into the middle of a note plays the rest of it` | `A–B repeat / R11` |
+| A–B repeat | `R12` | `LOOP-012` | A remainder under **10 ms** is dropped, and no whole note ever is. | automate | `tests/sonify.test.js#a remainder too short to be a pitch is dropped` | `A–B repeat / R12` |
+| A–B repeat | `R13` | `LOOP-013` | An untrusted note straddling A stays **silent**, as N36 requires. | automate | `tests/sonify.test.js#a doubtful note straddling A is still silent` | `A–B repeat / R13` |
 | Playback speed | `S1` | `SPD-001` | A speed control (slider, 10–150%, step 5) is present in the controls bar, alongside Volume. | retain | — | `Playback speed / S1` |
-| Playback speed | `S2` | `SPD-002` | Always starts at 100% when a song loads — never persisted across songs or reloads. | retain | — | `Playback speed / S2` |
+| Playback speed | `S2` | `SPD-002` | Always starts at 100% when a song loads — never persisted across songs or reloads. | automate | `tests/transport-math.test.js#a new song resets speed to the default` | `Playback speed / S2` |
 | Playback speed | `S3` | `SPD-003` | ⚠ Changing speed away from 100% audibly changes tempo while the pitch stays the same. | retain | — | `Playback speed / S3` |
 | Playback speed | `S4` | `SPD-004` | At exactly 100% the native, unprocessed playback path runs — zero behaviour change from before this feature. | retain | — | `Playback speed / S4` |
-| Playback speed | `S5` | `SPD-005` | ⚠ Crossing the 100% ↔ non-100% boundary rebuilds the audio graph (same `stop()`→`play()` pattern as a loop-bounds change); staying on one side of it while dragging the slider does **not** restart the audio. | retain | — | `Playback speed / S5` |
-| Playback speed | `S6` | `SPD-006` | `[` / `]` nudge the rate ±5%, clamped to [10, 150]; Shift+`[` / Shift+`]` nudge ±1% over the same range; `\` resets to 100%. | retain | — | `Playback speed / S6` |
+| Playback speed | `S5` | `SPD-005` | ⚠ Crossing the 100% ↔ non-100% boundary rebuilds the audio graph (same `stop()`→`play()` pattern as a loop-bounds change); staying on one side of it while dragging the slider does **not** restart the audio. | automate | `tests/transport-math.test.js#crossing native and stretched playback requires a graph rebuild` | `Playback speed / S5` |
+| Playback speed | `S6` | `SPD-006` | `[` / `]` nudge the rate ±5%, clamped to [10, 150]; Shift+`[` / Shift+`]` nudge ±1% over the same range; `\` resets to 100%. | automate | `tests/transport-math.test.js#nudgeRatePercent moves by exactly the given delta and stays in range` | `Playback speed / S6` |
 | Playback speed | `S7` | `SPD-007` | A–B looping and seeking still work at non-100% rates. | retain | — | `Playback speed / S7` |
 | Playback speed | `S8` | `SPD-008` | Sonify reference tones (Notes lane) stay locked to the (possibly slowed/sped) stems. | retain | — | `Playback speed / S8` |
 | Playback speed | `S9` | `SPD-009` | A time-stretched A–B loop can have a faint discontinuity at the seam — accepted, not fixed by this feature. Native 100% looping is unaffected. | retain | — | `Playback speed / S9` |

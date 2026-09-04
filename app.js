@@ -14,6 +14,7 @@ import * as SansRibbon from './lib/ribbon.js';
 import * as SansJianpu from './lib/jianpu.js';
 import * as SansTransportMath from './lib/transport-math.js';
 import { allToggleLabel, initialRouting, route } from './lib/routing-state.js';
+import * as SansLoopState from './lib/loop-state.js';
 
 const BUCKETS = 1400;   // waveform resolution
 const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
@@ -129,7 +130,6 @@ let raf = 0;
 let loopA = null;          // A-B repeat start, seconds (null = unset)
 let loopB = null;          // A-B repeat end, seconds
 let routingState = initialRouting([]);
-const MIN_LOOP = 0.1;      // shorter than this is almost certainly a mis-press
 let workletReady = null;   // Promise: resolves once lib/stretch-processor.js is registered
 
 const $ = (id) => document.getElementById(id);
@@ -329,9 +329,9 @@ async function loadFiles(fileList, fallbackName, source) {
 
   ensureAudio();
   stop(true);
-  loopA = loopB = null;            // A-B points belong to the previous song
+  ({ a: loopA, b: loopB } = SansLoopState.clearLoop());
   renderLoopBadge();
-  ratePercent = SansTransportMath.RATE_DEFAULT;
+  ratePercent = SansTransportMath.resetRatePercent();
   tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
   say(files.length > 1 ? 'status.decodingMany' : 'status.decodingOne', { n: files.length });
@@ -497,9 +497,9 @@ function loadSeparated(original, stems) {
   // a stale startedAt. stop(false) silences them and returns the playhead to the start.
   stop(false);
 
-  loopA = loopB = null;
+  ({ a: loopA, b: loopB } = SansLoopState.clearLoop());
   renderLoopBadge();
-  ratePercent = SansTransportMath.RATE_DEFAULT;
+  ratePercent = SansTransportMath.resetRatePercent();
   tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
   // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks
@@ -2053,7 +2053,7 @@ function paintTempoRangeBand(c, canvas, dpr) {
 
 /** A-B repeat is armed only when both points exist and enclose a usable span. */
 function loopOn() {
-  return loopA !== null && loopB !== null && loopB - loopA >= MIN_LOOP;
+  return SansLoopState.isLoopActive({ a: loopA, b: loopB });
 }
 
 function currentTime() {
@@ -2118,11 +2118,15 @@ async function play() {
 
   const t0 = audio.currentTime + LOOKAHEAD;
   const longest = tracks.reduce((a, b) => (b.buffer.duration > a.buffer.duration ? b : a));
+  const loopPlans = SansLoopState.loopPlan(
+    tracks.map((track) => track.buffer.duration),
+    { a: loopA, b: loopB },
+  );
 
   if (stretched) {
-    stretchNodes = tracks.map(t => {
+    stretchNodes = tracks.map((t, index) => {
       if (offset >= t.buffer.duration) return null;
-      const willLoop = looping && t.buffer.duration >= loopB;
+      const willLoop = loopPlans[index].loop;
       const node = createStretchNode(t, willLoop, t0);
       if (t === longest && !willLoop) {
         node.port.onmessage = (e) => { if (e.data.type === 'ended' && playing) stop(false); };
@@ -2131,7 +2135,7 @@ async function play() {
     }).filter(Boolean);
     sources = [];
   } else {
-    sources = tracks.map(t => {
+    sources = tracks.map((t, index) => {
       if (offset >= t.buffer.duration) return null;   // this stem already ended
       const src = audio.createBufferSource();
       src.buffer = t.buffer;
@@ -2141,10 +2145,10 @@ async function play() {
       // every stem, and it keeps running when the tab is in the background.
       // A stem shorter than loopEnd would wrap at its own end and drift out of sync,
       // so it is left unlooped and simply falls silent instead.
-      if (looping && t.buffer.duration >= loopB) {
+      if (loopPlans[index].loop) {
         src.loop = true;
-        src.loopStart = loopA;
-        src.loopEnd = loopB;
+        src.loopStart = loopPlans[index].loopStart;
+        src.loopEnd = loopPlans[index].loopEnd;
       }
 
       // End of song is detected on the audio graph, not in the animation loop:
@@ -2229,22 +2233,16 @@ function setLoopPoint(which) {
   if (!tracks.length) return;
   gcBump('loop');
   const t = currentTime();
-  if (which === 'a') loopA = t; else loopB = t;
-
-  // Tolerate them being set in either order.
-  if (loopA !== null && loopB !== null && loopA > loopB) {
-    const swap = loopA; loopA = loopB; loopB = swap;
-  }
-  if (loopA !== null && loopB !== null && loopB - loopA < MIN_LOOP) {
-    say('status.loopTooShort', { min: MIN_LOOP }, true);
-    if (which === 'a') loopA = null; else loopB = null;
-  }
+  const next = SansLoopState.setLoopPoint({ a: loopA, b: loopB }, which, t);
+  loopA = next.a;
+  loopB = next.b;
+  if (next.rejected) say('status.loopTooShort', { min: SansLoopState.MIN_LOOP_SECONDS }, true);
 
   refreshLoop();
 }
 
 function clearLoop() {
-  loopA = loopB = null;
+  ({ a: loopA, b: loopB } = SansLoopState.clearLoop());
   refreshLoop();
 }
 
@@ -2289,8 +2287,7 @@ function setRate(newPercent) {
     return;
   }
 
-  const crossingBoundary = (ratePercent === 100) !== (clamped === 100);
-  if (crossingBoundary) {
+  if (SansTransportMath.rateChangePlan(ratePercent, clamped) === 'rebuild') {
     stop(true);          // captures offset under the OLD rate
     ratePercent = clamped;
     play();

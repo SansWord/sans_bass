@@ -39,7 +39,7 @@ release integrity.
 | Loading | `L15` | `LOAD-018` | Dragging a file anywhere over the window shows `#drag-overlay`, and the window accepts the drop. A dropped file must **never** make the browser navigate to it. | retain | — | `Loading / L15` |
 | Loading | `L16` | `LOAD-019` | The overlay is the drop target in **both** states, before a song loads and after. Dropping a second song over a loaded player is the common case and `#dropzone` is hidden by then. | retain | — | `Loading / L16` |
 | Loading | `L17` | `LOAD-020` | The overlay does not flicker while the cursor crosses lanes and panels. | retain | — | `Loading / L17` |
-| Lanes and muting | `M1` | `MIX-001` | Clicking a lane's name block toggles **only** that lane. Others are untouched. | retain | — | `Lanes and muting / M1` |
+| Lanes and muting | `M1` | `MIX-001` | Clicking a lane's name block toggles **only** that lane. Others are untouched. | automate | `tests/routing-state.test.js#toggles only the requested lane and enters custom mode` | `Lanes and muting / M1` |
 | Lanes and muting | `M2` | `MIX-002` | The click target is the whole left column — full lane height, flush to the lane's left edge, through the number badge. | retain | — | `Lanes and muting / M2` |
 | Lanes and muting | `M2a` | `MIX-003` | That target is visibly a target **without hovering**: its own background tint, distinct from the lane, and a divider against the waveform. | retain | — | `Lanes and muting / M2a` |
 | Lanes and muting | `M2b` | `MIX-004` | The player says in words that the name block toggles the track. | retain | — | `Lanes and muting / M2b` |
@@ -47,20 +47,20 @@ release integrity.
 | Lanes and muting | `M4` | `MIX-006` | Keys `1`–`6` toggle the same lanes as clicking their names. | retain | — | `Lanes and muting / M4` |
 | Lanes and muting | `M5` | `MIX-007` | A muted lane is dimmed, and its gain is 0. | retain | — | `Lanes and muting / M5` |
 | Lanes and muting | `M6` | `MIX-008` | The per-lane volume slider is independent of mute. | retain | — | `Lanes and muting / M6` |
-| Unmute all / restore | `U1` | `MIX-009` | With anything muted, pressing turns **every** lane on. | retain | — | `Unmute all / restore / U1` |
-| Unmute all / restore | `U2` | `MIX-010` | Pressing again returns to exactly the lanes that were on before. | retain | — | `Unmute all / restore / U2` |
-| Unmute all / restore | `U3` | `MIX-011` | The snapshot is taken **when everything is turned on**, not when a lane is muted. So: all on → mute one lane → press → all on → press → back to *that one lane muted*, not to an older state. | retain | — | `Unmute all / restore / U3` |
-| Unmute all / restore | `U4` | `MIX-012` | Label follows state: **Unmute all** when anything is muted, **Restore previous** when everything is on and a snapshot exists. | retain | — | `Unmute all / restore / U4` |
-| Unmute all / restore | `U5` | `MIX-013` | Everything on with **nothing saved** — the state a freshly loaded or freshly separated song starts in — the press **mutes every lane**, and the label reads **Mute all**. Pressing again brings them all back. The button is never disabled. | retain | — | `Unmute all / restore / U5` |
-| Unmute all / restore | `U5a` | `MIX-014` | All lanes off does **not** take a snapshot — "restore previous" meaning "silence again" is not offered. After mute-all → unmute-all the label is **Mute all** again, not **Restore previous**. | retain | — | `Unmute all / restore / U5a` |
-| Unmute all / restore | `U6` | `MIX-015` | A new song clears the snapshot. | retain | — | `Unmute all / restore / U6` |
-| Unmute all / restore | `U7` | `MIX-016` | With a full-mix file present, "unmute all" unmutes the stems and drives the mix lane to 0 — never both. | retain | — | `Unmute all / restore / U7` |
+| Unmute all / restore | `U1` | `MIX-009` | With anything muted, pressing turns **every** lane on. | automate | `tests/routing-state.test.js#snapshots the current partial mix and restores it exactly` | `Unmute all / restore / U1` |
+| Unmute all / restore | `U2` | `MIX-010` | Pressing again returns to exactly the lanes that were on before. | automate | `tests/routing-state.test.js#snapshots the current partial mix and restores it exactly` | `Unmute all / restore / U2` |
+| Unmute all / restore | `U3` | `MIX-011` | The snapshot is taken **when everything is turned on**, not when a lane is muted. So: all on → mute one lane → press → all on → press → back to *that one lane muted*, not to an older state. | automate | `tests/routing-state.test.js#snapshots the current partial mix and restores it exactly` | `Unmute all / restore / U3` |
+| Unmute all / restore | `U4` | `MIX-012` | Label follows state: **Unmute all** when anything is muted, **Restore previous** when everything is on and a snapshot exists. | automate | `tests/routing-state.test.js#labels partial, restorable, and fresh all-on states` | `Unmute all / restore / U4` |
+| Unmute all / restore | `U5` | `MIX-013` | Everything on with **nothing saved** — the state a freshly loaded or freshly separated song starts in — the press **mutes every lane**, and the label reads **Mute all**. Pressing again brings them all back. The button is never disabled. | automate | `tests/routing-state.test.js#mutes all on the first all-toggle and returns to all-on without saving silence` | `Unmute all / restore / U5` |
+| Unmute all / restore | `U5a` | `MIX-014` | All lanes off does **not** take a snapshot — "restore previous" meaning "silence again" is not offered. After mute-all → unmute-all the label is **Mute all** again, not **Restore previous**. | automate | `tests/routing-state.test.js#mutes all on the first all-toggle and returns to all-on without saving silence` | `Unmute all / restore / U5a` |
+| Unmute all / restore | `U6` | `MIX-015` | A new song clears the snapshot. | automate | `tests/routing-state.test.js#resets mode, mutes, and stale snapshots on song load` | `Unmute all / restore / U6` |
+| Unmute all / restore | `U7` | `MIX-016` | With a full-mix file present, "unmute all" unmutes the stems and drives the mix lane to 0 — never both. | automate | `tests/routing-state.test.js#unmutes stems while suppressing an explicit mix` | `Unmute all / restore / U7` |
 | Unmute all / restore | `U8` | `MIX-017` | The button is styled identically to **Save stems (.zip)** (`btn ghost`). | retain | — | `Unmute all / restore / U8` |
-| Play dropdown | `P1` | `MIX-018` | Picking an instrument solos it — every other lane mutes. | retain | — | `Play dropdown / P1` |
-| Play dropdown | `P2` | `MIX-019` | **Full mix** turns every lane on, or plays the mix file if one exists. | retain | — | `Play dropdown / P2` |
-| Play dropdown | `P3` | `MIX-020` | Any per-lane change switches the dropdown to **Custom…**. | retain | — | `Play dropdown / P3` |
+| Play dropdown | `P1` | `MIX-018` | Picking an instrument solos it — every other lane mutes. | automate | `tests/routing-state.test.js#solos %s from the play dropdown` | `Play dropdown / P1` |
+| Play dropdown | `P2` | `MIX-019` | **Full mix** turns every lane on, or plays the mix file if one exists. | automate | `tests/routing-state.test.js#treats every ordinary lane on as Full mix` | `Play dropdown / P2` |
+| Play dropdown | `P3` | `MIX-020` | Any per-lane change switches the dropdown to **Custom…**. | automate | `tests/routing-state.test.js#toggles only the requested lane and enters custom mode` | `Play dropdown / P3` |
 | Play dropdown | `P5` | `MIX-021` | After choosing from the dropdown, the keyboard shortcuts still work. The select does not keep focus. | retain | — | `Play dropdown / P5` |
-| Play dropdown | `P4` | `MIX-022` | With no mix file, "all lanes on" shows **Full mix**, not Custom — all six on *is* the full mix. | retain | — | `Play dropdown / P4` |
+| Play dropdown | `P4` | `MIX-022` | With no mix file, "all lanes on" shows **Full mix**, not Custom — all six on *is* the full mix. | automate | `tests/routing-state.test.js#treats every ordinary lane on as Full mix` | `Play dropdown / P4` |
 | Transport | `T1` | `TRN-001` | All lanes stay sample-locked — one clock, one `t0`. | retain | — | `Transport / T1` |
 | Transport | `T2` | `TRN-002` | Muting never stops a source; it ramps gain. The track stays on the timeline. | retain | — | `Transport / T2` |
 | Transport | `T3` | `TRN-003` | ⚠ End of song is detected on the audio graph (`onended` on the longest source), not in `requestAnimationFrame`. | retain | — | `Transport / T3` |
@@ -274,4 +274,3 @@ release integrity.
 | Analytics | `A5` | `ANALYTICS-005` | Events fired before GoatCounter loads are not lost. | retain | — | `Analytics / A5` |
 | Analytics | `A6` | `ANALYTICS-006` | Events do not reach GoatCounter from localhost. | retain | — | `Analytics / A6` |
 | Analytics | `A7` | `ANALYTICS-007` | `separate-handheld-blocked` fires **once** per visitor shown the message, never once per poll. | retain | — | `Analytics / A7` |
-

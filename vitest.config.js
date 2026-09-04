@@ -16,7 +16,7 @@ import { playwright } from '@vitest/browser-playwright';
 const NODE_TESTS = [
   'soundtouch', 'transport-math', 'overlap', 'tempo', 'pitch', 'ribbon', 'zip', 'unzip', 'stems',
   'jianpu', 'platform', 'notes-edits', 'time', 'chroma', 'chords',
-  'coverage-map', 'audio-fixtures',
+  'coverage-map', 'audio-fixtures', 'routing-state',
 ].map((name) => `tests/${name}.test.js`);
 
 const JSDOM_TESTS = ['analytics', 'i18n'].map((name) => `tests/${name}.test.js`);

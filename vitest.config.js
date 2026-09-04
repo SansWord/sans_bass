@@ -43,6 +43,7 @@ export default defineConfig({
         test: {
           name: 'jsdom',
           environment: 'jsdom',
+          environmentOptions: { jsdom: { url: 'http://localhost/' } },
           include: JSDOM_TESTS,
         },
       },

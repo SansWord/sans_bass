@@ -61,4 +61,19 @@ describe('production player integration', () => {
     expect(player.win.getComputedStyle(player.doc.getElementById('sep-save')).display).not.toBe('none');
     expect(player.doc.getElementById('sep-status').textContent).toBe('');
   });
+
+  it('rerenders language without replacing playback canvases or routing', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, bass: 110 });
+    const canvases = [...player.doc.querySelectorAll('.lane canvas')];
+    player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-name').click();
+    const mode = player.doc.getElementById('mode').value;
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    expect(player.doc.documentElement.lang).toBe('zh-TW');
+    expect(player.doc.title).toContain('分軌播放器');
+    expect(player.doc.getElementById('mode').value).toBe(mode);
+    expect([...player.doc.querySelectorAll('.lane canvas')]).toEqual(canvases);
+    expect(player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .txt').textContent)
+      .toBe('人聲');
+  });
 });

@@ -13,7 +13,14 @@ export async function waitFor(predicate, message = 'condition', timeout = 5000) 
 /** Load the production index page in an isolated same-origin frame. */
 export async function openPlayer() {
   const frame = document.createElement('iframe');
-  frame.src = '/index.html';
+  // The markup and every production module are the real entry. The sole deliberate
+  // difference is removing GoatCounter's remote transport: npm test is an offline gate,
+  // while analytics behavior is exercised with local sinks in analytics.test.js.
+  const response = await fetch('/index.html');
+  const html = (await response.text())
+    .replace('<head>', `<head><base href="${location.origin}/">`)
+    .replace(/<script data-goatcounter=[\s\S]*?<\/script>/, '');
+  frame.srcdoc = html;
   frame.style.width = '1000px';
   frame.style.height = '800px';
   document.body.appendChild(frame);

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { instrumentAudio, loadZip, openPlayer, waitFor } from './helpers/player-harness.js';
+import { installFakeWorker, instrumentAudio, loadSong, loadZip, openPlayer, waitFor } from './helpers/player-harness.js';
 
 let player;
 afterEach(() => player?.close());
@@ -40,5 +40,25 @@ describe('production player integration', () => {
     expect(over.defaultPrevented).toBe(true);
     player.doc.dispatchEvent(new player.win.DragEvent('dragleave', { bubbles: true }));
     await waitFor(() => player.win.getComputedStyle(overlay).display === 'none', 'overlay hiding');
+  });
+
+  it('drives separation running and success controls through a deterministic fake Worker', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadSong(player);
+    const go = player.doc.getElementById('sep-go');
+    await waitFor(() => player.win.getComputedStyle(go).display !== 'none', 'separation control');
+    go.click();
+    expect(go.disabled).toBe(true);
+    expect(player.win.getComputedStyle(player.doc.getElementById('sep-cancel')).display).not.toBe('none');
+    const channel = () => new player.win.Float32Array(441);
+    workers[0].emit({ type: 'result', stems: Object.fromEntries(
+      ['vocals', 'guitar', 'bass', 'drums', 'piano', 'other'].map((stem) => [stem, { left: channel(), right: channel() }]),
+    ) });
+    await waitFor(() => player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === 6,
+      'six separated lanes');
+    expect(player.win.getComputedStyle(go).display).toBe('none');
+    expect(player.win.getComputedStyle(player.doc.getElementById('sep-save')).display).not.toBe('none');
+    expect(player.doc.getElementById('sep-status').textContent).toBe('');
   });
 });

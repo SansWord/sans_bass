@@ -1,4 +1,4 @@
-import { stemsZip } from './audio-fixtures.js';
+import { sine, stemsZip, wavFile } from './audio-fixtures.js';
 
 export async function waitFor(predicate, message = 'condition', timeout = 5000) {
   const deadline = performance.now() + timeout;
@@ -73,4 +73,33 @@ export async function loadZip(player, stems, options = {}) {
     throw new Error(`${error.message}; status=${JSON.stringify(status)}`);
   }
   return input;
+}
+
+export async function loadSong(player, { frequency = 220, seconds = 0.05, filename = 'song.wav' } = {}) {
+  const source = wavFile(filename, sine(frequency, seconds));
+  const file = new player.win.File([await source.arrayBuffer()], filename, { type: 'audio/wav' });
+  const transfer = new player.win.DataTransfer();
+  transfer.items.add(file);
+  const input = player.doc.getElementById('file-input');
+  Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+  input.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+  await waitFor(() => player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === 1,
+    'decoded song lane');
+}
+
+export function installFakeWorker(win) {
+  const instances = [];
+  win.Worker = class FakeWorker {
+    constructor(url, options) {
+      this.url = String(url);
+      this.options = options;
+      this.sent = [];
+      instances.push(this);
+    }
+    postMessage(message) { this.sent.push(message); }
+    terminate() { this.terminated = true; }
+    emit(data) { this.onmessage?.({ data }); }
+    fail(message = '') { this.onerror?.({ message }); }
+  };
+  return instances;
 }

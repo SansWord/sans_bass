@@ -24,6 +24,7 @@ import * as SansJianpu from './lib/jianpu.js';
 import { beatTimes } from './lib/ribbon.js';
 import { buildEditsPayload, planImport } from './lib/notes-edits.js';
 import { detectChords } from './lib/chords.js';
+import { detectionView } from './lib/detection-state.js';
 
 const tr = (key, params) => SansI18n.t(key, params);
 
@@ -654,6 +655,11 @@ function createNotesChannel(stem, els) {
   function hasStem() { return !!window.sansBass?.stemBuffer?.(stem); }
   function needsAnalyse() { return hasStem() && !frames; }
   function busy() { return worker !== null; }
+  function state() {
+    if (!hasStem()) return 'absent';
+    if (worker) return 'running';
+    return frames ? 'complete' : 'pending';
+  }
 
   els.min.addEventListener('input', reinterpret);
   els.clip.addEventListener('change', reinterpret);
@@ -832,7 +838,7 @@ function createNotesChannel(stem, els) {
   }
 
   return {
-    refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, stem,
+    refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, state, stem,
     hasFrames, exportEntry, importEntry, chordSource, keySource,
   };
 }
@@ -915,14 +921,12 @@ goAllBtn.addEventListener('click', () => {
  * sitting there disabled would itself be a stale-looking leftover. It stays visible+disabled
  * only for the genuinely permanent case: no melodic stem was ever loaded at all. */
 function syncGoAll() {
-  const anyStem = channels.some((c) => c.hasStem());
-  const busyChannels = channels.filter((c) => c.busy());
-  const anyPending = channels.some((c) => c.needsAnalyse());
-  goAllSection.hidden = anyStem && !anyPending && busyChannels.length === 0;
-  goAllBtn.disabled = busyChannels.length > 0 || !anyPending;
-  goAllSpinner.hidden = busyChannels.length === 0;
-  goAllStatus.textContent = busyChannels.length
-    ? tr('notes.detecting', { stems: busyChannels.map((c) => tr('stem.' + c.stem)).join(', ') })
+  const view = detectionView(channels.map((channel) => ({ stem: channel.stem, state: channel.state() })));
+  goAllSection.hidden = !view.sectionVisible;
+  goAllBtn.disabled = view.buttonDisabled;
+  goAllSpinner.hidden = !view.spinnerVisible;
+  goAllStatus.textContent = view.busyStems.length
+    ? tr('notes.detecting', { stems: view.busyStems.map((stem) => tr('stem.' + stem)).join(', ') })
     : '';
 }
 

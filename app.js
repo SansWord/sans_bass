@@ -1862,7 +1862,7 @@ function renderZoom(canvas) {
       const left = Math.max(0, x(chord.start));
       if (chord.label) {
         c.fillStyle = chord.edited ? '#c99bf0'
-        : chord.candidates?.length > 1 ? '#5ecbff' : '#ffd166';
+          : chord.candidates?.length > 1 ? '#ffd166' : '#5ecbff';
         c.fillText(chord.label, left + 4, 10);
       }
       /* Continue the tempo grid through the opaque chord band: strong full-bar lines and

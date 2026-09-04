@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.29.0](#v1290--key-aware-harmonic-chroma-chords-in-the-export-2026-09-03-1701) | **Export list** now identifies harmony from the combined guitar/piano/bass audio rather than deriving it solely from detected bass notes. Half-bars are scored against 72 chord templates, biased by the vocal key (including the user's override), sequence-decoded across the progression, then optionally annotated with a bass slash. It is a materially better guess, not a verified chart: the real-song check reaches `A` / `E/G#` early on, while some later ambiguous labels remain open for tuning. |
 | [v1.28.0](#v1280--bass-derived-chords-in-the-簡譜-export-2026-09-03-1342) | **Export list** now prints a chord guess above each bar, derived from the bass channel's own notes/key regardless of which channel is being exported — split at the bar's time midpoint so a mid-bar chord change (e.g. G → Gsus4) shows both halves. Triads + sus2/sus4 only; a chromatic passing tone gets a bare root name. An export with no analysed bass stem is unaffected. |
 | [v1.27.0](#v1270--簡譜-export-as-bars-rhythm-and-html-2026-09-03-1251) | **Export list** now lays the 簡譜 reading onto the tempo grid — lines wrap every N bars (not seconds), each note's duration renders as standard rhythm notation (underlines, sustain dashes, dots), a note held across a barline splits into tied fragments, and octave is drawn as real dots above/below the digit. A `♩ = <bpm> <beatsPerBar>/4` line now heads the page, and both it and Export edits download as `sans_bass_..._<timestamp>` files. The export itself is a self-contained HTML file now, not Markdown, which is what makes any of the above renderable at all. |
 | [v1.26.1](#v1261--mutually-exclusive-note-and-range-selection-2026-09-03-1143) | Selecting a note now clears any active range selection, and creating or committing a range selection (drag, or the Whole song button) now clears any selected note — previously the two could coexist silently. |
@@ -66,6 +67,52 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## v1.29.0 — Key-aware harmonic chroma chords in the export (2026-09-03 17:01)
+
+**Review:** not yet
+
+**Design docs:**
+- Chroma Chord Detection: [Spec](superpowers/specs/2026-09-03-chroma-chord-detection-design.md) [Plan](superpowers/plans/2026-09-03-chroma-chord-detection.md)
+- Pipeline and follow-ups: [Chord detection](chord-detection.md)
+
+**What was built:**
+- **Export list** now derives one chord candidate per half-bar from the harmonic audio mix of
+  guitar, piano, and bass — not just the bass note line. The vocabulary covers major, minor,
+  dominant-7, minor-7, sus2, and sus4 templates.
+- The export uses the vocal channel's key: its automatic key after analysis, or the user's
+  tonic/mode selection when they have overridden it. There is deliberately no made-up C-major
+  prior before a vocal key exists.
+- A compact Viterbi sequence pass resolves close local candidates with modest continuity and
+  common-progression preferences. Bass notes remain optional and only add an inversion suffix,
+  such as `E/G#`; they do not choose the chord root.
+- The complete calculation remains local and export-time only. It does not change playback,
+  note detection, or the stored note data.
+
+**Verification:**
+- `npm test` (315 passing) and `npm run build` passed.
+- The PR preview was smoke-tested in a real Chrome session on `examples/nov_you.zip`: six
+  stems loaded; transport, mute, speed, A–B loop, language switching, and the real note
+  worker all worked without application console errors. The worker detected 374 vocal notes,
+  357 bass notes, and A major for the fixture.
+
+**Key technical learnings:**
+- `[insight]` Harmonic chroma needs both local evidence and context. A half-bar containing
+  only E and G# is legitimately ambiguous between several chords; a small key/progression
+  prior helps select a musically coherent candidate, but must never overrule strong audio
+  evidence.
+- `[note]` The chord key belongs to the vocal channel, not the export target and not the
+  bass channel. Reading the same state the 簡譜 controls present keeps an automatic vocal
+  result useful while treating a user correction as authoritative.
+- `[gotcha]` The real fixture's automatic tempo locks to 48 BPM, half its reference pulse.
+  Chord half-bars are defined by that grid, so a meaningful chart comparison requires
+  correcting it to 96 BPM before export. Record BPM, phase, vocal key, and the loaded stems
+  with any future mismatch before tuning scoring constants.
+- `[note]` The present regression reaches the early `A` / `E/G#` inversion but is not a full
+  reference-chart acceptance pass. `docs/chord-detection.md` records that limitation and the
+  most promising next signal-level improvement: overtone-corrected chroma.
 
 ---
 

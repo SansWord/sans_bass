@@ -99,11 +99,10 @@ function chordsHtml(pair) {
  *  assumption noteRhythm's GRID_UNITS_PER_BEAT already makes). No external assets — every
  *  rule needed to read it lives in the inlined <style>.
  *
- *  `chords` (optional, same length as `bars`) is lib/chords.js's detectChords() output for
- *  the BASS channel — passed regardless of which channel this export is actually for. When
- *  present, every bar gets a `.chords` row (see chordsHtml above); when omitted entirely
- *  (no bass stem loaded, or it was never analysed), no `.chords` element is rendered on any
- *  bar and `.bar`'s visual height/appearance match what they were before this feature. */
+ *  `chords` (optional, same length as `bars`) is lib/chords.js's detectChords() output,
+ *  computed from whichever guitar/piano/bass stems are loaded, regardless of the channel
+ *  being exported. When omitted entirely (none of those stems is loaded), no `.chords`
+ *  element is rendered and `.bar` keeps its previous visual height/appearance. */
 function jianpuHtml({ title, bars, barsPerLine, bpm, beatsPerBar, chords }) {
   const lines = [];
   for (let i = 0; i < bars.length; i += barsPerLine) {
@@ -215,6 +214,26 @@ function currentTempoRangeChannels() {
     }
   }
   return { channels: chans, sampleRate: buffer.sampleRate };
+}
+
+/** Stems whose audio can contribute pitch classes to a chord label. */
+const HARMONIC_STEMS = ['guitar', 'piano', 'bass'];
+
+/** Downmix loaded buffers to mono, then sum them, retaining the longest stem's tail. */
+function mixDown(buffers) {
+  const monos = buffers.map((buffer) => {
+    const mono = new Float32Array(buffer.length);
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+      const data = buffer.getChannelData(channel);
+      for (let i = 0; i < data.length; i++) mono[i] += data[i];
+    }
+    const gain = 1 / buffer.numberOfChannels;
+    for (let i = 0; i < mono.length; i++) mono[i] *= gain;
+    return mono;
+  });
+  const samples = new Float32Array(Math.max(...monos.map((mono) => mono.length)));
+  for (const mono of monos) for (let i = 0; i < mono.length; i++) samples[i] += mono[i];
+  return { samples, sampleRate: buffers[0].sampleRate };
 }
 
 /** Restores the tempo grid to its defaults for a freshly loaded song. Tempo is derived from
@@ -728,14 +747,18 @@ function createNotesChannel(stem, els) {
 
     const bars = SansJianpu.layoutBars(notes, barStarts, jianpu.tonic, jianpu.mode, refOct, beatSec);
 
-    // Chord labels always come from the BASS channel's own notes/key, regardless of which
-    // channel is being exported — see lib/chords.js's detectChords() and the design spec.
-    // `undefined` (no bass stem loaded, or it was never analysed) means this export carries
-    // no chord data at all, and jianpuHtml renders exactly as it did before this feature.
+    // Chords are matched from the harmonic stems' mixed audio, independent of the exported
+    // channel. Bass notes, if analysed, add only optional slash-chord notation.
+    const loadedHarmonic = HARMONIC_STEMS
+      .map((stemId) => window.sansBass.stemBuffer(stemId))
+      .filter(Boolean);
+    const harmonic = loadedHarmonic.length ? mixDown(loadedHarmonic.map((stemAudio) => stemAudio.buffer)) : null;
     const bassChannel = channels.find((c) => c.stem === 'bass');
-    const chordSrc = bassChannel ? bassChannel.chordSource() : null;
-    const chords = chordSrc
-      ? detectChords(chordSrc.notes, barStarts, chordSrc.tonicPc, chordSrc.mode)
+    const vocalChannel = channels.find((c) => c.stem === 'vocals');
+    const chordSrc = bassChannel && bassChannel.chordSource();
+    const keySrc = vocalChannel && vocalChannel.keySource();
+    const chords = harmonic
+      ? detectChords(harmonic.samples, harmonic.sampleRate, barStarts, chordSrc ? chordSrc.notes : null, keySrc)
       : undefined;
 
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
@@ -798,17 +821,19 @@ function createNotesChannel(stem, els) {
     syncJianpuControls();
   }
 
-  /** This channel's notes and key, for another channel's export to derive chord labels
-   *  from — `null` when this channel has nothing analysed yet. Populated automatically once
-   *  the channel has notes (jianpu.tonic/mode are always kept current, whether or not this
-   *  channel's own 簡譜 checkbox is on) — see lib/chords.js's detectChords(). */
+  /** This channel's notes for slash-chord fusion in another export, or null when unanalysed. */
   function chordSource() {
-    return hasFrames() && notes.length ? { notes, tonicPc: jianpu.tonic, mode: jianpu.mode } : null;
+    return hasFrames() && notes.length ? { notes } : null;
+  }
+
+  /** Vocal key for chord disambiguation. A manual picker choice is meaningful pre-analysis. */
+  function keySource() {
+    return hasFrames() || !jianpu.auto ? { tonicPc: jianpu.tonic, mode: jianpu.mode } : null;
   }
 
   return {
     refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, stem,
-    hasFrames, exportEntry, importEntry, chordSource,
+    hasFrames, exportEntry, importEntry, chordSource, keySource,
   };
 }
 

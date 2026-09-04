@@ -39,10 +39,10 @@ evidence. The chord UI reports **Waiting for note detection…** during that dep
 **Detecting chords…** while the actual chroma/sequence calculation runs. With only one melodic
 stem present, calculation begins as soon as that channel finishes.
 
-## Local chroma candidates
+## Hierarchical bar and half-bar candidates
 
-`detectChords()` decimates the whole harmonic mix once from 44.1 kHz to 22.05 kHz. For each
-half-bar it then:
+`detectChords()` decimates the whole harmonic mix once from 44.1 kHz to 22.05 kHz. It measures
+both halves and the full bar. For each window it:
 
 1. gates silence below -50 dBFS RMS;
 2. applies a Hann window and calculates Goertzel power at MIDI 36--83 (C2--B5);
@@ -50,15 +50,30 @@ half-bar it then:
 4. scores all 72 templates with Pearson correlation.
 
 The vocabulary is deliberately limited to `maj`, `min`, `7`, `min7`, `sus2`, and `sus4`.
-Templates are ranked rather than immediately collapsed to one answer. Matches within 0.12
+Templates are ranked rather than immediately collapsed to one answer. A window needs at
+least -42 dBFS RMS and a winning raw template correlation of 0.55 to count as strong; the
+older -50 dBFS chroma gate remains the hard definition of digital silence. Matches within 0.12
 of the best local rank (up to four) are retained as editing suggestions. A diatonic major/minor
 triad for the vocal key receives a modest `KEY_BONUS` of 0.25. That is a preference for sparse
 arrangements, not a hard key constraint: a strong borrowed chord such as `Dm7` can still win
 on its audio evidence.
 
+Half-bars remain the primary change detector, while the full bar is supporting evidence:
+
+- two strong halves with the same chord and bass spelling merge into one full-bar interval
+  when the full bar agrees;
+- one strong and one weak half become one full-bar interval when the full bar supports the
+  strong half;
+- two different strong halves remain separate, as do matching roots whose slash bass changes;
+- two weak halves produce one blank full-bar interval, even if normalization could force a
+  recognizable shape from their residue.
+
+This avoids inventing a second chord from a quiet tail without mixing two real half-bar chords
+into one averaged label.
+
 ## Sequence decoder
 
-Local audio is often incomplete. For example, a window with only E and G# cannot distinguish
+Local half-bar audio is often incomplete. For example, a window with only E and G# cannot distinguish
 `E/G#` from `C#m/G#` reliably. `decodeChordProgression()` therefore runs a small Viterbi pass
 over the top 18 candidates in every contiguous non-silent run of half-bars.
 

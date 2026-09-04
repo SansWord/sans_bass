@@ -145,7 +145,8 @@ const el = {
   buildSha: $('build-sha'),
 };
 
-if (el.buildSha) el.buildSha.textContent = __COMMIT_SHA__;
+const BUILD_SHA = typeof __COMMIT_SHA__ === 'undefined' ? 'dev' : __COMMIT_SHA__;
+if (el.buildSha) el.buildSha.textContent = BUILD_SHA;
 
 /* Null-safe wiring. Every listener in this file is registered from one flat run of
  * top-level statements, so a single missing element used to abort the whole script at its

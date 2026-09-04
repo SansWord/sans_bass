@@ -21,9 +21,12 @@ const NODE_TESTS = [
 
 const JSDOM_TESTS = ['analytics', 'i18n'].map((name) => `tests/${name}.test.js`);
 
-const BROWSER_TESTS = ['wav', 'sonify', 'notes'].map((name) => `tests/${name}.test.js`);
+const BROWSER_TESTS = ['wav', 'sonify', 'notes', 'player'].map((name) => `tests/${name}.test.js`);
 
 export default defineConfig({
+  define: {
+    __COMMIT_SHA__: JSON.stringify('test'),
+  },
   test: {
     projects: [
       {

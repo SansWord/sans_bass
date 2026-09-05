@@ -89,19 +89,29 @@ application correctly. This layer owns checks such as:
 
 This layer is useful before a PR but cannot prove GitHub Pages is serving the intended build.
 
-### 5. Deployed production/PR smoke — real delivery boundaries
+### 5. Deployed verification — real delivery boundaries
 
-Use a live Chrome session against the deployed URL for:
+Use a live browser against the deployed URL, with depth selected from the changed boundary:
 
-- the on-page build SHA matching the intended commit;
-- deployed assets returning successfully rather than stale or missing files;
-- real Worker and AudioWorklet module boundaries on the static host;
-- a real cached-model separation run;
-- an explicitly requested uncached model-download/backend-progress run;
-- one real-song regression using `examples/nov_you.zip`.
+- **PR preview, every PR:** verify the expected SHA, page boot, and the affected behavior on
+  the real Pages origin. Exercise Worker, AudioWorklet, cache, cross-origin, or nested-base
+  behavior when the change can affect it.
+- **Production canary, every merge:** verify `deploy-main.yml` concluded successfully, the
+  root page shows the merged SHA, the page boots without asset or console errors, and one
+  affected route or control works when relevant.
+- **Full deployed smoke:** repeat the detailed player/demo workflow on both preview and root
+  for deployment workflow, Vite/base-path, entry-page, Worker/AudioWorklet, cache, or static
+  asset changes, and for explicit release acceptance.
 
-This is release evidence, not the routine unit-test gate. Ordinary `npm test` must remain
-offline and must never download the 285 MB separation model.
+A cached real-model run belongs to separation changes and release acceptance. An uncached
+model download is explicitly requested because it is large and depends on external services.
+Use `examples/nov_you.zip` for musical/audio/notes/export regression or a release, rather than
+as a routine fixture for unrelated UI or documentation changes.
+
+Collect the smallest evidence that proves the selected boundary: focused DOM assertions,
+network/console error counts, the URL, and the displayed SHA. Full accessibility snapshots and
+screenshots are useful for structural or visual review; avoid collecting them for a delivery
+canary. Deployed evidence is separate from the offline `npm test` gate.
 
 ### 6. Manual, physical, and auditory acceptance
 
@@ -127,7 +137,8 @@ For every new behavior, choose the lowest layer that can directly prove the cont
    page wiring? Use headless Chromium.
 4. Does it specifically concern Vite's built paths? Add a local build/preview smoke check.
 5. Does it specifically concern GitHub Pages, the real model, caching, or deployed module
-   loading? Add a deployed smoke case.
+   loading? Add the affected preview check and decide whether the full two-origin smoke is
+   required. Every merge still gets the compact production canary.
 6. Is the promise irreducibly auditory, physical-device-specific, or subjective? Keep a
    manual acceptance case.
 
@@ -156,7 +167,9 @@ During implementation:
 Before handoff:
 
 - Run the targeted test, then `npm test` and `npm run build`.
-- Run only the smoke/manual scenarios whose boundary changed.
+- Verify the PR preview at the affected boundary. After merge, run the production delivery
+  canary. Run the full two-origin smoke only for the triggers in layer 5 or a release gate.
+- Run only the remaining smoke/manual scenarios whose boundary changed.
 - Update the coverage mapping when it exists.
 - Report automated, deployed, and manual evidence separately; never collapse them into
   “all tests passed.”

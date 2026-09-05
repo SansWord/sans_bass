@@ -164,11 +164,10 @@ out of the project; never commit them.
   observable outcomes with a way to observe each one, plus the browser-test harness (faking
   a separation run, reading gain ramps, the traps that make a working app look broken).
   **Read this before changing UI behaviour, and update it in the same commit when you do.**
-  Its **Deployment smoke test** section is a different, narrower thing — a fast build/deploy
-  wiring check (module loading, a real Worker/AudioWorklet actually instantiating, asset
-  paths resolving), for after touching `vite.config.js`/CI/an entry HTML file or after a
-  real deploy. Run that instead of the full matrix when nothing UI-shaped changed; run the
-  full matrix for an actual behaviour change.
+  Its **Deployment verification** section defines three levels: affected-boundary checks on
+  every PR preview, a compact delivery canary after every merge, and a full deployed smoke
+  for deployment-sensitive changes or release acceptance. Select the level from the changed
+  boundary; do not repeat the full interactive workflow on both URLs by default.
 - [`docs/transcription.md`](docs/transcription.md) — how a stem becomes notes: the four
   layers (audio → frames → notes → edits), which are re-derivable and which can be lost,
   what each interpretation parameter measurably does, and why beat tracking is not the fix
@@ -312,20 +311,21 @@ out of the project; never commit them.
   through a change before it reaches the published site — and `main` publishes to the root
   the moment it moves. A design-only session branches too; the spec is reviewed the same way
   the code is.
-- **Executing a plan ends with the Deployment smoke test against a real deploy, twice —
-  not just local verification.** Once the PR is open and `pr-preview.yml` succeeds, run
-  [`docs/behaviour.md`](docs/behaviour.md)'s Deployment smoke test section against
-  `https://sansword.github.io/sans_bass/pr-<N>/`; once merged and `deploy-main.yml`
-  succeeds, run it again against `https://sansword.github.io/sans_bass/`. Check each
-  workflow's *conclusion*, not just that it ran (see the gotcha below — a cancelled run
-  reports no failure anywhere) — **and check `#build-sha` against the expected commit
-  before the smoke test's own step 1** (see the `#build-sha` gotcha below); a workflow
-  succeeding does not mean the page you're about to test is that build yet. This catches
-  what only a real HTTPS deploy exposes —
-  cross-origin fetches (the ONNX runtime, the model), WebGPU, Cache Storage — on top of,
-  not instead of, `npm run dev` / `npm run build` + `npm run preview` during the work
-  itself. A plan can note these as its own final steps, but the routine holds regardless of
-  whether the plan spells it out.
+- **Every PR verifies its preview; every merge verifies production, at different depths.**
+  Follow [`docs/behaviour.md`](docs/behaviour.md)'s tiered deployment verification:
+  the PR preview owns the affected user behavior and public-host boundary, while the
+  post-merge production check is normally a delivery canary — successful workflow
+  conclusion, matching `#build-sha`, page boot without load/console errors, and one affected
+  route or control when relevant. Repeat the full deployed smoke on both preview and
+  production only when the change affects Vite/base paths, deployment workflows, entry HTML,
+  Workers/AudioWorklets, caching, or other behavior that can differ between `/pr-<N>/` and
+  `/`, and for explicit release acceptance. Real-song, real-model, handheld, auditory, and
+  exhaustive visual checks run only when their boundary changed or a release gate calls for
+  them. Check the workflow's *conclusion*, not merely that it ran, and compare `#build-sha`
+  before drawing conclusions from either URL. Prefer focused selectors and compact result
+  summaries; capture full accessibility trees or screenshots only when structure or visual
+  appearance is under review. This real-host evidence complements `npm run dev` and
+  `npm run build` plus `npm run preview` during development.
 - **Unit tests run under `npm test` (Vitest), CI-gated on every PR.** `vitest.config.js`
   splits `tests/*.test.js` into three tiers by what each file actually needs — plain Node,
   jsdom (for the files that assign a `window.SansX` bridge or touch `document` at module

@@ -66,9 +66,28 @@ Harness gotchas:
 | BOOT-001 | Use the production entry, then a test copy missing an optional element; inject an uncaught error and inspect a production build. | Boot, interact after the missing element, throw, build, and verify all referenced assets plus displayed SHA. | Unrelated controls survive missing optional DOM/storage/analytics; hidden controls are computed invisible; crashes show force-reload guidance; built assets are hashed and present; SHA identifies the intended build. | `tests/player.test.js`, `tests/i18n.test.js` | Local build-preview and deployed no-store SHA/asset smoke. |
 | ANALYTICS-001 | Attach a recording sink before interactions and use a distinctive filename. | Load, play twice, seek/toggle repeatedly, switch language, run fake separation, and emulate handheld refresh polling. | Fixed event names contain no user content; play and handheld-blocked emit once; counters use power-of-two buckets; queued events preserve order; missing/throwing analytics never affects the player; localhost sends nothing externally. | `tests/analytics.test.js`, `tests/player.test.js` | Deployed event-console sanity check without user content. |
 
-## Production deployment smoke
+## Deployment verification
 
-### Demo listing smoke
+Choose the verification level before opening a browser. The preview and production deploys
+answer different questions, so the routine path does not replay the same long workflow twice.
+
+| Level | When | Required evidence |
+|---|---|---|
+| PR preview | Every PR, after `pr-preview.yml` succeeds | Record the preview URL and expected SHA; confirm `#build-sha`; boot without load/console errors; exercise the affected route, control, and public-host boundary. |
+| Production delivery canary | Every merge, after `deploy-main.yml` succeeds | Record the root URL and merged SHA; confirm the workflow conclusion and `#build-sha`; boot without load/console errors; check one affected route or control when relevant. |
+| Full deployed smoke on preview and production | Deployment workflow, Vite/base-path, entry HTML, Worker/AudioWorklet, cache/static-asset changes, or explicit release acceptance | Run the applicable detailed demo/player smoke below at both `/pr-<N>/` and `/`; record each URL, SHA, browser, device, and omissions. |
+
+Use fresh/no-store navigation when confirming a build. Check the workflow's conclusion and
+displayed SHA before interpreting later results: a successful workflow can still leave the
+browser on a cached page, and a cancelled workflow may not present as a failed check. Prefer
+focused selector, console, and network assertions with compact output. Capture screenshots or
+full accessibility structure only when the change affects appearance or page structure.
+
+The real song, cached model, uncached download, physical device, visual, and auditory checks
+below are boundary-specific or release evidence. Do not add them to an unrelated routine
+canary. State exactly which checks ran and which were skipped.
+
+### Full demo listing smoke
 
 Both pages share the brand/player link, demo link, GitHub link, language controls,
 and header styling. The active page is marked with `aria-current="page"`. Only the
@@ -88,7 +107,7 @@ between player and list: the explicit language choice must persist. With storage
 both languages must still work. Check both pages at desktop and narrow mobile widths for
 horizontal overflow.
 
-### Player smoke
+### Full player smoke
 
 Use a fresh/no-store fetch and record the tested URL, browser, device, and displayed SHA.
 

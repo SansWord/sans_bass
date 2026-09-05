@@ -52,11 +52,30 @@ under HTTPS from a public host than it does on `localhost`:
 The unit suite itself (`npm test`) is not part of the preview — it's a separate CI gate
 (`test.yml`) that runs against the PR's code directly, independent of any deploy.
 
+Use the tiered procedure in [`behaviour.md`](behaviour.md#deployment-verification) instead of
+replaying every interactive check after both deployments:
+
+1. On every PR preview, confirm the preview workflow conclusion and displayed SHA, then test
+   the behavior and public-host boundary affected by the change.
+2. After every merge, use a compact production delivery canary: confirm `deploy-main.yml`
+   succeeded, the root page displays the merged SHA, the page boots without load/console
+   errors, and one affected route or control works when relevant.
+3. Run the full detailed smoke on both URLs when the PR changes the deployment workflows,
+   Vite/base paths, entry HTML, Worker/AudioWorklet loading, caching, or static asset routing,
+   and for explicit release acceptance.
+
+Real-song and cached-model runs are required when musical/audio/separation behavior changes or
+at a release gate. The uncached 285 MB model path remains opt-in. Use focused browser
+assertions and compact summaries for routine verification; reserve screenshots and full page
+structure captures for visual or structural changes. This keeps the browser evidence tied to
+the risk and avoids spending review time and agent context on duplicate evidence.
+
 `tests/parity.html` will **not** work on a preview. It compares separation output against
 the native stems in `rips/` and `stems/`, which are deliberately never published. Run it
 locally against `npm run dev`.
 
-Merging the PR deletes its preview directory and publishes `main` to the root.
+Merging the PR deletes its preview directory and publishes `main` to the root. The production
+canary is still required because it proves that the intended commit reached the root URL.
 
 ## Rules that keep this safe
 

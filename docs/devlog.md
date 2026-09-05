@@ -78,32 +78,32 @@ Running log of what was built and what was learned building it.
 
 ## v1.34.0 — Automatically listed HTML demos (2026-09-05)
 
-- [note] `lib/header.js` now owns both pages' shared header markup, navigation, and
-  language controls. Shared styles give the demo list the player's dark appearance.
-  The player retains its own file input; mounting moves the existing node once.
-  No framework dependency added for this small shared component.
-
-- [note] The list now shares the player i18n module and persisted language choice.
-  Chinese navigation and heading use「匯出簡譜範例」. Its generated HTML is a Vite entry
-  at `demos/index.html`, so shared translations are bundled with hashed asset paths.
-- [note] Follow-up validation: 379 tests and build passed. Chromium verified translated
-  heading/title/count, language-button state, saved choice across reload/player navigation,
-  blocked storage, nested asset paths, and no overflow at 320/375/1280px.
-
-- [note] `scripts/build-demos.js` scans `public/demos/` before dev/build, generates a
-  static filename-sorted list, and uses relative links for production and PR previews.
-  Follows `aitian`'s build-time folder discovery pattern. Existing deploy workflows suffice.
-- [note] Copied the explicitly requested vocals notation export into the public folder;
-  the original and all other `examples/` fixtures remain ignored. Export bytes are unchanged.
-- [note] The player header links to the demo list in English and Traditional Chinese;
-  header controls wrap on narrow screens to keep the added link accessible.
-- [note] Validation: 379 tests passed, production build passed, temporary Unicode/special-
-  character filenames resolved correctly under root/nested base paths, and removal rebuilt
-  the list back to one demo. Chromium with intercepted static-file requests verified both
-  base paths, sample capo selection, and no list overflow at 1280px/375px widths.
-- [note] No live PR/production deployment or player behaviour matrix was exercised.
-  Synthetic audio, malformed audio input, real workers/model, physical handheld, auditory,
-  and real-song regression checks were outside this demo-list change.
+- [note] HTML files directly in `public/demos/` publish at `/demos/` with an alphabetical
+  list regenerated before dev/build. The requested vocals notation example is included
+  unchanged; other `examples/` fixtures remain ignored. Existing main/PR deploy workflows
+  publish the output, and relative links preserve each deployment's base path.
+- [note] `lib/header.js` owns both pages' brand/player link, demo link, GitHub link, and
+  language controls. Shared styles give both pages the same header and dark appearance.
+  The player retains its own file input; mounting moves that existing node once.
+- [note] The list shares `lib/i18n.js` and the player's saved language choice, including
+  blocked-storage handling. Chinese navigation and heading use「匯出簡譜範例」. The list
+  also keeps an explicit back link to the player.
+- [insight] Folder discovery follows `aitian`'s build-time pattern. The generated list at
+  `demos/index.html` is a Vite entry so shared header/i18n assets receive hashes; source
+  exports in `public/demos/` are copied verbatim. Generated HTML is ignored, never edited.
+- [insight] One shared header is small enough for an ordinary ESM module. No framework
+  dependency is needed for this extraction. Reconsider Lit if multiple stateful reusable
+  components make manual rendering and lifecycle management repetitive; that would be a
+  separate architecture decision under the repository's vanilla-JavaScript constraint.
+- [note] Validation: all 379 tests, production build, and diff whitespace checks passed.
+  Temporary Unicode/special-character demo filenames resolved under root/nested paths;
+  deletion removed the demo from the next build; the sample stayed byte-for-byte unchanged.
+  Chromium with intercepted local static-file requests verified demo navigation, sample
+  capo selection, translated heading/title/count, language-button state, persistence across
+  reload/player navigation, blocked storage, and no overflow at 320/375/1280px.
+- [note] Live PR/production deployment smoke and the full player acceptance matrix were
+  not run. The test suite result above does not establish real-model deployment, physical
+  handheld, auditory, or real-song musical-regression evidence.
 
 ## v1.33.0 — Interactive capo in HTML export (2026-09-04)
 

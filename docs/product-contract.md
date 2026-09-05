@@ -143,6 +143,9 @@ where supported, correct.
 
 ## Language and resilience
 
+- The player and demo list share navigation and language controls. The demo list uses
+  the same saved language choice as the player, with「匯出簡譜範例」as its Chinese name.
+  Each page provides a route to the other; the music-loading control belongs to the player.
 - The interface supports Traditional Chinese and English, including content already visible
   when the language changes.
 - A stored explicit language choice takes precedence over system detection; failure to read

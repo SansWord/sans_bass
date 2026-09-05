@@ -19,6 +19,8 @@ Steps 1–3 below are the one-time job of getting stems out of a CD.
 Browse [HTML demos and notation exports](https://sansword.github.io/sans_bass/demos/).
 To publish another demo, add its self-contained HTML file to [`public/demos/`](public/demos/)
 and merge into `main`. The list is rebuilt automatically during deployment.
+The shared header links between the player and the list, and remembers your English/中文
+choice. In Chinese, the list is labeled「匯出簡譜範例」.
 
 ## Author
 

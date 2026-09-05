@@ -1,0 +1,46 @@
+import { readdir, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+
+// Vite copies public/ verbatim, preserving self-contained exports and their scripts.
+const directory = new URL('../public/demos/', import.meta.url);
+const files = (await readdir(directory, { withFileTypes: true }))
+  .filter((entry) => entry.isFile() && /\.html?$/i.test(entry.name) && entry.name.toLowerCase() !== 'index.html')
+  .map((entry) => entry.name)
+  .sort();
+const escape = (text) => text.replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[char]);
+const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD']).toString().trim();
+const items = files.map((name) => `<li><a href="./${escape(encodeURIComponent(name))}">${escape(name)}</a></li>`).join('\n');
+
+await writeFile(new URL('index.html', directory), `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demos — sans_bass</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { max-width: 780px; margin: 0 auto; padding: 40px 20px; line-height: 1.6; }
+    h1 { margin-bottom: 8px; }
+    a { color: light-dark(#2455a4, #9dc1ff); text-underline-offset: 3px; }
+    a:focus-visible { outline: 3px solid currentColor; outline-offset: 5px; }
+    ul { list-style: none; padding: 0; margin: 28px 0; }
+    li { border-bottom: 1px solid light-dark(#ddd, #444); }
+    li a { display: block; padding: 18px 0; overflow-wrap: anywhere; }
+    footer { margin-top: 40px; font-size: 0.8rem; opacity: 0.7; }
+  </style>
+</head>
+<body>
+  <nav><a href="../">← sans_bass player</a></nav>
+  <main>
+    <h1>Demos</h1>
+    <p>Explore shared notation exports and HTML demos.</p>
+    <p>${files.length} demo${files.length === 1 ? '' : 's'}</p>
+    ${files.length ? `<ul>${items}</ul>` : '<p>No demos published yet.</p>'}
+  </main>
+  <footer>sans_bass · <span id="build-sha">${escape(sha)}</span></footer>
+</body>
+</html>
+`);
+console.log(`Generated demos/index.html with ${files.length} demo(s).`);

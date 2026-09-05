@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.34.0](#v1340--automatically-listed-html-demos-2026-09-05) | HTML files in `public/demos/` publish with an automatically generated `/demos/` list on every build. |
 | [v1.33.0](#v1330--interactive-capo-in-html-export-2026-09-04) | Exported notation carries its own capo selector and retains accompaniment-only bars. |
 | [v1.32.0](#v1320--hierarchical-barhalf-bar-chord-evidence-2026-09-04) | Half-bars remain the chord-change detector, but full-bar evidence now merges agreeing halves, carries one strong half across a weak partner, preserves real mid-bar and inversion changes, and leaves fully weak bars blank. This removes confident-looking labels from the nearly silent tail of `南國的風.zip`. |
 | [v1.31.0](#v1310--capo-aware-play-chords-2026-09-04) | A song-level capo selector keeps detected and corrected chords in concert pitch while showing playable chord shapes and play key in the zoom pane. Capo transposition covers slash bass notes and notation export, round-trips in version-5 edits JSON, and chord analysis now waits for every running note channel with an honest waiting-vs-detecting status. |
@@ -74,6 +75,23 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.34.0 — Automatically listed HTML demos (2026-09-05)
+
+- [note] `scripts/build-demos.js` scans `public/demos/` before dev/build, generates a
+  static filename-sorted list, and uses relative links for production and PR previews.
+  Follows `aitian`'s build-time folder discovery pattern. Existing deploy workflows suffice.
+- [note] Copied the explicitly requested vocals notation export into the public folder;
+  the original and all other `examples/` fixtures remain ignored. Export bytes are unchanged.
+- [note] The player header links to the demo list in English and Traditional Chinese;
+  header controls wrap on narrow screens to keep the added link accessible.
+- [note] Validation: 379 tests passed, production build passed, temporary Unicode/special-
+  character filenames resolved correctly under root/nested base paths, and removal rebuilt
+  the list back to one demo. Chromium with intercepted static-file requests verified both
+  base paths, sample capo selection, and no list overflow at 1280px/375px widths.
+- [note] No live PR/production deployment or player behaviour matrix was exercised.
+  Synthetic audio, malformed audio input, real workers/model, physical handheld, auditory,
+  and real-song regression checks were outside this demo-list change.
 
 ## v1.33.0 — Interactive capo in HTML export (2026-09-04)
 

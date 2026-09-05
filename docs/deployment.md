@@ -98,6 +98,23 @@ Merging the PR deletes its preview directory and publishes `main` to the root.
 
 ## Operating it
 
+### Publishing HTML demos
+
+Add self-contained HTML files directly to `public/demos/` and merge into `main`.
+`npm run build` first runs `scripts/build-demos.js`, which scans `.html`/`.htm` files,
+sorts their filenames, and regenerates the ignored `public/demos/index.html`.
+Vite copies these files unchanged to `dist/demos/`; both existing deploy workflows
+publish them automatically. Removing or renaming a file updates the next build's list.
+
+The production list is <https://sansword.github.io/sans_bass/demos/>; a PR's list is
+`https://sansword.github.io/sans_bass/pr-<N>/demos/`. All links are relative.
+`npm run dev` also generates the list; restart it after changing the directory's entries.
+Only files explicitly placed in `public/demos/` are demo publications; `examples/`
+remains ignored. `index.html` is reserved for the generated list.
+
+This follows `aitian`'s build-time content discovery pattern, emitting a static HTML
+index rather than its JSON index and client-side rendering.
+
 ```bash
 # Watch what CI is doing
 gh run list --limit 5

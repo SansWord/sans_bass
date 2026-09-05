@@ -14,6 +14,12 @@ Steps 1–3 below are the one-time job of getting stems out of a CD.
 
 ---
 
+## Demos
+
+Browse [HTML demos and notation exports](https://sansword.github.io/sans_bass/demos/).
+To publish another demo, add its self-contained HTML file to [`public/demos/`](public/demos/)
+and merge into `main`. The list is rebuilt automatically during deployment.
+
 ## Author
 
 Built by **SansWord**.

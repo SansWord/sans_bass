@@ -156,6 +156,10 @@ where supported, correct.
 
 ## Release integrity
 
+- Maintainer-published HTML demos have a public list, regenerated from the demo folder
+  on every deployment. Publishing a demo is an explicit repository change; the player
+  never automatically publishes a user's exports.
+
 - A deployed page identifies the exact source commit that produced it.
 - Production assets, Workers, and AudioWorklet modules resolve from the deployed static
   build without stale cross-version references.

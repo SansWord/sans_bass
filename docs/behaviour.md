@@ -68,6 +68,19 @@ Harness gotchas:
 
 ## Production deployment smoke
 
+### Demo listing smoke
+
+Run `npm run build` and serve `dist/`. Follow the player header's Demos / 示範 link
+in both languages. On `/demos/`, check the build SHA, then follow
+the sample notation link, and exercise its capo selector. Repeat with `dist/` mounted
+under a nested PR-like path: the demo and player-back links must stay under that path.
+Add a temporary HTML file (including spaces/Unicode in its filename), rebuild, and
+confirm it appears and opens. Remove it and rebuild: it must disappear from both the
+list and `dist/demos/`. Non-HTML files must not appear in the list.
+Check the list at desktop and narrow mobile widths for horizontal overflow.
+
+### Player smoke
+
 Use a fresh/no-store fetch and record the tested URL, browser, device, and displayed SHA.
 
 1. Confirm every hashed script/style/Worker/AudioWorklet reference loads from the deployed base path.

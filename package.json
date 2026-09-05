@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/build-demos.js",
     "dev": "vite",
+    "prebuild": "node scripts/build-demos.js",
     "build": "vite build",
     "preview": "vite preview --port 8777",
     "test": "vitest run"

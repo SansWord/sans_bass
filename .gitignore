@@ -20,6 +20,9 @@ node_modules/
 # Vite build output — CI builds it fresh, never committed
 dist/
 
+# Demo list is regenerated before dev/build; commit only the source demos.
+public/demos/index.html
+
 # Superpowers git worktrees (isolated implementation workspaces)
 .worktrees/
 

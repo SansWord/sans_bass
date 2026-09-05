@@ -21,7 +21,7 @@ node_modules/
 dist/
 
 # Demo list is regenerated before dev/build; commit only the source demos.
-public/demos/index.html
+demos/index.html
 
 # Superpowers git worktrees (isolated implementation workspaces)
 .worktrees/

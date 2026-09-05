@@ -102,7 +102,7 @@ Merging the PR deletes its preview directory and publishes `main` to the root.
 
 Add self-contained HTML files directly to `public/demos/` and merge into `main`.
 `npm run build` first runs `scripts/build-demos.js`, which scans `.html`/`.htm` files,
-sorts their filenames, and regenerates the ignored `public/demos/index.html`.
+sorts their filenames, and regenerates the ignored `demos/index.html`.
 Vite copies these files unchanged to `dist/demos/`; both existing deploy workflows
 publish them automatically. Removing or renaming a file updates the next build's list.
 

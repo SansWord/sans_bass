@@ -78,6 +78,13 @@ Running log of what was built and what was learned building it.
 
 ## v1.34.0 — Automatically listed HTML demos (2026-09-05)
 
+- [note] The list now shares the player i18n module and persisted language choice.
+  Chinese navigation and heading use「匯出簡譜範例」. Its generated HTML is a Vite entry
+  at `demos/index.html`, so shared translations are bundled with hashed asset paths.
+- [note] Follow-up validation: 379 tests and build passed. Chromium verified translated
+  heading/title/count, language-button state, saved choice across reload/player navigation,
+  blocked storage, nested asset paths, and no overflow at 320/375/1280px.
+
 - [note] `scripts/build-demos.js` scans `public/demos/` before dev/build, generates a
   static filename-sorted list, and uses relative links for production and PR previews.
   Follows `aitian`'s build-time folder discovery pattern. Existing deploy workflows suffice.

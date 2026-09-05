@@ -23,6 +23,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: new URL('./index.html', import.meta.url).pathname,
+        demos: new URL('./demos/index.html', import.meta.url).pathname,
         parity: new URL('./tests/parity.html', import.meta.url).pathname,
         notes: new URL('./tests/notes.html', import.meta.url).pathname,
         // AudioWorkletNode.addModule() has no Vite-native bundling support the way

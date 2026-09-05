@@ -1,0 +1,404 @@
+{
+  "collectedUTC": "2026-09-05T20:31:41.892Z",
+  "browser": "151.0.7922.34",
+  "origin": "http://127.0.0.1:8777",
+  "conditions": {
+    "deviceScaleFactor": 1,
+    "locale": "en-US",
+    "headless": true,
+    "externalNetwork": "blocked",
+    "cache": "fresh browser context per startup sample; Vite server warm",
+    "fixture": {
+      "stems": {
+        "vocals": 440,
+        "bass": 110,
+        "drums": {
+          "kind": "click",
+          "bpm": 120,
+          "phase": 0
+        }
+      },
+      "seconds": 10,
+      "folder": "Phase 0 synthetic"
+    }
+  },
+  "screens": [
+    {
+      "name": "desktop-en-empty",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 900
+    },
+    {
+      "name": "desktop-en-loaded",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 1056
+    },
+    {
+      "name": "desktop-en-routing",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 1056
+    },
+    {
+      "name": "desktop-en-loop",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 1056
+    },
+    {
+      "name": "desktop-en-editor",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 2120
+    },
+    {
+      "name": "desktop-en-error",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 2154
+    },
+    {
+      "name": "desktop-en-demos",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 900
+    },
+    {
+      "name": "desktop-zh-TW-empty",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 900
+    },
+    {
+      "name": "desktop-zh-TW-loaded",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 1069
+    },
+    {
+      "name": "desktop-zh-TW-routing",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 1069
+    },
+    {
+      "name": "desktop-zh-TW-loop",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 1069
+    },
+    {
+      "name": "desktop-zh-TW-editor",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 2129
+    },
+    {
+      "name": "desktop-zh-TW-error",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 2166
+    },
+    {
+      "name": "desktop-zh-TW-demos",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "height": 900
+    },
+    {
+      "name": "narrow-en-empty",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 844
+    },
+    {
+      "name": "narrow-en-loaded",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 1187
+    },
+    {
+      "name": "narrow-en-routing",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 1187
+    },
+    {
+      "name": "narrow-en-loop",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 1234
+    },
+    {
+      "name": "narrow-en-editor",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 2572
+    },
+    {
+      "name": "narrow-en-error",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 2620
+    },
+    {
+      "name": "narrow-en-demos",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 844
+    },
+    {
+      "name": "narrow-zh-TW-empty",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 844
+    },
+    {
+      "name": "narrow-zh-TW-loaded",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 1221
+    },
+    {
+      "name": "narrow-zh-TW-routing",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 1221
+    },
+    {
+      "name": "narrow-zh-TW-loop",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 1271
+    },
+    {
+      "name": "narrow-zh-TW-editor",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 2536
+    },
+    {
+      "name": "narrow-zh-TW-error",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 2573
+    },
+    {
+      "name": "narrow-zh-TW-demos",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "height": 844
+    }
+  ],
+  "startup": [
+    {
+      "readyMs": 61.80000001192093,
+      "domContentLoadedMs": 34.80000001192093,
+      "loadToFrameMs": 27.200000047683716
+    },
+    {
+      "readyMs": 61.90000003576279,
+      "domContentLoadedMs": 35.80000001192093,
+      "loadToFrameMs": 26.5
+    },
+    {
+      "readyMs": 59.200000047683716,
+      "domContentLoadedMs": 37.10000002384186,
+      "loadToFrameMs": 30.299999952316284
+    },
+    {
+      "readyMs": 61.30000001192093,
+      "domContentLoadedMs": 34.5,
+      "loadToFrameMs": 27.899999976158142
+    },
+    {
+      "readyMs": 57.10000002384186,
+      "domContentLoadedMs": 33.700000047683716,
+      "loadToFrameMs": 26
+    }
+  ],
+  "errors": [],
+  "checks": [
+    "desktop/en: stored locale persisted into demos; load/routing/loop/real notes Worker/editor/error visible",
+    "desktop/zh-TW: stored locale persisted into demos; load/routing/loop/real notes Worker/editor/error visible",
+    "narrow/en: stored locale persisted into demos; load/routing/loop/real notes Worker/editor/error visible",
+    "narrow/zh-TW: stored locale persisted into demos; load/routing/loop/real notes Worker/editor/error visible",
+    "/: blocked storage boots and switches both locales",
+    "/demos/: blocked storage boots and switches both locales"
+  ],
+  "playback": {
+    "transport": {
+      "playing": true,
+      "t0": 0.08321995464852608,
+      "offset": 0,
+      "loopA": null,
+      "loopB": null,
+      "rate": 1
+    },
+    "displayedTime": "0:00",
+    "frameIntervalsMs": [
+      7.999999999999986,
+      8.200000000000017,
+      8.400000000000006,
+      8.399999999999977,
+      8.300000000000011,
+      8.199999999999989,
+      9,
+      8,
+      8.100000000000023,
+      9.199999999999989,
+      7.599999999999994,
+      8.800000000000011,
+      7.900000000000006,
+      8.399999999999977,
+      8,
+      8.5,
+      8.5,
+      8.300000000000011,
+      8.300000000000011,
+      8.300000000000011,
+      8.099999999999966,
+      8.5,
+      8.400000000000034,
+      8.599999999999966,
+      7.900000000000034,
+      8.399999999999977,
+      8.199999999999989,
+      8.400000000000034,
+      8.599999999999966,
+      8.100000000000023,
+      8.399999999999977,
+      8.300000000000011,
+      8.199999999999989,
+      8.300000000000011,
+      8.399999999999977,
+      8.400000000000034,
+      8.199999999999989,
+      8.800000000000011,
+      8.399999999999977,
+      8.300000000000011,
+      7.899999999999977,
+      8.700000000000045,
+      8,
+      8.299999999999955,
+      8.5,
+      8.600000000000023,
+      8,
+      8.5,
+      8.100000000000023,
+      9.299999999999955,
+      8.200000000000045,
+      7.5,
+      8.699999999999932,
+      7.900000000000091,
+      8.599999999999909,
+      8.100000000000023,
+      8.300000000000068,
+      8.799999999999955,
+      7.899999999999977,
+      8.600000000000023,
+      8,
+      8.399999999999977,
+      9.300000000000068,
+      7.599999999999909,
+      8.300000000000068,
+      8.600000000000023,
+      7.899999999999977,
+      8.299999999999955,
+      8.300000000000068,
+      8.5,
+      8.699999999999932,
+      7.800000000000068,
+      8.5,
+      8.399999999999977,
+      8.299999999999955,
+      8.399999999999977,
+      9.100000000000023,
+      8.200000000000045,
+      7.600000000000023,
+      8.399999999999977,
+      8.100000000000023,
+      8.5,
+      8.599999999999909,
+      8.400000000000091,
+      7.7999999999999545,
+      8.399999999999977,
+      8.5,
+      8.200000000000045,
+      8.299999999999955,
+      8.399999999999977,
+      8.5,
+      8,
+      8.5,
+      9.100000000000023,
+      7.600000000000023,
+      9.100000000000023,
+      7.600000000000023,
+      8.299999999999955,
+      8.200000000000045,
+      8.399999999999977,
+      9.299999999999955,
+      8.200000000000045,
+      7.600000000000023,
+      9.199999999999932,
+      7.600000000000023,
+      8.899999999999977,
+      8.399999999999977,
+      8.400000000000091,
+      7.7000000000000455,
+      8.799999999999955,
+      7.599999999999909,
+      8.400000000000091,
+      8.399999999999864,
+      8.400000000000091,
+      8.099999999999909,
+      8.400000000000091,
+      8.400000000000091,
+      8.299999999999955,
+      8.200000000000045,
+      8.699999999999818
+    ]
+  },
+  "controlToFrameMs": [
+    6.800000011920929,
+    9,
+    7.300000011920929,
+    8.699999988079071,
+    8.100000023841858,
+    8.199999988079071,
+    9.300000011920929,
+    7.399999976158142,
+    8.199999988079071,
+    8.800000011920929
+  ]
+}

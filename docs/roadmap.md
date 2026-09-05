@@ -7,6 +7,13 @@ commitment to an order.
 Built work is recorded in [`devlog.md`](devlog.md), and what the player currently *does* is
 in [`behaviour.md`](behaviour.md).
 
+## React component migration
+
+**Planned.** [Phased migration roadmap](react-migration.md) covering baseline evidence,
+an isolated React pilot, player boundaries, incremental UI conversion, and final acceptance.
+Each phase may span multiple sessions and PRs and leaves the application deployable. Start
+with phase 0; progress and remaining legacy ownership are tracked in that document.
+
 ## Note editing — layer 4
 
 **Built — v1.16.0.** [Spec](superpowers/specs/2026-08-31-note-editing-design.md),

@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 0](#react-phase-0--baseline-inventory-2026-09-05) | Recorded ownership, automated, screenshot and local-build baselines; use ownership progress instead of mandatory LOC accounting. |
 | [v1.34.0](#v1340--automatically-listed-html-demos-2026-09-05) | HTML files in `public/demos/` publish with an automatically generated `/demos/` list on every build. |
 | [v1.33.0](#v1330--interactive-capo-in-html-export-2026-09-04) | Exported notation carries its own capo selector and retains accompaniment-only bars. |
 | [v1.32.0](#v1320--hierarchical-barhalf-bar-chord-evidence-2026-09-04) | Half-bars remain the chord-change detector, but full-bar evidence now merges agreeing halves, carries one strong half across a weak partner, preserves real mid-bar and inversion changes, and leaves fully weak bars blank. This removes confident-looking labels from the nearly silent tail of `南國的風.zip`. |
@@ -75,6 +76,22 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## React phase 0 — baseline inventory (2026-09-05)
+
+- [note] Began phase 0 with a [bounded evidence log](react-migration-evidence.md), current
+  ownership/event inventory, and focused jsdom header regression coverage. No React or
+  production behaviour change; the baseline is recorded with explicit manual/deployed omissions.
+- [gotcha] Locale changes still traverse the whole document, and `window.sansBass` still
+  connects the module-based player, notes and separation code. Both need explicit ownership
+  handling during migration; removed `window.SansX` library bridges are a different surface.
+- [note] The unchanged suite passed 379 tests after allowing the local browser server; the
+  build passed with its existing worklet URL warning. The extended suite passes 381 tests.
+- [note] Added 28 synthetic desktop/narrow reference screens in both languages and isolated
+  normal/nested build smoke, including demo discovery/removal and AudioWorklet module loading.
+  Manual listening, physical devices, background transport and deployed smoke remain untested.
+- [insight] Dropped mandatory per-slice LOC accounting following user feedback. Track React/legacy
+  ownership, remaining adapters and behaviour; compare performance only at major milestones.
 
 ## v1.34.0 — Automatically listed HTML demos (2026-09-05)
 

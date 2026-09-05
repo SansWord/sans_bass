@@ -274,3 +274,12 @@ release integrity.
 | Analytics | `A5` | `ANALYTICS-001` | Events fired before GoatCounter loads are not lost. | merge | `tests/analytics.test.js#analytics: events fired before a sink exists are queued and drained in order` | `ANALYTICS-001` |
 | Analytics | `A6` | `ANALYTICS-001` | Events do not reach GoatCounter from localhost. | merge | — | `ANALYTICS-001` |
 | Analytics | `A7` | `ANALYTICS-001` | `separate-handheld-blocked` fires **once** per visitor shown the message, never once per poll. | merge | — | `ANALYTICS-001` |
+
+## React migration boundary coverage (phase 0)
+
+The historical inventory above remains unchanged. `tests/header.test.js` adds jsdom
+evidence for LANG-001 and the demo-listing smoke contract: language button pressed state,
+player file-input/listener identity, active-page navigation, nested-base link resolution,
+and absence of the load control on demos. This does not prove rendered layout, native file
+selection, actual generated-page wiring, or deployed navigation. See
+[phase 0 evidence](react-migration-evidence.md) for remaining gaps.

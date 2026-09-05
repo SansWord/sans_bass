@@ -22,7 +22,7 @@ const NODE_TESTS = [
   'jianpu-html',
 ].map((name) => `tests/${name}.test.js`);
 
-const JSDOM_TESTS = ['analytics', 'i18n'].map((name) => `tests/${name}.test.js`);
+const JSDOM_TESTS = ['analytics', 'i18n', 'header'].map((name) => `tests/${name}.test.js`);
 
 const BROWSER_TESTS = ['wav', 'sonify', 'notes', 'player'].map((name) => `tests/${name}.test.js`);
 

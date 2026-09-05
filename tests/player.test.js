@@ -1,3 +1,4 @@
+import { jianpuHtml } from '../lib/jianpu-html.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { installFakeWorker, instrumentAudio, loadSong, loadZip, openPlayer, waitFor } from './helpers/player-harness.js';
 
@@ -5,6 +6,32 @@ let player;
 afterEach(() => player?.close());
 
 describe('production player integration', () => {
+  it('changes exported capo and chords in empty bars without altering notes', async () => {
+    const frame = document.createElement('iframe');
+    const loaded = new Promise((resolve) => frame.onload = resolve);
+    frame.srcdoc = jianpuHtml({ title: 'Song — 1=A# minor', bars: [[], [], []],
+      barsPerLine: 2, bpm: 120, beatsPerBar: 4, tonic: 10, capo: 3,
+      chords: [{ first: 'A#/D', second: 'Fm' }, { first: null, second: null }, { first: 'D#7', second: null }] });
+    document.body.append(frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument;
+      const select = doc.querySelector('#capo');
+      expect(select.value).toBe('3');
+      expect(doc.querySelector('.chord-first').textContent).toBe('G/B');
+      expect(doc.querySelectorAll('.bar')).toHaveLength(3);
+      for (const [fret, key, chord, tail] of [[0, 'A#', 'A#/D', 'D#7'], [11, 'B', 'B/D#', 'E7'], [3, 'G', 'G/B', 'C7']]) {
+        select.value = String(fret);
+        select.dispatchEvent(new frame.contentWindow.Event('change'));
+        expect(doc.querySelector('.play-key').textContent).toContain(key);
+        expect(doc.querySelector('.chord-first').textContent).toBe(chord);
+        expect(doc.querySelectorAll('.chord-first')[1].textContent).toBe(tail);
+        expect(doc.querySelectorAll('.frag')).toHaveLength(0);
+        expect(doc.querySelector('h1').textContent).toBe('Song — 1=A# minor');
+      }
+    } finally { frame.remove(); }
+  });
+
   it('shows capo-transposed play chords and play key without changing concert data', async () => {
     player = await openPlayer();
     await loadZip(player, { vocals: 440, guitar: 220 });

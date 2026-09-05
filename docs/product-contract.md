@@ -129,6 +129,10 @@ where supported, correct.
 
 - Either analysed notes channel can export a self-contained, readable numbered-notation
   HTML document using the current tempo, meter, key, rhythm, octave, and bar layout.
+- Exported HTML includes a capo selector initialized to the export-time setting. Changing it
+  updates the play key and chord shapes, including slash bass notes, while retaining concert
+  key and numbered notes. Chords remain visible in bars without notes, including instrumental
+  intros, breaks, and outros.
 - Export filenames are channel-specific and timestamped to avoid silent replacement.
 - When harmonic stems are available, exports may include the currently displayed and edited
   chord estimate above each bar.

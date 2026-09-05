@@ -78,6 +78,10 @@ Running log of what was built and what was learned building it.
 
 ## v1.34.0 — Automatically listed HTML demos (2026-09-05)
 
+- [note] README now introduces core features and quick start, documents the public demo
+  folder with a step-by-step export/copy/preview/PR/merge guide, and updates the older
+  vocals-only notes walkthrough and classic-script file descriptions.
+
 - [note] HTML files directly in `public/demos/` publish at `/demos/` with an alphabetical
   list regenerated before dev/build. The requested vocals notation example is included
   unchanged; other `examples/` fixtures remain ignored. Existing main/PR deploy workflows

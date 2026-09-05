@@ -44,15 +44,15 @@ body { min-height: 100vh; }
   z-index: 5;
 }
 
-.bar h1 {
+.bar .brand-name {
   margin: 0;
   font: 700 17px/1 var(--mono);
   letter-spacing: -.02em;
   text-transform: lowercase;
 }
-.bar h1 span { color: var(--accent); }
+.bar .brand-name span { color: var(--accent); }
 
-.brand { display: flex; align-items: center; gap: 10px; }
+.brand { color: var(--fg); text-decoration: none; display: flex; align-items: center; gap: 10px; }
 
 /* Sized and rounded like an app icon rather than a logo, so it reads as the same mark the
    user sees on their home screen. `flex: none` keeps it square when the header gets tight. */

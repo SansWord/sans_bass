@@ -70,6 +70,11 @@ Harness gotchas:
 
 ### Demo listing smoke
 
+Both pages share the brand/player link, demo link, GitHub link, language controls,
+and header styling. The active page is marked with `aria-current="page"`. Only the
+player header contains the Load control. Switching language must preserve that file
+input and loaded player state; header navigation stays within the current deployed base.
+
 Run `npm run build` and serve `dist/`. Follow the player header's Demos / 匯出簡譜範例 link
 in both languages. On `/demos/`, check the build SHA, then follow
 the sample notation link, and exercise its capo selector. Repeat with `dist/` mounted

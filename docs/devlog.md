@@ -78,6 +78,11 @@ Running log of what was built and what was learned building it.
 
 ## v1.34.0 — Automatically listed HTML demos (2026-09-05)
 
+- [note] `lib/header.js` now owns both pages' shared header markup, navigation, and
+  language controls. Shared styles give the demo list the player's dark appearance.
+  The player retains its own file input; mounting moves the existing node once.
+  No framework dependency added for this small shared component.
+
 - [note] The list now shares the player i18n module and persisted language choice.
   Chinese navigation and heading use「匯出簡譜範例」. Its generated HTML is a Vite entry
   at `demos/index.html`, so shared translations are bundled with hashed asset paths.

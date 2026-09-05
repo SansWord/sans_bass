@@ -3,6 +3,8 @@
  * because every track is started from one AudioContext clock at the same time.
  */
 
+import { initHeader } from './lib/header.js';
+
 import { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } from './lib/stems.js';
 import { extract } from './lib/unzip.js';
 import { parseNoteName } from './lib/pitch.js';
@@ -17,6 +19,8 @@ import { allToggleLabel, initialRouting, route } from './lib/routing-state.js';
 import * as SansLoopState from './lib/loop-state.js';
 import { commandState, wholeSong } from './lib/editor-state.js';
 import { transposeChordLabel, transposePitchClass } from './lib/chords.js';
+
+initHeader();
 
 const BUCKETS = 1400;   // waveform resolution
 const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
@@ -148,7 +152,7 @@ const el = {
   masterVol: $('master-vol'), lanes: $('lanes'),
   speed: $('speed'), speedVal: $('speed-val'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
-  allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'), langToggle: $('lang-toggle'),
+  allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'),
   buildSha: $('build-sha'),
 };
 
@@ -2671,17 +2675,9 @@ function retranslate() {
   // setLocale applies the markup first and dispatches the event second, in that order.
   renderAllToggle();
   if (lastSay) say(lastSay.key, lastSay.params, lastSay.isErr);
-  renderLangToggle();
 }
 
-/** Keep the pressed half of the switcher in step with the active locale. */
-function renderLangToggle() {
-  if (!el.langToggle) return;
-  const active = SansI18n.getLocale();
-  el.langToggle.querySelectorAll('button').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.lang === active));
-  });
-}
+
 
 /** Lanes the all-on/all-off button acts on — the stems, never a full-mix file. */
 function syncRoutingState(next) {
@@ -3370,10 +3366,6 @@ on(el.allToggle, 'click', toggleAllTracks);
  * so a select that keeps focus after being used silently disables every hotkey until the
  * user happens to click elsewhere. Blurring on `change` is the whole fix. */
 on(el.mode, 'change', () => { setMode(el.mode.value); el.mode.blur(); });
-on(el.langToggle, 'click', (e) => {
-  const btn = e.target.closest('button[data-lang]');
-  if (btn) SansI18n.setLocale(btn.dataset.lang);   // an explicit choice persists
-});
 window.addEventListener('sansbass:langchange', retranslate);
 window.addEventListener('sansbass:editmode', (e) => {
   editMode = e.detail.on;
@@ -3402,7 +3394,6 @@ window.addEventListener('sansbass:tempo', (e) => {
   tempoInfo = d;
   if (changed) draw();
 });
-renderLangToggle();
 gcOnce(`lang-${SansI18n.getLocale()}`);
 on(el.masterVol, 'input', () => {
   ensureAudio();

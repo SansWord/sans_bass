@@ -96,11 +96,25 @@ A-B repeat / routing / input).
 
 ## Repo layout
 
+The player and demo list share `lib/header.js` and `styles.css`. `initHeader()` mounts
+ordinary DOM before the player captures its controls; it moves the existing player-owned
+file input rather than replacing it. Header language events and button state belong to
+that module. All translations and the saved locale remain in `lib/i18n.js`.
+
+`npm run dev` and `npm run build` first generate `demos/index.html` from files directly
+inside `public/demos/`. Vite bundles the generated list as an entry and copies the demo
+exports unchanged. Edit the generator, not the ignored generated HTML. See
+[`docs/deployment.md`](docs/deployment.md#publishing-html-demos) for publishing rules.
+
 ```
 index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
 lib/stems.js                       stem identity — ESM, no window bridge
 lib/unzip.js                       zip reading — ESM, no window bridge
 lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
+lib/header.js                      shared player/demo header and language controls
+demos.js                           demo-page title/count localization
+scripts/build-demos.js              generates the ignored demos/index.html before dev/build
+public/demos/                      explicitly published HTML demos; source files are committed
 lib/platform.js                    isHandheld() device predicate — ESM, no window bridge
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning
 lib/pitch.js                       ESM — YIN, candidates, Viterbi decoding, segmentation,

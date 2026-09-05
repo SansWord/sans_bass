@@ -68,6 +68,28 @@ Harness gotchas:
 
 ## Production deployment smoke
 
+### Demo listing smoke
+
+Both pages share the brand/player link, demo link, GitHub link, language controls,
+and header styling. The active page is marked with `aria-current="page"`. Only the
+player header contains the Load control. Switching language must preserve that file
+input and loaded player state; header navigation stays within the current deployed base.
+
+Run `npm run build` and serve `dist/`. Follow the player header's Demos / 匯出簡譜範例 link
+in both languages. On `/demos/`, check the build SHA, then follow
+the sample notation link, and exercise its capo selector. Repeat with `dist/` mounted
+under a nested PR-like path: the demo and player-back links must stay under that path.
+Add a temporary HTML file (including spaces/Unicode in its filename), rebuild, and
+confirm it appears and opens. Remove it and rebuild: it must disappear from both the
+list and `dist/demos/`. Non-HTML files must not appear in the list.
+Switch the list between English and Traditional Chinese; verify the heading, description,
+count, back link, empty state, tab title, and pressed language button. Reload and navigate
+between player and list: the explicit language choice must persist. With storage blocked,
+both languages must still work. Check both pages at desktop and narrow mobile widths for
+horizontal overflow.
+
+### Player smoke
+
 Use a fresh/no-store fetch and record the tested URL, browser, device, and displayed SHA.
 
 1. Confirm every hashed script/style/Worker/AudioWorklet reference loads from the deployed base path.

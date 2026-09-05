@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.34.0](#v1340--automatically-listed-html-demos-2026-09-05) | HTML files in `public/demos/` publish with an automatically generated `/demos/` list on every build. |
 | [v1.33.0](#v1330--interactive-capo-in-html-export-2026-09-04) | Exported notation carries its own capo selector and retains accompaniment-only bars. |
 | [v1.32.0](#v1320--hierarchical-barhalf-bar-chord-evidence-2026-09-04) | Half-bars remain the chord-change detector, but full-bar evidence now merges agreeing halves, carries one strong half across a weak partner, preserves real mid-bar and inversion changes, and leaves fully weak bars blank. This removes confident-looking labels from the nearly silent tail of `南國的風.zip`. |
 | [v1.31.0](#v1310--capo-aware-play-chords-2026-09-04) | A song-level capo selector keeps detected and corrected chords in concert pitch while showing playable chord shapes and play key in the zoom pane. Capo transposition covers slash bass notes and notation export, round-trips in version-5 edits JSON, and chord analysis now waits for every running note channel with an honest waiting-vs-detecting status. |
@@ -74,6 +75,39 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.34.0 — Automatically listed HTML demos (2026-09-05)
+
+- [note] README now introduces core features and quick start, documents the public demo
+  folder with a step-by-step export/copy/preview/PR/merge guide, and updates the older
+  vocals-only notes walkthrough and classic-script file descriptions.
+
+- [note] HTML files directly in `public/demos/` publish at `/demos/` with an alphabetical
+  list regenerated before dev/build. The requested vocals notation example is included
+  unchanged; other `examples/` fixtures remain ignored. Existing main/PR deploy workflows
+  publish the output, and relative links preserve each deployment's base path.
+- [note] `lib/header.js` owns both pages' brand/player link, demo link, GitHub link, and
+  language controls. Shared styles give both pages the same header and dark appearance.
+  The player retains its own file input; mounting moves that existing node once.
+- [note] The list shares `lib/i18n.js` and the player's saved language choice, including
+  blocked-storage handling. Chinese navigation and heading use「匯出簡譜範例」. The list
+  also keeps an explicit back link to the player.
+- [insight] Folder discovery follows `aitian`'s build-time pattern. The generated list at
+  `demos/index.html` is a Vite entry so shared header/i18n assets receive hashes; source
+  exports in `public/demos/` are copied verbatim. Generated HTML is ignored, never edited.
+- [insight] One shared header is small enough for an ordinary ESM module. No framework
+  dependency is needed for this extraction. Reconsider Lit if multiple stateful reusable
+  components make manual rendering and lifecycle management repetitive; that would be a
+  separate architecture decision under the repository's vanilla-JavaScript constraint.
+- [note] Validation: all 379 tests, production build, and diff whitespace checks passed.
+  Temporary Unicode/special-character demo filenames resolved under root/nested paths;
+  deletion removed the demo from the next build; the sample stayed byte-for-byte unchanged.
+  Chromium with intercepted local static-file requests verified demo navigation, sample
+  capo selection, translated heading/title/count, language-button state, persistence across
+  reload/player navigation, blocked storage, and no overflow at 320/375/1280px.
+- [note] Live PR/production deployment smoke and the full player acceptance matrix were
+  not run. The test suite result above does not establish real-model deployment, physical
+  handheld, auditory, or real-song musical-regression evidence.
 
 ## v1.33.0 — Interactive capo in HTML export (2026-09-04)
 

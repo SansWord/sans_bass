@@ -143,6 +143,9 @@ where supported, correct.
 
 ## Language and resilience
 
+- The player and demo list share navigation and language controls. The demo list uses
+  the same saved language choice as the player, with「匯出簡譜範例」as its Chinese name.
+  Each page provides a route to the other; the music-loading control belongs to the player.
 - The interface supports Traditional Chinese and English, including content already visible
   when the language changes.
 - A stored explicit language choice takes precedence over system detection; failure to read
@@ -155,6 +158,10 @@ where supported, correct.
   a page that appears functional but is inert.
 
 ## Release integrity
+
+- Maintainer-published HTML demos have a public list, regenerated from the demo folder
+  on every deployment. Publishing a demo is an explicit repository change; the player
+  never automatically publishes a user's exports.
 
 - A deployed page identifies the exact source commit that produced it.
 - Production assets, Workers, and AudioWorklet modules resolve from the deployed static

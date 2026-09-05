@@ -1,7 +1,7 @@
 # sans_bass
 
-A local HTML/JS player for punk rock stems. Load a song, see its waveform, and play the
-full mix or solo the vocals, guitar, bass and drums.
+A browser-based music practice player. Load a song or separated stems, isolate a part,
+loop a phrase, and build an editable numbered-notation (簡譜) reference.
 
 Everything runs in the browser. No upload — your audio never leaves your machine.
 In-browser separation fetches a model *in*, but nothing about your audio ever goes *out*.
@@ -13,6 +13,96 @@ keep fluffing, and drill it.
 Steps 1–3 below are the one-time job of getting stems out of a CD.
 
 ---
+
+## Core features
+
+- **Load music:** open or drop one audio file or a ZIP of stems. Standard lanes include
+  vocals, guitar, bass, drums, piano, and other instruments.
+- **Practise individual parts:** synchronized waveforms, solo/mute controls, per-lane and
+  master volume, seeking, keyboard shortcuts, and continuous A–B loops.
+- **Change speed:** practise at 10–150% speed without changing pitch.
+- **Separate locally:** split a whole song into six stems on a supported desktop browser
+  and save them as a ZIP. Phones and tablets can load prepared stems for playback.
+- **Find notes and rhythm:** analyse vocals and bass independently, listen to detected
+  notes as reference tones, and inspect an editable tempo grid when drums are available.
+- **Edit the reference:** add, remove, move, resize, repitch, split, and snap notes; undo
+  edits and export/import the editing session.
+- **Work with chords and capo:** inspect and correct estimated chords, and choose a capo
+  fret to show playable shapes while retaining concert pitch.
+- **Export 簡譜:** save self-contained HTML notation with rhythm, octave markings, bars,
+  available chord estimates, and an interactive capo selector.
+- **Browse examples:** open published notation examples from the shared header. Both
+  pages support English and Traditional Chinese and remember your language choice.
+
+Notes, tempo, and chords are assistive estimates you can review and correct.
+
+## Quick start
+
+Open the [hosted player](https://sansword.github.io/sans_bass/), then choose **Load song
+or zip**. Load a prepared stems ZIP to practise immediately, or load a whole song and
+use desktop separation. The CD-ripping and command-line separation guide below is optional.
+
+To run a local checkout:
+
+```bash
+npm ci
+npm run dev
+```
+
+Open <http://localhost:8777/>. Use `npm run build` followed by `npm run preview` to
+check the production build locally.
+
+## Demo examples — 匯出簡譜範例
+
+Browse [HTML demos and notation exports](https://sansword.github.io/sans_bass/demos/).
+The shared header links between the player and the list, and remembers your English/中文
+choice. In Chinese, the list is labeled「匯出簡譜範例」.
+
+### Where demo files live
+
+Put published examples directly in [`public/demos/`](public/demos/):
+
+```text
+public/demos/
+  README.md
+  sans_bass_song_vocals_notes_2026_09_05_00_51.html
+  your-next-example.html
+```
+
+The list discovers `.html` and `.htm` files, sorts them alphabetically by filename,
+and uses each filename as its link label. Use descriptive filenames; spaces and Unicode
+are supported. Subfolders and non-HTML files are not listed. `index.html` is reserved
+for the generated listing.
+
+`examples/` holds ignored local test fixtures. To publish an example, explicitly copy
+the intended HTML file into `public/demos/`. Everything in the public folder is served
+on the website; keep private recordings and local fixtures outside it.
+
+### Add a new demo example
+
+1. In the player, analyse vocals or bass, review the notes, and use **Export list** to
+   save a self-contained HTML notation file. You can also supply another self-contained
+   HTML demo.
+2. Copy that file directly into `public/demos/`. For example, from the repository root:
+
+   ```bash
+   cp ~/Downloads/your-next-example.html public/demos/
+   ```
+
+3. Run `npm run dev` and open <http://localhost:8777/demos/>. Check that the file appears,
+   opens correctly, and its controls work. Restart the dev server after adding, renaming,
+   or removing files so the list regenerates.
+4. Commit the new HTML file on a feature branch and open a PR. Its preview list will be
+   at `https://sansword.github.io/sans_bass/pr-<PR-number>/demos/` after preview deployment.
+5. Merge the PR into `main`. The existing GitHub Actions workflow rebuilds and publishes
+   the list and demos automatically; no manual list edit or workflow change is needed.
+
+Renaming or deleting a demo file updates the next deployment in the same way.
+`scripts/build-demos.js` generates the ignored `demos/index.html` before dev/build;
+Vite bundles that list and copies the example HTML unchanged to `dist/demos/`.
+Commit the source examples, not `demos/index.html` or `dist/`.
+
+See [deployment documentation](docs/deployment.md#publishing-html-demos) for hosting details.
 
 ## Author
 
@@ -376,48 +466,29 @@ song is roughly 380 MB of RAM. Fine for one song at a time, which is what this i
 
 ---
 
-## Step 5 — Find the notes
+## Step 5 — Find and edit notes
 
-Once stems are loaded, **Find notes** appears above the lanes. It reads the vocals stem and
-draws what it found as two new panes.
+Load stems containing vocals, bass, or both, then choose **Find notes**. Analysis runs
+locally in a worker and produces an independent note reference for each supported stem.
+The overview and zoomed pane let you compare that reference with the source audio.
 
-It runs entirely on your machine. No model to download, no network call of any kind — about
-7 seconds for a four-minute song the first time, ~2 s after that.
+- Show the detected notes as pitches or numbered notation (簡譜), inspect the detected
+  key, and adjust interpretation settings without analysing the audio again.
+- Unmute the note reference to hear it alongside the stems, or mute the stems to hear
+  the reference on its own. Reference tones start muted.
+- When drums are available, inspect and correct tempo, meter, and grid alignment.
+- Enable note editing to add, delete, move, resize, repitch, split, or snap notes.
+  Undo changes and save or restore the editing session with export/import.
+- Review estimated chords when harmonic stems are available, correct chord labels,
+  and select a capo fret for playable chord shapes.
+- Use **Export list** to save self-contained HTML 簡譜. Its capo selector remains
+  interactive after export. Follow [Add a new demo example](#add-a-new-demo-example)
+  if you want to publish that file in the demo list.
 
-- **The notes lane** spans the whole song on the same timeline as every waveform, so it
-  lines up with the stems above it. Use it to find a phrase.
-- **The zoomed pane** above it shows about ten seconds and follows the playhead. This is the
-  one you read: it labels every semitone and draws the pitch actually sung, so vibrato,
-  slides, and any place the detection disagrees with the singer are all visible.
-
-| Action | How |
-|---|---|
-| Detect notes | **Find notes** — appears only when a vocals stem is loaded |
-| Hear the transcription | Click the **Notes** lane name. It plays as a piano tone against the song, muted until you ask for it |
-| Tune the detection | The **Shortest note** slider — re-derives instantly, without re-analysing |
-| Show / hide both panes | The toggle that replaces **Find notes**. Hiding also mutes |
-| Zoom in / out | The **−** / **+** buttons, or scroll on the zoomed pane |
-| Move the zoomed window | Drag it sideways. Click it to seek |
-| Make either pane taller | Drag the bar at its bottom edge |
-
-### It will be wrong, and that is the point of showing the contour
-
-This is a first pass, not a transcription you can publish. Held notes fragment under
-vibrato, slides leave short spurious notes behind, and roughly 5% of the time the pitch
-tracker drops an octave for a moment. The blue contour line is drawn *underneath* the
-detected notes precisely so a wrong note looks wrong rather than plausible — where the
-blocks leave the line, the detector lost the thread.
-
-**Shortest note** is the one control that matters. On a typical track it takes the note
-count from 437 at 80 ms to 99 at 200 ms, and finding the value your ear agrees with is
-faster than correcting the notes by hand. Everything under **Advanced** moves the result
-far less.
-
-Key detection exists too, but only on the bench page at `/tests/notes.html`, which also
-plays the transcription back on its own so you can A/B it against the stem.
-
-[`docs/transcription.md`](docs/transcription.md) explains how audio becomes notes, what each
-setting measurably does, and why the errors above are the shape they are.
+Detected notes, keys, tempo, and chords can be wrong. Compare them with the recording,
+inspect doubtful passages, and use your edits to create a useful practice reference.
+[`docs/transcription.md`](docs/transcription.md) explains the analysis and interpretation
+layers; [`docs/product-contract.md`](docs/product-contract.md) describes supported behavior.
 
 ## Files
 
@@ -425,13 +496,18 @@ setting measurably does, and why the errors above are the shape they are.
 index.html                markup
 styles.css                styling
 app.js                    player: decode, waveform render, transport, mixing
-lib/stems.js              stem identity (classic script — shared with app.js and tests)
+lib/header.js             shared header, navigation, and language controls
+lib/i18n.js               English/Traditional Chinese dictionary and saved locale
+demos.js                  demo listing localization
+scripts/build-demos.js    generates demos/index.html before dev/build
+public/demos/             committed HTML examples for the public demo list
+lib/stems.js              stem identity (ES module shared with app.js and tests)
 lib/wav.js                Float32 → 16-bit PCM WAV
 lib/zip.js                CRC-32 + store-method ZIP writer
 lib/overlap.js            segment planning + overlap-add windows
 lib/pitch.js              pitch tracking, note segmentation, key estimation
 lib/sonify.js             plays detected notes back as tones
-lib/ribbon.js             notes-lane geometry (classic script — shared with the tests)
+lib/ribbon.js             notes-lane geometry (ES module shared with the tests)
 separate.js               in-browser separation panel
 separate.worker.js        ONNX Runtime + htdemucs_6s inference loop
 notes.js                  notes panel: worker lifecycle and live re-interpretation

@@ -1,6 +1,7 @@
 # Incremental React migration
 
-Status: planned; no migration phases completed. Created 2026-09-05.
+Status: phase 0 baseline recorded locally, with explicit omissions; phase 1 not started.
+Created 2026-09-05.
 
 ## Goal and scope
 
@@ -84,8 +85,8 @@ legacy ownership rather than leaving two implementations active for the same con
   into the sole acceptance oracle.
 - Create a migration evidence log using the record format below. Select baseline manual
   checks for trusted playback, background loop/end behaviour, and auditory comparison.
-- Establish the source-line baseline and file/region classification described below so each
-  later slice can report comparable measurements.
+- Use the ownership map to track migration progress; detailed source-line accounting is not
+  required. Keep performance measurements as a baseline for major milestones.
 
 **Exit gate:** baseline results and omissions are explicit, each first-phase DOM region has
 an identified owner, and known failures are distinguishable from new regressions. No claim
@@ -259,58 +260,28 @@ duplicate UIs or runtime migration flags. Do not hand-edit the CI-owned deployme
 
 ## Progress and session handoff
 
-### Source-line scorecard after every migration slice
+### Lightweight progress reporting
 
-Use lines of code as a maintainability indicator alongside behavioural acceptance. The
-working hypothesis is that React reduces manual element creation, DOM updates, and listener
-wiring. Measure that hypothesis rather than assuming that React or fewer lines guarantees
-simpler code. A phase may temporarily grow while adapters coexist with migrated components.
+Measure progress by ownership transferred and behaviour preserved. For each slice, record:
 
-Count nonblank, non-comment physical source lines with one recorded tool/version and the
-same settings at the baseline and each accepted commit. Record the revision pair and exact
-command. Keep existing formatting conventions; do not compress expressions or reformat
-unrelated code to improve the score. If the counting method changes, recount the baseline.
+- Which UI regions now have one React owner, and which remain legacy-owned.
+- Which temporary adapters remain, their named consumers, and when they can be removed.
+- Relevant test/build results and unresolved acceptance gaps.
 
-Record a versioned inventory of included files and, for mixed modules, named source regions.
-Classify regions by responsibility rather than extension or directory. Until modules are
-separated, manually review region boundaries and disclose that these category counts are
-approximate. Include old and new implementations in the totals during coexistence.
+Compare shipped JS size and representative startup/responsiveness at the pilot, player-shell,
+and final-acceptance milestones. Investigate a noticeable regression; do not require a new
+performance campaign for every small component.
 
-| Metric | What to count | How to interpret it |
-|---|---|---|
-| Legacy UI | Manual DOM construction, markup templates, UI synchronization, and control/event wiring | Should decline as ownership transfers |
-| React UI | JSX markup, component logic, hooks, handlers, and UI subscription bindings | Replacement cost, including abstractions used by components |
-| Shared UI support | Framework-neutral presentation helpers and UI-only command adapters | Prevents extracted wiring from disappearing from the comparison |
-| Temporary migration code | Bridges and compatibility code planned for removal | May rise mid-migration; should reach zero at final acceptance |
-| Combined UI source | Sum of the four categories above, plus authored UI HTML and CSS | Primary measure of net UI simplification; count each line once |
-| Total production source | All authored production JS/JSX, HTML, CSS, and build scripts | Detects reductions that merely relocate code into other modules |
-| Tests | Authored test and fixture-helper code, reported separately | Coverage can grow while production UI shrinks |
-
-Keep audio/DSP/analysis/serialization code inside total production source, outside UI-only
-counts. Exclude dependencies, lockfiles, generated `dist/` and `demos/index.html`, generated
-exports, public demo artifacts, model/audio data, and documentation from these counts. Count
-the authored demo generator and UI templates in the appropriate production categories.
-Record the exclusions explicitly so future measurements use the same boundary.
-
-For each slice, report before, after, and absolute delta for every category, plus cumulative
-change from phase 0. Report combined UI percentage change as
-`100 × (after − before) / before` when the baseline is nonzero. Negative means a reduction.
-Also state which UI regions moved, which adapters remain, and whether any unrelated source
-changes affect the comparison. Diff additions/deletions alone are not the LOC metric: a file
-move or renamed component is not a code reduction.
-
-Do not set a mandatory percentage reduction before the pilot establishes what is realistic.
-After phases 1 and 3, review whether reduced wiring outweighs the new component/subscription
-code and revise the remaining scope if needed. Total source may stay flat or grow even when
-component construction improves. A LOC increase calls for an explanation, not removal of
-error handling, accessibility, cleanup, or tests. Behavioural gates remain mandatory regardless
-of the count; shipped JS bytes and responsiveness remain separate performance measurements.
+LOC is optional, not an exit gate or a percentage-complete measure. Detailed mixed-file
+classification and per-slice scorecards cost more than they tell us about migration progress.
+A simple whole-source before/after check at final acceptance may be useful if maintainability
+is still in question; do not build or maintain dedicated LOC tooling for this migration.
 
 ### Phase tracking
 
 | Phase | Status | Evidence / PRs | Remaining work |
 |---|---|---|---|
-| 0 | Not started | — | Baseline and ownership map |
+| 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
 | 1 | Not started | — | React pilot |
 | 2 | Not started | — | Player boundary |
 | 3 | Not started | — | Shell/loading/transport |
@@ -324,8 +295,7 @@ log or PR, recording:
 
 - Phase/slice, source commit, changed ownership boundaries, and next bounded slice.
 - Automated commands/results and known baseline failures.
-- Source-line scorecard before/after, cumulative delta, counting command/version, inventory,
-  and explanation of added adapters or shifted responsibilities.
+- Updated ownership map and remaining adapters; milestone performance evidence when relevant.
 - Scenario IDs, fixture categories, browser/device, tested URL/build SHA, and results.
 - Separate local-build, deployed, manual/visual, and auditory results; explicitly mark skips.
 - Remaining risks, temporary adapters with named consumers, and rollback commit/PR.

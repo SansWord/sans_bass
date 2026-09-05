@@ -1,0 +1,74 @@
+{
+  "collectedUTC": "2026-09-05T20:32:55.446Z",
+  "checks": [
+    "Isolated actual generator/build includes encoded Unicode/space HTML filename, excludes non-HTML list entry, copies export unchanged",
+    "Removing fixture and rebuilding removes list entry and stale dist export",
+    "/ en: SHA, locale/title/count, demo export/capo and player-back navigation",
+    {
+      "base": "/",
+      "locale": "en",
+      "modules": {
+        "sampleRate": 44100,
+        "workletLoaded": true
+      }
+    },
+    "/ zh-TW: SHA, locale/title/count, demo export/capo and player-back navigation",
+    {
+      "base": "/",
+      "locale": "zh-TW",
+      "modules": {
+        "sampleRate": 44100,
+        "workletLoaded": true
+      }
+    },
+    "/pr-baseline/ en: SHA, locale/title/count, demo export/capo and player-back navigation",
+    {
+      "base": "/pr-baseline/",
+      "locale": "en",
+      "modules": {
+        "sampleRate": 44100,
+        "workletLoaded": true
+      }
+    },
+    "/pr-baseline/ zh-TW: SHA, locale/title/count, demo export/capo and player-back navigation",
+    {
+      "base": "/pr-baseline/",
+      "locale": "zh-TW",
+      "modules": {
+        "sampleRate": 44100,
+        "workletLoaded": true
+      }
+    }
+  ],
+  "startup": [
+    {
+      "readyMs": 35.80000001192093,
+      "domContentLoadedMs": 19.899999976158142,
+      "jsTransferBytes": 146150
+    },
+    {
+      "readyMs": 36.10000002384186,
+      "domContentLoadedMs": 20.69999998807907,
+      "jsTransferBytes": 146150
+    },
+    {
+      "readyMs": 34.89999997615814,
+      "domContentLoadedMs": 19.5,
+      "jsTransferBytes": 146150
+    },
+    {
+      "readyMs": 38.30000001192093,
+      "domContentLoadedMs": 22.5,
+      "jsTransferBytes": 146150
+    },
+    {
+      "readyMs": 35,
+      "domContentLoadedMs": 19.5,
+      "jsTransferBytes": 146150
+    }
+  ],
+  "errors": [],
+  "buildLog": "\n> prebuild\n> node scripts/build-demos.js\n\nGenerated demos/index.html with 1 demo(s).\n\n> build\n> vite build\n\nvite v8.2.2 building client environment for production...\ntransforming...\n✓ 42 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/assets/favicon-32-D9nVlJ2I.png               0.59 kB\ndist/tests/parity.html                            0.73 kB │ gzip:  0.49 kB\ndist/assets/icon-CNNK3h42.svg                     1.13 kB │ gzip:  0.56 kB\ndist/demos/index.html                             1.60 kB │ gzip:  0.78 kB\ndist/assets/apple-touch-icon-BWNmolE4.png         2.73 kB\ndist/tests/notes.html                             2.81 kB │ gzip:  1.22 kB\ndist/assets/separate.worker-Bxzm2fuX.js           3.30 kB\ndist/assets/stretch-processor-DLrhpEqN.js         3.51 kB\ndist/assets/notes.worker-Ch3qR4G6.js              4.75 kB\ndist/index.html                                  18.87 kB │ gzip:  5.19 kB\ndist/assets/header-CQaGsfGb.css                  13.08 kB │ gzip:  3.60 kB\ndist/assets/demos-CIWJh9QT.js                     0.31 kB │ gzip:  0.24 kB\ndist/assets/modulepreload-polyfill-P2Xu9kJm.js    0.67 kB │ gzip:  0.38 kB\ndist/assets/parity-BJfU48Ny.js                    2.59 kB │ gzip:  1.42 kB\ndist/assets/notes-cSJ17bY2.js                     6.39 kB │ gzip:  2.97 kB\ndist/assets/stretch-processor.js                 12.53 kB │ gzip:  3.55 kB\ndist/assets/sonify-D8HC-ICE.js                   14.56 kB │ gzip:  6.04 kB\ndist/assets/header-CQDvWs9n.js                   29.43 kB │ gzip: 11.50 kB\ndist/assets/main-DZ76qrQx.js                    100.28 kB │ gzip: 33.34 kB\n\n✓ built in 85ms\n",
+  "browser": "151.0.7922.34",
+  "origin": "http://127.0.0.1:8780"
+}

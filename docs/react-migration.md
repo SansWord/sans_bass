@@ -248,8 +248,12 @@ encoders, feeding them through the real `#file-input`. Follow the current harnes
 Include stem combinations and malformed input required by the affected scenarios.
 `examples/nov_you.zip` is the musical/deployment fixture, not the full behaviour matrix.
 
-Build/preview smoke is required when entry points, mounting, or asset paths change. Deployed
-evidence is separate and records the actual URL and SHA. Automated tests remain offline;
+Every phase follows the tiered deployment procedure in `behaviour.md`: the PR preview verifies
+the affected behavior and public-host boundary, and the merged root gets a compact delivery
+canary with workflow conclusion, SHA, boot/error sanity, and one affected route or control.
+Run the full smoke on both origins when entry points, mounting/base paths, CI deployment,
+Workers/AudioWorklets, caches, or static assets change. Phase 7 also runs it as release
+acceptance. Deployed evidence records the actual URL and SHA. Automated tests remain offline;
 deterministic fake Workers test protocols, while real Worker/model checks test their own
 boundaries. Report visual, auditory, physical-device, and background checks individually.
 

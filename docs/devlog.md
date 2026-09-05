@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [Meta](#meta--tiered-deployment-verification-2026-09-05) | PR previews prove the affected behavior; production normally gets a compact delivery canary. Full two-origin, real-song, model, visual, and device checks now run when their boundary changed or at release acceptance. |
 | [React phase 0](#react-phase-0--baseline-inventory-2026-09-05) | Recorded ownership, automated, screenshot and local-build baselines; use ownership progress instead of mandatory LOC accounting. |
 | [v1.34.0](#v1340--automatically-listed-html-demos-2026-09-05) | HTML files in `public/demos/` publish with an automatically generated `/demos/` list on every build. |
 | [v1.33.0](#v1330--interactive-capo-in-html-export-2026-09-04) | Exported notation carries its own capo selector and retains accompaniment-only bars. |
@@ -76,6 +77,25 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## Meta — Tiered deployment verification (2026-09-05)
+
+- [insight] Replaying the same full browser workflow on the PR preview and production spends
+  review time and agent context on duplicate behavior evidence. The preview is where changed
+  behavior is reviewed; the post-merge root check proves that the accepted commit was delivered.
+- [note] Every PR still gets real-preview evidence, and every merge still gets a production
+  check. The routine production check is now a delivery canary: workflow conclusion, matching
+  `#build-sha`, clean page boot, and one affected route or control when relevant.
+- [gotcha] Nested previews and the root deploy are materially different when Vite/base paths,
+  entry HTML, deployment workflows, Workers/AudioWorklets, caches, or static asset URLs change.
+  Those changes still require the full smoke on both origins; release acceptance does too.
+- [note] Real-song, cached-model, uncached-download, physical-device, auditory, and exhaustive
+  visual checks are selected by the boundary under review. Focused selectors plus compact
+  console/network summaries are preferred for routine browser evidence; screenshots and full
+  page structure are retained for visual or structural changes.
+- [note] This is a verification-process change only. CI, preview publication, main publication,
+  and the detailed release scenarios remain intact. `CLAUDE.md`, `docs/testing.md`,
+  `docs/behaviour.md`, `docs/deployment.md`, and the React migration plan now use the same rule.
 
 ## React phase 0 — baseline inventory (2026-09-05)
 

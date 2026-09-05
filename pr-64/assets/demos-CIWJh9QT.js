@@ -1,1 +1,0 @@
-import"./modulepreload-polyfill-P2Xu9kJm.js";import{a as e,i as t,t as n}from"./header-CQDvWs9n.js";function r(){document.title=e(`demos.title`);let t=document.getElementById(`demo-count`);t.textContent=e(`demos.count`,{count:t.dataset.count})}t(),n({page:`demos`}),window.addEventListener(`sansbass:langchange`,r),r();

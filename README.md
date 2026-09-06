@@ -496,9 +496,10 @@ layers; [`docs/product-contract.md`](docs/product-contract.md) describes support
 index.html                markup
 styles.css                styling
 app.js                    player: decode, waveform render, transport, mixing
-lib/header.js             player header, navigation, and language controls
 lib/i18n.js               English/Traditional Chinese dictionary and saved locale
-components/DemoHeader.jsx React demo header (shares the header contract and styles)
+components/SiteHeader.jsx shared React navigation and language header
+components/PlayerShell.jsx React player header, loading/status, and drag/drop UI
+components/DemoHeader.jsx React demo-header wrapper
 demos.jsx                 demo React mount and listing localization
 scripts/build-demos.js    generates demos/index.html before dev/build
 public/demos/             committed HTML examples for the public demo list

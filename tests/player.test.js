@@ -4,9 +4,167 @@ import { installFakeWorker, instrumentAudio, loadSong, loadZip, openPlayer, wait
 import { sine, stemsZip, wavFile } from './helpers/audio-fixtures.js';
 
 let player;
-afterEach(() => player?.close());
+afterEach(() => {
+  player?.close();
+  localStorage.removeItem('sans_bass.lang');
+});
 
 describe('production player integration', () => {
+  it('keeps React-owned loading UI stable across locale and application publications', async () => {
+    player = await openPlayer();
+    const application = player.win.sansBass.application;
+    const shell = player.win.sansBass.playerShell;
+    expect(shell).toBeTruthy();
+    expect(player.doc.querySelectorAll('[data-react-player-shell]')).toHaveLength(1);
+    const input = player.doc.getElementById('file-input');
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    expect(player.doc.getElementById('file-input')).toBe(input);
+    application.publish();
+    await waitFor(() => player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]')
+      .getAttribute('aria-pressed') === 'true', 'React locale publication');
+    expect(player.doc.getElementById('file-input')).toBe(input);
+
+    await loadZip(player, { vocals: 440, bass: 110 }, { folder: 'Stable shell' });
+    const song = application.getSnapshot().song;
+    const canvases = [...player.doc.querySelectorAll('.lane canvas')];
+    player.doc.querySelector('#lang-toggle [data-lang="en"]').click();
+    application.publish();
+    await waitFor(() => player.doc.documentElement.lang === 'en', 'English shell');
+    expect(player.doc.getElementById('file-input')).toBe(input);
+    expect(application.getSnapshot().song).toEqual(song);
+    expect([...player.doc.querySelectorAll('.lane canvas')]).toEqual(canvases);
+  });
+
+  it('renders loading, success, malformed input, and bilingual command errors from snapshots', async () => {
+    player = await openPlayer();
+    const application = player.win.sansBass.application;
+    const blob = await stemsZip({ vocals: 440, bass: 110 }, { folder: 'Loading state' });
+    const bytes = await blob.arrayBuffer();
+    let release;
+    const realFile = new player.win.File([bytes], 'loading.zip', { type: 'application/zip' });
+    let firstSlice = true;
+    const held = {
+      name: realFile.name,
+      size: realFile.size,
+      slice(...args) {
+        const slice = realFile.slice(...args);
+        if (!firstSlice) return slice;
+        firstSlice = false;
+        return { arrayBuffer: () => new Promise((resolve) => {
+          release = async () => resolve(await slice.arrayBuffer());
+        }) };
+      },
+    };
+    const loadingPromise = application.commands.load(held);
+    await waitFor(() => application.getSnapshot().loading, 'loading snapshot');
+    await waitFor(() => player.doc.getElementById('status').textContent === 'Reading zip…',
+      'rendered loading status');
+    await waitFor(() => release, 'held zip read');
+    release();
+    await loadingPromise;
+    await waitFor(() => application.getSnapshot().song?.title === 'Loading state', 'load success');
+    expect(player.win.getComputedStyle(player.doc.getElementById('status')).display).toBe('none');
+
+    const malformed = new player.win.File([new Uint8Array([1, 2, 3])], 'broken.zip', {
+      type: 'application/zip',
+    });
+    await expect(application.commands.load(malformed)).resolves.toBeUndefined();
+    await waitFor(() => player.doc.getElementById('status').textContent.includes('not a valid zip'),
+      'zip rejection');
+    expect(() => application.commands.seek(Number.NaN)).toThrow(/finite number/);
+    await waitFor(() => player.doc.getElementById('status').textContent.includes('Player command failed'),
+      'English command error');
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    expect(() => application.commands.seek(Number.NaN)).toThrow(/finite number/);
+    await waitFor(() => player.doc.getElementById('status').textContent.includes('播放器指令失敗'),
+      'translated command error');
+  });
+
+  it('loads one valid drop and rejects unsupported, multiple, and folder-shaped drops', async () => {
+    player = await openPlayer();
+    const dispatchDrop = (files, items = []) => {
+      const event = new player.win.DragEvent('drop', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: { files, items } });
+      player.doc.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    };
+    const zip = await stemsZip({ vocals: 440, bass: 110 }, { folder: 'Dropped song' });
+    dispatchDrop([new player.win.File([await zip.arrayBuffer()], 'dropped.zip', {
+      type: 'application/zip',
+    })]);
+    await waitFor(() => player.win.sansBass.application.getSnapshot().song?.title === 'Dropped song',
+      'valid dropped song');
+
+    dispatchDrop([new player.win.File(['nope'], 'notes.txt', { type: 'text/plain' })]);
+    await waitFor(() => player.doc.getElementById('status').textContent.includes('not a song'),
+      'unsupported drop');
+    dispatchDrop([
+      new player.win.File(['a'], 'a.wav', { type: 'audio/wav' }),
+      new player.win.File(['b'], 'b.wav', { type: 'audio/wav' }),
+    ]);
+    await waitFor(() => player.doc.getElementById('status').textContent.includes('That was 2 files'),
+      'multiple drop');
+    dispatchDrop([], [{ webkitGetAsEntry: () => ({ isDirectory: true }) }]);
+    await waitFor(() => player.doc.getElementById('status').textContent.includes('Dropping a folder'),
+      'folder drop');
+  });
+
+  it('cleans overlay/listeners on shell remount without disposing the song or duplicating loads', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, bass: 110 }, { folder: 'Mounted once' });
+    const application = player.win.sansBass.application;
+    const song = application.getSnapshot().song;
+    const canvases = [...player.doc.querySelectorAll('.lane canvas')];
+    player.doc.dispatchEvent(new player.win.DragEvent('dragenter', { bubbles: true, cancelable: true }));
+    await waitFor(() => player.win.getComputedStyle(player.doc.getElementById('drag-overlay')).display === 'flex',
+      'overlay before remount');
+
+    player.win.sansBass.playerShell.unmount();
+    expect(application.getSnapshot().song).toEqual(song);
+    expect([...player.doc.querySelectorAll('.lane canvas')]).toEqual(canvases);
+    expect(player.doc.getElementById('drag-overlay')).toBeNull();
+    player.win.sansBass.playerShell.remount();
+    player.win.sansBass.playerShell.remount();
+    await waitFor(() => player.doc.getElementById('file-input'), 'shell remount');
+    expect(player.doc.querySelectorAll('[data-react-player-shell]')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#lang-toggle')).toHaveLength(1);
+    expect(application.getSnapshot().song).toEqual(song);
+    expect(player.win.getComputedStyle(player.doc.getElementById('drag-overlay')).display).toBe('none');
+
+    const before = application.currentSongToken();
+    const zip = await stemsZip({ drums: 120, guitar: 220 }, { folder: 'Only once' });
+    const event = new player.win.DragEvent('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', { value: {
+      files: [new player.win.File([await zip.arrayBuffer()], 'once.zip', { type: 'application/zip' })],
+      items: [],
+    } });
+    player.doc.dispatchEvent(event);
+    await waitFor(() => application.getSnapshot().song?.title === 'Only once', 'single remounted load');
+    expect(application.currentSongToken()).toBe(before + 1);
+  });
+
+  it('restores focus after header actions while legacy field focus still excludes shortcuts', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, bass: 110 });
+    const application = player.win.sansBass.application;
+    const language = player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]');
+    language.focus();
+    language.click();
+    expect(player.doc.activeElement).not.toBe(language);
+
+    const mode = player.doc.getElementById('mode');
+    mode.focus();
+    const position = application.getSnapshot().transport.position;
+    mode.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+      key: 'ArrowRight', bubbles: true, cancelable: true,
+    }));
+    expect(application.getSnapshot().transport.position).toBe(position);
+    mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    expect(player.doc.activeElement).not.toBe(mode);
+  });
+
   it('initializes one observable application without loading a song', async () => {
     player = await openPlayer();
     const application = player.win.sansBass.application;
@@ -103,10 +261,12 @@ describe('production player integration', () => {
     const application = player.win.sansBass.application;
     expect(() => application.commands.seek(Number.NaN)).toThrow(/finite number/);
     expect(application.getSnapshot().commandError).toMatchObject({ command: 'seek' });
-    expect(player.doc.getElementById('status').textContent).toContain('finite number');
+    await waitFor(() => player.doc.getElementById('status').textContent.includes('finite number'),
+      'rendered invalid command');
     player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
     expect(() => application.commands.setPlaybackRate(Number.NaN)).toThrow(/finite number/);
-    expect(player.doc.getElementById('status').textContent).toContain('播放器指令失敗');
+    await waitFor(() => player.doc.getElementById('status').textContent.includes('播放器指令失敗'),
+      'rendered Chinese command error');
     player.doc.querySelector('#lang-toggle [data-lang="en"]').click();
     await loadSong(player);
     expect(application.getSnapshot().song.title).toBe('song');
@@ -264,7 +424,7 @@ describe('production player integration', () => {
     const overlay = player.doc.getElementById('drag-overlay');
     expect(player.win.getComputedStyle(overlay).display).toBe('none');
     player.doc.dispatchEvent(new player.win.DragEvent('dragenter', { bubbles: true, cancelable: true }));
-    expect(player.win.getComputedStyle(overlay).display).toBe('flex');
+    await waitFor(() => player.win.getComputedStyle(overlay).display === 'flex', 'overlay showing');
     const over = new player.win.DragEvent('dragover', { bubbles: true, cancelable: true });
     player.doc.dispatchEvent(over);
     expect(over.defaultPrevented).toBe(true);

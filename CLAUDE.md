@@ -22,9 +22,11 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   dev, `npm run build` for `dist/`, both CI workflows build before publishing. The player
   core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js` and `lib/unzip.js`.
   React/React DOM and Vite JSX support were introduced for the incremental component
-  migration; the demo-page header is the isolated phase-1 owner. Phase 2 adds a
-  DOM-independent player command/subscription facade in `lib/player-application.js`; the
-  unchanged legacy player controls consume it through `lib/legacy-player-controls.js`.
+  migration; Phase 1 introduced the demo header and Phase 3a shares that header contract
+  with the React-owned player header/loading/status/drop shell. Phase 2's DOM-independent
+  command/subscription facade in `lib/player-application.js` remains the only UI-to-player
+  seam; unchanged legacy play/rate controls consume it through
+  `lib/legacy-player-controls.js`.
   Audio, analysis,
   serialization, canvas renderers, Workers, and AudioWorklets stay ordinary JavaScript
   modules outside React. Vanilla JS remains the default where a component lifecycle is not
@@ -112,22 +114,22 @@ A-B repeat / routing / input).
 
 ## Repo layout
 
-The player and demo list share `styles.css`, the translation dictionary, and the same header
-contract, but have deliberately separate owners during the React migration. The player still
-uses `lib/header.js`; `initHeader()` mounts ordinary DOM before the player captures its
-controls and moves the existing player-owned file input rather than replacing it. The demo
-page's `#site-header` descendants are owned only by `components/DemoHeader.jsx`. Its locale
-hook subscribes to `lib/i18n.js` and cleans up on unmount; React-owned descendants do not use
-`data-i18n`, so the legacy document traversal cannot overwrite them. Component-specific
-styles should be colocated when needed; the pilot reuses the established shared header
-classes from `styles.css` to preserve appearance.
+The player and demo list share `styles.css`, the translation dictionary, and
+`components/SiteHeader.jsx`. React solely owns both pages' `#site-header` descendants.
+`components/PlayerShell.jsx` additionally owns the one player file input, empty/loading
+affordance, status/error presentation, and global drag overlay through one root with explicit
+portal hosts. Its locale/application subscriptions and document drag listeners clean up on UI
+unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
+legacy dictionary traversal cannot overwrite them. Component-specific styles should be
+colocated when needed; these components reuse the established shared classes in `styles.css`.
 
-The player remains entirely legacy-rendered in Phase 2. `app.js` still owns every player DOM
-region and authoritative state value; only command invocation and observation cross the new
-facade. The disposable legacy adapter owns the one file-input, play-button, and rate-control
-listeners. `sansbass:transport` remains a temporary exact-clock adapter for the two notes
-sonifiers. The lowercase `window.sansBass` bridge remains only for named notes/separation
-service operations and the browser harness; it is migration debt, not the public ESM API.
+`app.js` remains authoritative for decoded tracks, song/transport/routing state, audio, and
+all player regions after loading. It publishes stable status keys rather than writing the
+React-owned status node. The disposable legacy adapter owns only the play-button and
+playback-rate listeners. `sansbass:transport` remains a temporary exact-clock adapter for the
+two notes sonifiers. The lowercase `window.sansBass` bridge remains only for named
+notes/separation service operations and browser-harness application/shell/legacy-control
+lifecycle checks; it is migration debt, not the public ESM API.
 
 `npm run dev` and `npm run build` first generate `demos/index.html` from files directly
 inside `public/demos/`. Vite bundles the generated list as an entry and copies the demo
@@ -139,10 +141,10 @@ index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
 lib/stems.js                       stem identity — ESM, no window bridge
 lib/unzip.js                       zip reading — ESM, no window bridge
 lib/player-application.js          DOM-independent player commands, snapshots and lifecycle
-lib/legacy-player-controls.js      disposable adapter for unchanged legacy load/transport UI
+lib/legacy-player-controls.js      disposable adapter for unchanged legacy play/rate UI
 lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
-lib/header.js                      legacy player header and language controls
-components/{DemoHeader.jsx,useLocale.js}  React demo header + cleaned locale subscription
+components/{SiteHeader,DemoHeader,PlayerShell}.jsx  React headers + player loading shell
+components/useLocale.js            cleaned React locale subscription
 demos.jsx                          demo React mount plus legacy title/count localization
 scripts/build-demos.js             generates the ignored demos/index.html before dev/build
 public/demos/                      explicitly published HTML demos; source files are committed

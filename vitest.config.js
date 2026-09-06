@@ -26,7 +26,6 @@ const NODE_TESTS = [
 const JSDOM_TESTS = [
   'tests/analytics.test.js',
   'tests/i18n.test.js',
-  'tests/header.test.js',
   'tests/demo-header.test.jsx',
 ];
 
@@ -54,6 +53,11 @@ export default defineConfig({
         },
       },
       {
+        optimizeDeps: {
+          // The production player imports React inside the browser page that hosts Vitest.
+          // Pre-bundle one copy before the first iframe to keep one hook dispatcher.
+          include: ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime'],
+        },
         test: {
           name: 'browser',
           include: BROWSER_TESTS,

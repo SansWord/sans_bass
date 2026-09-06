@@ -13,7 +13,7 @@ const escape = (text) => text.replace(/[&<>"']/g, (char) => ({
 const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD']).toString().trim();
 const items = files.map((name) => `<li><a href="./${escape(encodeURIComponent(name))}">${escape(name)}</a></li>`).join('\n');
 
-// The list is a Vite entry so its shared i18n module gets bundled and hashed.
+// The list is a Vite entry so its React header and shared i18n module get bundled and hashed.
 const output = new URL('../demos/', import.meta.url);
 await mkdir(output, { recursive: true });
 await writeFile(new URL('index.html', output), `<!doctype html>
@@ -22,7 +22,7 @@ await writeFile(new URL('index.html', output), `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Demos — sans_bass</title>
-  <script type="module" src="../demos.js"></script>
+  <script type="module" src="../demos.jsx"></script>
   <link rel="stylesheet" href="../styles.css">
   <style>
     .demo-content, .demo-footer { max-width: 820px; margin: 0 auto; padding: 32px 20px; }

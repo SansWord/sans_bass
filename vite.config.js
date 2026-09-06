@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 // Identifies exactly which commit is live on a given deploy (dev, PR preview, or main) —
 // the same "observe the real thing, not a hand-maintained proxy for it" reasoning that
@@ -9,6 +10,7 @@ import { defineConfig } from 'vite';
 const COMMIT_SHA = execSync('git rev-parse --short HEAD').toString().trim();
 
 export default defineConfig({
+  plugins: [react()],
   define: {
     __COMMIT_SHA__: JSON.stringify(COMMIT_SHA),
   },

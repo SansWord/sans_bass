@@ -1,0 +1,151 @@
+{
+  "collectedUTC": "2026-09-06T00:16:17.706Z",
+  "sourceSha": "b9b5670",
+  "checks": [
+    "Temporary Unicode/space HTML demo is encoded, listed, copied unchanged, and opens; non-HTML is excluded",
+    "Removing the fixture and rebuilding removes its list item and stale dist export",
+    "/ desktop en: saved boot/switch/reload, responsive header, demo/capo, and player-back path",
+    "/ desktop zh-TW: saved boot/switch/reload, responsive header, demo/capo, and player-back path",
+    "/ narrow en: saved boot/switch/reload, responsive header, demo/capo, and player-back path",
+    "/ narrow zh-TW: saved boot/switch/reload, responsive header, demo/capo, and player-back path",
+    "/: blocked storage boots and switches both locales",
+    "/pr-phase-1/ desktop en: saved boot/switch/reload, responsive header, demo/capo, and player-back path",
+    "/pr-phase-1/ desktop zh-TW: saved boot/switch/reload, responsive header, demo/capo, and player-back path",
+    "/pr-phase-1/ narrow en: saved boot/switch/reload, responsive header, demo/capo, and player-back path",
+    "/pr-phase-1/ narrow zh-TW: saved boot/switch/reload, responsive header, demo/capo, and player-back path",
+    "/pr-phase-1/: blocked storage boots and switches both locales"
+  ],
+  "screens": [
+    {
+      "layout": "desktop",
+      "locale": "en",
+      "inner": 1440,
+      "scroll": 1440
+    },
+    {
+      "layout": "desktop",
+      "locale": "zh-TW",
+      "inner": 1440,
+      "scroll": 1440
+    },
+    {
+      "layout": "narrow",
+      "locale": "en",
+      "inner": 390,
+      "scroll": 390
+    },
+    {
+      "layout": "narrow",
+      "locale": "zh-TW",
+      "inner": 390,
+      "scroll": 390
+    }
+  ],
+  "demoStartup": [
+    {
+      "readyMs": 44.89999997615814,
+      "domContentLoadedMs": 20.80000001192093,
+      "jsTransferBytes": 219704
+    },
+    {
+      "readyMs": 44.60000002384186,
+      "domContentLoadedMs": 20.600000023841858,
+      "jsTransferBytes": 219704
+    },
+    {
+      "readyMs": 44.5,
+      "domContentLoadedMs": 20.700000047683716,
+      "jsTransferBytes": 219704
+    },
+    {
+      "readyMs": 44.10000002384186,
+      "domContentLoadedMs": 20.200000047683716,
+      "jsTransferBytes": 219704
+    },
+    {
+      "readyMs": 45.39999997615814,
+      "domContentLoadedMs": 20.899999976158142,
+      "jsTransferBytes": 219704
+    }
+  ],
+  "playerStartup": [
+    {
+      "readyMs": 32.30000001192093,
+      "domContentLoadedMs": 17.100000023841858,
+      "jsTransferBytes": 144885
+    },
+    {
+      "readyMs": 33.10000002384186,
+      "domContentLoadedMs": 17.69999998807907,
+      "jsTransferBytes": 144885
+    },
+    {
+      "readyMs": 34.60000002384186,
+      "domContentLoadedMs": 19.19999998807907,
+      "jsTransferBytes": 144885
+    },
+    {
+      "readyMs": 32.39999997615814,
+      "domContentLoadedMs": 16.80000001192093,
+      "jsTransferBytes": 144885
+    },
+    {
+      "readyMs": 35.5,
+      "domContentLoadedMs": 20.19999998807907,
+      "jsTransferBytes": 144885
+    }
+  ],
+  "errors": [],
+  "origin": "http://127.0.0.1:8781",
+  "browser": "151.0.7922.34",
+  "buildLog": "\n> prebuild\n> node scripts/build-demos.js\n\nGenerated demos/index.html with 1 demo(s).\n\n> build\n> vite build\n\nvite v8.2.2 building client environment for production...\ntransforming...\n✓ 54 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/assets/favicon-32-D9nVlJ2I.png               0.59 kB\ndist/tests/parity.html                            0.73 kB │ gzip:  0.49 kB\ndist/assets/icon-CNNK3h42.svg                     1.13 kB │ gzip:  0.56 kB\ndist/demos/index.html                             1.59 kB │ gzip:  0.78 kB\ndist/assets/apple-touch-icon-BWNmolE4.png         2.73 kB\ndist/tests/notes.html                             2.81 kB │ gzip:  1.22 kB\ndist/assets/separate.worker-Bxzm2fuX.js           3.30 kB\ndist/assets/stretch-processor-DLrhpEqN.js         3.51 kB\ndist/assets/notes.worker-Ch3qR4G6.js              4.75 kB\ndist/index.html                                  18.86 kB │ gzip:  5.19 kB\ndist/assets/i18n-CQaGsfGb.css                    13.08 kB │ gzip:  3.60 kB\ndist/assets/modulepreload-polyfill-P2Xu9kJm.js    0.67 kB │ gzip:  0.38 kB\ndist/assets/parity-BJfU48Ny.js                    2.59 kB │ gzip:  1.42 kB\ndist/assets/notes-cSJ17bY2.js                     6.39 kB │ gzip:  2.97 kB\ndist/assets/stretch-processor.js                 12.53 kB │ gzip:  3.55 kB\ndist/assets/sonify-D8HC-ICE.js                   14.56 kB │ gzip:  6.04 kB\ndist/assets/i18n-E_dpI1ud.js                     26.06 kB │ gzip:  9.97 kB\ndist/assets/main-mvakedDx.js                    102.38 kB │ gzip: 34.38 kB\ndist/assets/demos-BEyHPiUx.js                   192.06 kB │ gzip: 60.79 kB\n\n✓ built in 93ms\n",
+  "emittedJs": {
+    "files": [
+      {
+        "name": "demos-BEyHPiUx.js",
+        "bytes": 192069
+      },
+      {
+        "name": "i18n-E_dpI1ud.js",
+        "bytes": 26065
+      },
+      {
+        "name": "main-mvakedDx.js",
+        "bytes": 102389
+      },
+      {
+        "name": "modulepreload-polyfill-P2Xu9kJm.js",
+        "bytes": 670
+      },
+      {
+        "name": "notes-cSJ17bY2.js",
+        "bytes": 6396
+      },
+      {
+        "name": "notes.worker-Ch3qR4G6.js",
+        "bytes": 4759
+      },
+      {
+        "name": "parity-BJfU48Ny.js",
+        "bytes": 2598
+      },
+      {
+        "name": "separate.worker-Bxzm2fuX.js",
+        "bytes": 3301
+      },
+      {
+        "name": "sonify-D8HC-ICE.js",
+        "bytes": 14561
+      },
+      {
+        "name": "stretch-processor-DLrhpEqN.js",
+        "bytes": 3512
+      },
+      {
+        "name": "stretch-processor.js",
+        "bytes": 12534
+      }
+    ],
+    "totalBytes": 368854
+  }
+}

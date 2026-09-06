@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 1](#react-phase-1--isolated-demo-header-pilot-2026-09-05) | React now solely owns the demo header with cleaned locale subscriptions; the player and audio remain legacy-owned. |
 | [Meta](#meta--tiered-deployment-verification-2026-09-05) | PR previews prove the affected behavior; production normally gets a compact delivery canary. Full two-origin, real-song, model, visual, and device checks now run when their boundary changed or at release acceptance. |
 | [React phase 0](#react-phase-0--baseline-inventory-2026-09-05) | Recorded ownership, automated, screenshot and local-build baselines; use ownership progress instead of mandatory LOC accounting. |
 | [v1.34.0](#v1340--automatically-listed-html-demos-2026-09-05) | HTML files in `public/demos/` publish with an automatically generated `/demos/` list on every build. |
@@ -96,6 +97,31 @@ Running log of what was built and what was learned building it.
 - [note] This is a verification-process change only. CI, preview publication, main publication,
   and the detailed release scenarios remain intact. `CLAUDE.md`, `docs/testing.md`,
   `docs/behaviour.md`, `docs/deployment.md`, and the React migration plan now use the same rule.
+
+## React phase 1 — isolated demo header pilot (2026-09-05)
+
+- [note] React 19 and the Vite React plugin now power one production component:
+  `components/DemoHeader.jsx`. It owns only the demo page's header descendants. The player
+  keeps `lib/header.js`; audio, analysis, canvas, Workers, and export data do not enter React.
+- [insight] `useSyncExternalStore` is the narrow adapter for the existing i18n singleton.
+  React renders its own translated copy without `data-i18n`, while the legacy document walk
+  continues to own the list content. Strict Mode and explicit mount disposal leave no stale
+  locale subscriptions across a development remount.
+- [note] The local gate passed 385 tests and the production build, plus isolated normal/nested
+  Chromium checks for both languages, saved/blocked storage, 1440/390px layouts, discovery
+  add/remove, an unchanged demo export/capo selector, player-back navigation, and clean page/
+  HTTP errors. Four reviewed images and raw timing/build output are in the migration evidence.
+- [insight] The React foundation adds 190,485 emitted JavaScript bytes, nearly all in the
+  demo-only entry (192,069 B, 60.79 kB gzip). The player does not load that entry: its measured
+  startup transfer fell 0.9% in noise-level chunk factoring. This isolated route cost is the
+  explicit pilot tradeoff, to reassess once player components share the runtime.
+- [note] PR #65's nested preview passed the full deployed tier at displayed merge SHA
+  `7de7869`: locale persistence, the generated listing and capo export, real-song playback/
+  routing/95% speed, Worker note detection and list export, and cached-model six-stem
+  separation all worked with nested hashed assets and no first-party console/status errors.
+  The uncached model, physical-device, exhaustive malformed-input, background, subjective
+  visual, and auditory cases remain explicitly separate. Merge and the equivalent production
+  verification are still pending.
 
 ## React phase 0 — baseline inventory (2026-09-05)
 

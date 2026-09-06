@@ -1,5 +1,145 @@
 # React migration evidence
 
+## Phase 1 — isolated React demo header pilot
+
+Status: implementation, local exit gate, and PR-preview verification complete; merge and
+production verification pending. Evidence collected 2026-09-05 America/Los_Angeles
+(2026-09-06 UTC). Implementation source: `b9b5670`; branch `feat/react-demo-pilot`.
+Delivery review: [PR #65](https://github.com/SansWord/sans_bass/pull/65). The pre-existing
+untracked `demo.md` remains outside the slice.
+
+### Bounded plan
+
+1. Give React sole ownership of the demo page's header descendants, leaving the player
+   header, demo discovery/list content, audio, Workers, and canvas UI unchanged.
+2. Add React/React DOM plus the Vite React plugin and a JSX demo entry without changing the
+   multi-page, relative-base, build-SHA, Worker, or AudioWorklet boundaries.
+3. Subscribe to the existing i18n store through one cleaned hook; expose one mount disposer
+   covering both React and the still-legacy demo title/count listener.
+4. Add jsdom outcome coverage, then exercise both languages, saved/blocked storage,
+   desktop/narrow layouts, demo discovery/exports, and normal/nested production builds.
+5. Compare the pilot's emitted JavaScript and startup observations with phase 0; because
+   entry composition/static assets changed, run the full deployed tier on PR and production.
+
+### Ownership and conventions
+
+`components/DemoHeader.jsx` is now the only runtime owner of every descendant of the demo
+page's `#site-header`: player link, demo link, repository link, language group, translated
+copy, and pressed/current-page state. The player page still uses `lib/header.js`, including
+its file-input move and legacy language listener. No React code loads on the player route.
+
+Locale state remains authoritative in `lib/i18n.js`. `components/useLocale.js` adapts its
+public `sansbass:langchange` event with `useSyncExternalStore`; unmount removes that listener.
+React-owned descendants deliberately carry no `data-i18n` annotations, so the legacy whole-
+document `apply()` traversal cannot write inside the React region. `demos.jsx` retains the
+legacy title/count write outside that region and returns one disposer that removes its event
+listener and unmounts the root. Vite hot disposal uses the same path. Strict Mode is enabled
+in development and production; tests prove the temporary double mount leaves one active hook
+subscription and that disposing/remounting returns the total active language-listener count
+from two to zero between mounts.
+
+The pilot reuses the established header classes in `styles.css`, avoiding a visual redesign.
+Future component-only styles should be imported beside their component; genuinely shared
+player/demo styles remain global. Build-time discovery, filename escaping/encoding, generated
+list markup, demo content, and `#build-sha` remain owned by `scripts/build-demos.js`.
+
+### Automated and local-build evidence
+
+Environment matches phase 0: Apple M4 Max, macOS 26.6.2, Node v26.7.0, npm 11.19.0,
+Vitest 4.1.11, Vite 8.2.2, Playwright headless Chromium **151.0.7922.34**.
+
+| Command / boundary | Result |
+|---|---|
+| Failing-first targeted test | Failed because `components/DemoHeader.jsx` did not exist |
+| `npx vitest run --project jsdom tests/demo-header.test.jsx tests/header.test.js` | 2 files, 6 tests passed |
+| `npm test` | 31 files, 385 tests passed, 1.83 s |
+| `npm run build` | Passed; 54 modules transformed, 106 ms; existing intentional stretch-processor URL warning only |
+| `git diff --check` | Passed |
+| `node docs/react-phase-1/verify.mjs docs/react-phase-1/artifacts` | Passed; normal/nested static mounts, 12 recorded route/layout/locale/storage checks, no page/HTTP errors |
+
+The first sandboxed full-suite attempt passed the 332 Node/jsdom assertions it reached but
+could not bind the Chromium server (`listen EPERM ::1`). The permitted retry passed all 385
+tests. This is the same environment restriction recorded in phase 0, not an application
+failure. The jsdom tests retain Node's experimental localStorage warning.
+
+[Raw Phase 1 report](react-phase-1/artifacts/report.json) and four reviewed full-page images
+retain the exact checks and samples:
+[desktop English](react-phase-1/artifacts/desktop-en-demos.png),
+[desktop Chinese](react-phase-1/artifacts/desktop-zh-TW-demos.png),
+[narrow English](react-phase-1/artifacts/narrow-en-demos.png), and
+[narrow Chinese](react-phase-1/artifacts/narrow-zh-TW-demos.png).
+At 1440×900 and 390×844, both locales retained the phase-0 header/list appearance and had
+no document-level horizontal overflow. This is reviewed visual evidence, not pixel equality.
+
+The isolated harness uses a temporary copy. It adds a Unicode/space/ampersand HTML demo and
+a non-HTML file, proves only the HTML entry is encoded/listed/copied and opens, removes both,
+rebuilds, and proves the list plus `dist/` are clean. At `/` and `/pr-phase-1/`, desktop and
+narrow runs boot from each saved locale, switch and persist the other locale across reload,
+retain active-page/relative-link semantics, open the committed export, exercise its capo
+selector, return to the player, and find exactly one player file input. Separate contexts
+with throwing storage boot and switch both locales. External requests are blocked.
+
+### Phase-0 performance comparison
+
+Fresh browser contexts, local static server with `Cache-Control: no-store`, five samples;
+no CPU/network throttling. Resource Timing transfer includes HTTP overhead. Values are local
+comparison signals, not user-facing budgets.
+
+| Measurement | Phase 0 | Phase 1 | Change / interpretation |
+|---|---:|---:|---|
+| All emitted `dist/assets/*.js` | 178,369 B | 368,854 B | +190,485 B (+106.8%); React foundation is isolated in the demo entry |
+| Demo entry emitted JS | 319 B | 192,069 B | +191,750 B; React/React DOM dominate, accepted as the explicit foundation cost |
+| Player startup JS transfer | 146,150 B | 144,885 B | −1,265 B (−0.9%); chunk factoring noise, no React route load |
+| Player DOMContentLoaded median | 19.9 ms | 17.7 ms | −2.2 ms; noise-level, no regression indicated |
+| Player ready median | 35.8 ms | 33.1 ms | −2.7 ms; noise-level, no regression indicated |
+| Demo DOMContentLoaded median | not captured in phase 0 | 20.7 ms | New pilot reference |
+| Demo React-header ready median | not captured in phase 0 | 44.6 ms | New pilot reference |
+| Demo startup JS transfer | not captured in phase 0 | 219,704 B | New pilot reference |
+
+The size increase was investigated: the new demo entry is the only route importing
+`react-dom/client`; player HTML does not reference the demo/React chunk, and its measured
+startup transfer did not increase. A CDN would trade local static reliability and privacy
+for a smaller repository build, while a compatibility substitute would not demonstrate the
+requested React architecture. The isolated route cost is accepted for this migration pilot
+and should be revisited when player components begin sharing that runtime.
+
+### PR-preview deployment evidence
+
+The full deployed tier ran in Chrome against the nested PR preview at
+`https://sansword.github.io/sans_bass/pr-65/`. The preview displayed synthetic merge SHA
+`7de7869` before any product assertion; branch head was `b157e08`. Hashed scripts and worker
+assets resolved below `/pr-65/assets/`, and the app logged no first-party warning or error.
+
+| Boundary | Preview result |
+|---|---|
+| Pilot/demo route | Header/list booted with build SHA `7de7869`, no horizontal overflow; English/Chinese switch worked and English persisted across reload |
+| Published export | Opened from the generated listing; capo `0`→`3` changed the first chord `Fm`→`Dm` and play key `D#`→`C`; return navigation found exactly one player file input |
+| Real-song path | `examples/nov_you.zip` loaded locally as 4:23 with six named lanes; trusted click advanced playback, bass mute changed custom routing, and 95% speed played without status error |
+| Analysis/export | Real notes Worker produced 374 vocal and 357 bass notes at 48.0 BPM / 54% confidence; the visible vocal list export was invoked without page or status error |
+| Cached-model separation | A locally generated 1.25-second WAV separated through the cached model into six named stems; save-stems became available and `separate.worker-Bxzm2fuX.js` was observed |
+| Nested dynamic assets | `notes.worker-Ch3qR4G6.js` was observed after detection; 95% playback exercised the production AudioWorklet path with an empty status and clean first-party console |
+
+The uncached 285 MB model download remained opt-in and was not run because the cached-model
+path was available. Physical handheld, background-end/loop timing, exhaustive malformed-input,
+subjective visual, and auditory scenarios were not run and are not implied by this deployed
+smoke. The committed real-song fixture and generated short WAV are deployment evidence, not
+the full behaviour matrix.
+
+### Exit gate and remaining delivery work
+
+The local Phase 1 exit gate is met: both languages, saved/blocked storage, desktop/narrow
+layout, normal/nested build paths, discovery/removal, demo export/capo, relative navigation,
+build SHA, React cleanup/remount behavior, and baseline performance comparison have direct
+evidence. The player header and every audio/data UI region remain legacy-owned, so the pilot
+does not create a competing owner or couple React to audio.
+
+The PR-preview half of the required full deployed tier is complete. Because this slice adds
+JSX/plugin entry composition and changes static assets, merge remains gated on green PR checks;
+the same full smoke must then pass on the production root at the deployed `main` SHA. Rollback
+is reverting the pilot commits; there is no data migration. Next bounded slice after production
+acceptance: Phase 2's player command/subscription boundary, with the legacy player UI unchanged
+first.
+
 ## Phase 0 — automated, ownership, visual and local-build baseline
 
 Status: phase-0 baseline recorded locally, with the omissions below. No React migration

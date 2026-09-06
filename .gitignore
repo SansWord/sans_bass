@@ -11,6 +11,9 @@ stems/**
 # Local Claude Code settings
 .claude/settings.local.json
 
+# Personal Codex command approvals
+.codex/rules/default.rules
+
 # Superpowers brainstorm scratch (visual companion mockups)
 .superpowers/
 

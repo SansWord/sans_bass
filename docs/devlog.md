@@ -112,6 +112,12 @@ Running log of what was built and what was learned building it.
   English switch, and carried saved English to `/demos/`. Its first-party console was clean.
   Preview, production, subjective auditory, physical handheld, and real Worker/model evidence
   remain pending or explicitly separate; Phase 3 is not complete.
+- [note] PR #73's initial `test` and `deploy` checks passed. Its preview displayed exact
+  synthetic merge `b6bf4b5`, loaded the 4:23 six-stem fixture, exercised genuine-keyboard
+  play/seek and focused-control exclusion, exposed a 1.5s A–B loop, preserved loaded state and
+  one-owner counts across a locale switch, carried saved Traditional Chinese to `/demos/`,
+  rendered cleanly in desktop review, and kept a clean first-party console. The evidence
+  refresh still needs its own final checks and exact-SHA canary before merge.
 
 ---
 

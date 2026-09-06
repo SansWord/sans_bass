@@ -6,8 +6,8 @@
  * INTERPRETATION (interpret()) runs here on the main thread, because at ~12 ms it is
  * cheaper to run than to message, and that is what lets a slider re-derive live.
  *
- * A module, so it cannot share scope with app.js. It talks to the player only through
- * window.sansBass, exactly as separate.js does.
+ * The player application facade supplies song identity/lifecycle. The remaining audio,
+ * ribbon, and persistence operations still use the temporary window.sansBass bridge.
  *
  * Two independent channels — one per note-capable stem — are created at the bottom of this
  * file. Everything that is genuinely per-song state (frames, notes, edits, jianpu, the
@@ -27,6 +27,7 @@ import { detectChordTimeline } from './lib/chords.js';
 import { chordDetectionReady, detectionView } from './lib/detection-state.js';
 import { addBatch, undoBatch } from './lib/editor-state.js';
 import { STEM_WORD, exportTimestamp, jianpuExportFilename, jianpuHtml } from './lib/jianpu-html.js';
+import { playerApplication } from './lib/player-application.js';
 
 const tr = (key, params) => SansI18n.t(key, params);
 
@@ -150,7 +151,9 @@ function scheduleChordDetection() {
     return;
   }
   publishChords('detecting');
+  const songToken = playerApplication.currentSongToken();
   chordTimer = setTimeout(() => {
+    if (!playerApplication.isCurrentSongToken(songToken)) return;
     const harmonic = mixDown(loaded.map((source) => source.buffer));
     const duration = harmonic.samples.length / harmonic.sampleRate;
     const bass = channels.find((channel) => channel.stem === 'bass')?.chordSource();
@@ -277,8 +280,10 @@ tempoEl.redetect.addEventListener('click', () => {
   const drums = currentTempoRangeChannels();
   if (!drums) return;
   const w = new Worker(new URL('./notes.worker.js', import.meta.url), { type: 'module' });
+  const songToken = playerApplication.currentSongToken();
   tempoEl.redetect.disabled = true;
   w.onmessage = (e) => {
+    if (!playerApplication.isCurrentSongToken(songToken)) { w.terminate(); return; }
     w.terminate();
     if (e.data.type === 'tempo') applyTempoResult(e.data.tempo);
     else if (e.data.type === 'error') window.sansBass.say('notes.failed', { message: e.data.message }, true);
@@ -286,6 +291,7 @@ tempoEl.redetect.addEventListener('click', () => {
     reinterpretAll();
   };
   w.onerror = (e) => {
+    if (!playerApplication.isCurrentSongToken(songToken)) { w.terminate(); return; }
     w.terminate();
     window.sansBass.say('notes.failed', { message: e.message || 'worker error' }, true);
     syncTempoControls();
@@ -554,10 +560,17 @@ function createNotesChannel(stem, els) {
 
     const drums = currentTempoRangeChannels();
 
-    worker = new Worker(new URL('./notes.worker.js', import.meta.url), { type: 'module' });
-    worker.onmessage = (e) => {
+    const songToken = playerApplication.currentSongToken();
+    const runWorker = new Worker(new URL('./notes.worker.js', import.meta.url), { type: 'module' });
+    worker = runWorker;
+    runWorker.onmessage = (e) => {
+      if (worker !== runWorker || !playerApplication.isCurrentSongToken(songToken)) {
+        runWorker.terminate();
+        if (worker === runWorker) worker = null;
+        return;
+      }
       const m = e.data;
-      worker.terminate();
+      runWorker.terminate();
       worker = null;
       if (m.type === 'error') {
         window.sansBass.say('notes.failed', { message: m.message }, true);
@@ -577,8 +590,14 @@ function createNotesChannel(stem, els) {
       // channel (if it already has frames) must also pick up the fresh grid.
       reinterpretAll();
     };
-    worker.onerror = (e) => {
-      if (worker) { worker.terminate(); worker = null; }
+    runWorker.onerror = (e) => {
+      if (worker !== runWorker || !playerApplication.isCurrentSongToken(songToken)) {
+        runWorker.terminate();
+        if (worker === runWorker) worker = null;
+        return;
+      }
+      runWorker.terminate();
+      worker = null;
       window.sansBass.say('notes.failed', { message: e.message || 'worker error' }, true);
     };
     analysedBuffer = buffer;
@@ -650,8 +669,7 @@ function createNotesChannel(stem, els) {
     }
     syncTips();
   });
-  /* The player broadcasts its transport because app.js is a classic script and this file is
-   * a module — the same seam the language switch uses. */
+  /* Temporary exact-clock transport adapter; phase 2 records this notes.js consumer. */
   window.addEventListener('sansbass:transport', (e) => {
     if (!e.detail.playing) {
       if (sonifier) { sonifier.stop(); sonifier = null; }
@@ -791,9 +809,14 @@ function createNotesChannel(stem, els) {
     return hasFrames() || !jianpu.auto ? { tonicPc: jianpu.tonic, mode: jianpu.mode } : null;
   }
 
+  function dispose() {
+    if (sonifier) { sonifier.stop(); sonifier = null; }
+    if (worker) { worker.terminate(); worker = null; }
+  }
+
   return {
     refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, state, stem,
-    hasFrames, exportEntry, importEntry, chordSource, keySource,
+    hasFrames, exportEntry, importEntry, chordSource, keySource, dispose,
   };
 }
 
@@ -921,14 +944,17 @@ window.addEventListener('sansbass:exportedits', () => {
 window.addEventListener('sansbass:importedits', async (e) => {
   const file = e.detail.file;
   if (!file) return;
+  const songToken = playerApplication.currentSongToken();
 
   let data;
   try {
     data = JSON.parse(await file.text());
   } catch (err) {
+    if (!playerApplication.isCurrentSongToken(songToken)) return;
     window.sansBass.say('notes.importFailed', { message: err.message }, true);
     return;
   }
+  if (!playerApplication.isCurrentSongToken(songToken)) return;
 
   const plan = planImport(data, channels.map((c) => c.stem));
   if (!plan.ok) {
@@ -974,5 +1000,10 @@ function refreshAll() {
   for (const c of channels) c.refresh();
   syncGoAll();
 }
-setInterval(refreshAll, 400);
+const refreshTimer = setInterval(refreshAll, 400);
+playerApplication.registerCleanup(() => {
+  clearInterval(refreshTimer);
+  clearTimeout(chordTimer);
+  for (const channel of channels) channel.dispose();
+});
 refreshAll();

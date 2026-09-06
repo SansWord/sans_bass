@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 2](#react-phase-2--player-command-and-subscription-boundary-2026-09-05) | The unchanged player UI now loads and controls transport through one observable ESM application facade, with disposable UI wiring and stale song/Worker barriers; deployment acceptance is pending. |
 | [React phase 1](#react-phase-1--isolated-demo-header-pilot-2026-09-05) | React now solely owns the demo header with cleaned locale subscriptions; the player and audio remain legacy-owned. |
 | [Meta](#meta--tiered-deployment-verification-2026-09-05) | PR previews prove the affected behavior; production normally gets a compact delivery canary. Full two-origin, real-song, model, visual, and device checks now run when their boundary changed or at release acceptance. |
 | [React phase 0](#react-phase-0--baseline-inventory-2026-09-05) | Recorded ownership, automated, screenshot and local-build baselines; use ownership progress instead of mandatory LOC accounting. |
@@ -76,6 +77,42 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## React phase 2 — player command and subscription boundary (2026-09-05)
+
+- [note] Added `lib/player-application.js`: explicit initialization, stable immutable
+  snapshots, load/play/pause/toggle/seek/rate/replacement commands, command errors,
+  idempotent subscriptions, song-operation identity, service cleanup, and application
+  disposal. `app.js` still owns every decoded buffer, transport value, audio node, and player
+  DOM region; the snapshot is a read-only projection, not a competing store.
+- [insight] The safe migration seam is UI unmount versus application disposal, not a single
+  generic cleanup. `lib/legacy-player-controls.js` can detach/remount the one file input,
+  play button, and rate control without resetting the song, closing the AudioContext, or
+  duplicating source starts. Disposal separately invalidates work, stops the graph/drawing,
+  terminates registered services, and closes audio.
+- [gotcha] Buffer identity plus a 400 ms poll is not a stale-result barrier. A ZIP extract,
+  parallel decode, note Worker, separation Worker, deferred chord pass, tempo re-detection,
+  or edits import can finish in the gap after a new selection. The application now advances
+  a token before replacement begins; every asynchronous completion checks it, and note
+  handlers also capture the exact Worker instance so an old callback cannot clear a newer run.
+- [note] The exact-clock `sansbass:transport` event remains temporarily for the two note
+  sonifiers, and `window.sansBass` remains for named notes/separation operations plus the
+  browser harness. Loading and transport production UI use the ESM facade; no React player,
+  router, TypeScript, global state library, redesign, or DSP change was introduced.
+- [note] Failing-first and targeted tests cover the facade, legacy remount, one real input,
+  generated folder/partial/unequal WAV+ZIP fixtures, replacement, synchronized starts,
+  play/pause/seek/loop/rate, bilingual command errors, stale decode/notes/separation results,
+  repeat file selection, and disposal. The full local gate passes 399 tests and the production
+  build. Emitted JS is 374,997 bytes versus Phase 1's 368,854 (+6,143, +1.7%); five no-store
+  samples put player startup transfer at 151,028 bytes (+4.2% including HTTP overhead), with
+  1.0 ms median DOMContentLoaded and 0.6 ms ready-time differences. React remains absent from
+  player startup.
+- [note] PR preview, displayed SHA, nested Worker/AudioWorklet, real-song, cached-model,
+  merge, exact production SHA, and production verification remain required before Phase 2 is
+  accepted. Uncached-model, physical-handheld, background, subjective visual, and auditory
+  cases remain separately reported skips unless actually run.
 
 ---
 

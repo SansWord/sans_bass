@@ -1,11 +1,185 @@
 import { jianpuHtml } from '../lib/jianpu-html.js';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installFakeWorker, instrumentAudio, loadSong, loadZip, openPlayer, waitFor } from './helpers/player-harness.js';
+import { sine, stemsZip, wavFile } from './helpers/audio-fixtures.js';
 
 let player;
 afterEach(() => player?.close());
 
 describe('production player integration', () => {
+  it('initializes one observable application without loading a song', async () => {
+    player = await openPlayer();
+    const application = player.win.sansBass.application;
+    expect(application.getSnapshot()).toMatchObject({
+      lifecycle: 'ready', song: null, loading: false,
+      transport: {
+        playing: false, position: 0, duration: 0, playbackRate: 1, loopA: null, loopB: null,
+      },
+    });
+    expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
+  });
+
+  it('keeps one real file input reusable for the same file selection', async () => {
+    player = await openPlayer();
+    const blob = await stemsZip({ vocals: 440, bass: 110 }, { folder: 'Repeat' });
+    const file = new player.win.File([await blob.arrayBuffer()], 'repeat.zip', { type: 'application/zip' });
+    const transfer = new player.win.DataTransfer();
+    transfer.items.add(file);
+    const input = player.doc.getElementById('file-input');
+    Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+
+    input.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    await waitFor(() => player.win.sansBass.application.getSnapshot().song?.title === 'Repeat', 'first selection');
+    const firstId = player.win.sansBass.application.getSnapshot().song.id;
+    expect(input.value).toBe('');
+
+    input.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    await waitFor(() => player.win.sansBass.application.getSnapshot().song?.id !== firstId, 'repeat selection');
+    expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
+    expect(player.win.sansBass.application.getSnapshot().song.title).toBe('Repeat');
+  });
+
+  it('unsubscribes and remounts legacy controls without resetting the song or duplicating playback', async () => {
+    player = await openPlayer();
+    const audio = instrumentAudio(player.win);
+    await loadZip(player, { vocals: 440, bass: 110 });
+    const application = player.win.sansBass.application;
+    const song = application.getSnapshot().song;
+    const listener = vi.fn();
+    const unsubscribe = application.subscribe(listener);
+    application.publish();
+    unsubscribe();
+    application.publish();
+    expect(listener).toHaveBeenCalledOnce();
+
+    player.win.sansBass.legacyControls.unmount();
+    player.win.sansBass.legacyControls.remount();
+    player.win.sansBass.legacyControls.remount();
+    expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
+    expect(application.getSnapshot().song).toEqual(song);
+
+    player.doc.getElementById('play').click();
+    await waitFor(() => audio.starts.length === 2, 'one source per loaded stem');
+    expect(audio.starts[0][0]).toBe(audio.starts[1][0]);
+    expect(application.getSnapshot().transport.playing).toBe(true);
+  });
+
+  it('loads, replaces, and controls transport through application commands', async () => {
+    player = await openPlayer();
+    const audio = instrumentAudio(player.win);
+    await loadZip(player, { vocals: sine(440, 0.2), bass: sine(110, 0.12) }, { folder: 'First' });
+    const application = player.win.sansBass.application;
+    expect(application.getSnapshot().song.title).toBe('First');
+
+    await application.commands.play();
+    expect(audio.starts).toHaveLength(2);
+    expect(audio.starts[0][0]).toBe(audio.starts[1][0]);
+    application.commands.pause();
+    expect(application.getSnapshot().transport.playing).toBe(false);
+    application.commands.seek(0.03);
+    expect(application.getSnapshot().transport.position).toBeCloseTo(0.03, 2);
+    application.commands.setPlaybackRate(0.95);
+    expect(application.getSnapshot().transport.playbackRate).toBe(0.95);
+
+    application.commands.seek(0);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    application.commands.seek(0.04);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: 0, loopB: null });
+    application.commands.seek(0.15);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: 0, loopB: 0.15 });
+
+    await loadZip(player, { drums: 120, guitar: 220 }, { folder: 'Second' });
+    await waitFor(() => player.doc.getElementById('title').textContent === 'Second', 'replacement song');
+    expect(application.getSnapshot()).toMatchObject({
+      song: { title: 'Second' },
+      transport: { playing: false, position: 0, playbackRate: 1 },
+    });
+  });
+
+  it('reports invalid command input without disabling later controls', async () => {
+    player = await openPlayer();
+    const application = player.win.sansBass.application;
+    expect(() => application.commands.seek(Number.NaN)).toThrow(/finite number/);
+    expect(application.getSnapshot().commandError).toMatchObject({ command: 'seek' });
+    expect(player.doc.getElementById('status').textContent).toContain('finite number');
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    expect(() => application.commands.setPlaybackRate(Number.NaN)).toThrow(/finite number/);
+    expect(player.doc.getElementById('status').textContent).toContain('播放器指令失敗');
+    player.doc.querySelector('#lang-toggle [data-lang="en"]').click();
+    await loadSong(player);
+    expect(application.getSnapshot().song.title).toBe('song');
+  });
+
+  it('retains usable generated stems when another archive entry cannot decode', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, bass: 110 }, {
+      folder: 'Partial', invalidAudio: { 'broken.wav': new Uint8Array([1, 2, 3, 4]) },
+    });
+    expect(player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)')).toHaveLength(2);
+    expect(player.doc.getElementById('status').textContent).toContain('broken.wav');
+    expect(player.win.sansBass.application.getSnapshot().song.title).toBe('Partial');
+  });
+
+  it('ignores a decoded song that finishes after a newer replacement', async () => {
+    player = await openPlayer();
+    const originalDecode = player.win.AudioContext.prototype.decodeAudioData;
+    let releaseFirst;
+    let decodeCount = 0;
+    player.win.AudioContext.prototype.decodeAudioData = function (bytes) {
+      if (decodeCount++ === 0) {
+        return new Promise((resolve, reject) => {
+          releaseFirst = () => originalDecode.call(this, bytes).then(resolve, reject);
+        });
+      }
+      return originalDecode.call(this, bytes);
+    };
+    const select = async (name, frequency) => {
+      const source = wavFile(name, sine(frequency, 0.04));
+      const file = new player.win.File([await source.arrayBuffer()], name, { type: 'audio/wav' });
+      const transfer = new player.win.DataTransfer();
+      transfer.items.add(file);
+      const input = player.doc.getElementById('file-input');
+      Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+      input.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    };
+
+    await select('old.wav', 110);
+    await waitFor(() => releaseFirst, 'first decode to be held');
+    await select('new.wav', 220);
+    await waitFor(() => player.doc.getElementById('title').textContent === 'new', 'new song');
+    releaseFirst();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(player.doc.getElementById('title').textContent).toBe('new');
+    expect(player.win.sansBass.application.getSnapshot().song.title).toBe('new');
+  });
+
+  it('ignores stale notes and separation Worker results after replacement or disposal', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 }, { folder: 'Analysed' });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    expect(workers).toHaveLength(1);
+
+    await loadSong(player, { filename: 'replacement.wav' });
+    workers[0].emit({ type: 'result', frames: [] });
+    expect(player.win.getComputedStyle(player.doc.getElementById('notes-vocals')).display).toBe('none');
+    expect(player.win.sansBass.application.getSnapshot().song.title).toBe('replacement');
+
+    player.doc.getElementById('sep-go').click();
+    expect(workers).toHaveLength(2);
+    player.win.sansBass.application.dispose();
+    const channel = () => new player.win.Float32Array(441);
+    workers[1].emit({ type: 'result', stems: Object.fromEntries(
+      ['vocals', 'guitar', 'bass', 'drums', 'piano', 'other'].map((stem) => [stem, { left: channel(), right: channel() }]),
+    ) });
+    expect(player.win.sansBass.application.getSnapshot().lifecycle).toBe('disposed');
+    expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
+  });
+
   it('changes exported capo and chords in empty bars without altering notes', async () => {
     const frame = document.createElement('iframe');
     const loaded = new Promise((resolve) => frame.onload = resolve);

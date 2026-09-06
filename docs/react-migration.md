@@ -1,6 +1,7 @@
 # Incremental React migration
 
-Status: phase 1 isolated demo pilot accepted in production; phase 2 not started.
+Status: phase 1 isolated demo pilot accepted in production; phase 2 implemented locally with
+deployment acceptance pending.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -117,6 +118,8 @@ PR. Revert that PR if needed; no audio or data migration is involved.
 ## Phase 2 — Establish the player boundary
 
 **Outcome:** UI controls can call player operations without importing DOM initialization.
+
+Bounded source-based implementation plan: [react-phase-2-plan.md](react-phase-2-plan.md).
 
 - Extract the smallest command/subscription interface needed for loading and transport,
   retaining existing algorithms and state modules. Keep the current UI using that interface
@@ -301,7 +304,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 |---|---|---|---|
 | 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
 | 1 | Accepted in production at `5de58b6` | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Complete; Phase 2 may begin |
-| 2 | Not started | — | Player boundary |
+| 2 | Local gate passed; deployment pending | [Plan](react-phase-2-plan.md) · [Evidence](react-migration-evidence.md#phase-2--player-command-and-subscription-boundary) | PR checks, preview, merge, and production verification |
 | 3 | Not started | — | Shell/loading/transport |
 | 4 | Not started | — | Lanes and waveform hosts |
 | 5 | Not started | — | Separation/detection controls |

@@ -20,6 +20,7 @@ const NODE_TESTS = [
   'separation-state',
   'editor-state',
   'jianpu-html',
+  'player-application',
 ].map((name) => `tests/${name}.test.js`);
 
 const JSDOM_TESTS = [

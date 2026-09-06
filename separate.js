@@ -7,6 +7,7 @@ import * as SansI18n from './lib/i18n.js';
 import * as SansPlatform from './lib/platform.js';
 import * as SansAnalytics from './lib/analytics.js';
 import { separationView } from './lib/separation-state.js';
+import { playerApplication } from './lib/player-application.js';
 
 const el = {
   panel:  document.getElementById('sep'),
@@ -29,6 +30,7 @@ let worker = null;
 let lastStems = null;
 let lastName = 'song';
 let phase = 'idle';
+let runToken = null;
 
 function renderControls(singleTrack = window.sansBass?.isSingleTrack?.()) {
   const view = separationView({ state: phase, singleTrack, handheld: HANDHELD });
@@ -71,9 +73,10 @@ function status(key, params) {
   el.status.textContent = key ? tr(key, resolve(params)) : '';
 }
 
-window.addEventListener('sansbass:langchange', () => {
+const retranslateStatus = () => {
   if (lastStatus) el.status.textContent = tr(lastStatus.key, resolve(lastStatus.params));
-});
+};
+window.addEventListener('sansbass:langchange', retranslateStatus);
 
 function busy(on) {
   phase = on ? 'running' : 'idle';
@@ -90,7 +93,25 @@ function getWorker() {
  * The panel is for a single unseparated track — but it must stay up after a successful
  * run, or the Save button vanishes 400 ms after the stems appear.
  */
-function refresh() {
+function refresh(snapshot = playerApplication.getSnapshot()) {
+  if (snapshot.loading) {
+    worker?.terminate();
+    worker = null;
+    runToken = null;
+    lastStems = null;
+    phase = 'idle';
+    setProgress(null);
+    status('');
+  }
+  if (runToken !== null && !playerApplication.isCurrentSongToken(runToken)) {
+    worker?.terminate();
+    worker = null;
+    runToken = null;
+    lastStems = null;
+    phase = 'idle';
+    setProgress(null);
+    status('');
+  }
   if (HANDHELD) {
     // Same visibility rule as below — the panel belongs to a single unseparated song —
     // but its contents are the explanation, and the controls never come back.
@@ -104,9 +125,9 @@ function refresh() {
 
   const single = window.sansBass?.isSingleTrack?.();
   if (single) {
-    phase = 'idle';
+    if (phase !== 'running' && phase !== 'success') phase = 'idle';
     renderControls(true);
-    lastStems = null;                 // a newly loaded song invalidates old results
+    if (phase !== 'success') lastStems = null;
   } else if (!lastStems) {
     renderControls(false);            // a stems folder was loaded directly
   }
@@ -131,6 +152,7 @@ el.go.addEventListener('click', () => {
     : mix.buffer.getChannelData(0)).slice();
 
   const w = getWorker();
+  runToken = playerApplication.currentSongToken();
   busy(true);
   status('sep.loadingModel');
   setProgress(0);
@@ -138,6 +160,7 @@ el.go.addEventListener('click', () => {
   // A worker killed by the OOM reaper never posts anything. Without this the UI
   // would sit on a progress bar for ever.
   w.onerror = (err) => {
+    if (w !== worker || !playerApplication.isCurrentSongToken(runToken)) return;
     gcTrack('separate-fail');
     phase = 'error';
     renderControls();
@@ -147,6 +170,7 @@ el.go.addEventListener('click', () => {
   };
 
   w.onmessage = (e) => {
+    if (w !== worker || !playerApplication.isCurrentSongToken(runToken)) return;
     const m = e.data;
     if (m.type === 'download') {
       status('sep.downloading', {
@@ -171,7 +195,8 @@ el.go.addEventListener('click', () => {
       renderControls(false);
       setProgress(null);
       status('');                      // the six lanes appearing is the confirmation
-      window.sansBass.loadSeparated({ name: lastName, buffer: mix.buffer }, m.stems);
+      runToken = null;                 // the result is complete before replacement advances identity
+      playerApplication.commands.replaceSong({ name: lastName, buffer: mix.buffer }, m.stems);
       renderControls(false);           // keep the panel up so Save stays reachable
     } else if (m.type === 'error') {
       gcTrack(m.message === 'cancelled' ? 'separate-cancel' : 'separate-fail');
@@ -192,34 +217,38 @@ el.cancel.addEventListener('click', () => {
 
 el.save.addEventListener('click', async () => {
   if (!lastStems) return;
+  const saveToken = playerApplication.currentSongToken();
+  const stems = lastStems;
+  const name = lastName;
   el.save.disabled = true;
   status('sep.encoding');
   try {
     // Encode one stem at a time and hand each straight to the ZIP builder, so the WAV
     // bytes are never all live at once on top of the stems themselves.
     const entries = [];
-    for (const [stem, ch] of Object.entries(lastStems)) {
-      entries.push({ name: `${lastName}/${stem}.wav`, bytes: encodeWav(ch.left, ch.right, 44100) });
+    for (const [stem, ch] of Object.entries(stems)) {
+      entries.push({ name: `${name}/${stem}.wav`, bytes: encodeWav(ch.left, ch.right, 44100) });
       await new Promise((r) => setTimeout(r, 0));   // let the UI repaint between stems
+      if (!playerApplication.isCurrentSongToken(saveToken)) return;
     }
     const blob = buildZip(entries);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${lastName}-stems.zip`;
+    a.download = `${name}-stems.zip`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
     status('sep.saved', { mb: (blob.size / MB).toFixed(0) });
     gcTrack('stems-save');
   } catch (e) {
+    if (!playerApplication.isCurrentSongToken(saveToken)) return;
     status('sep.saveFailed', { msg: e.message });
   } finally {
-    el.save.disabled = false;
+    if (playerApplication.isCurrentSongToken(saveToken)) el.save.disabled = false;
   }
 });
 
-// The player has no load event, so poll for a track appearing. Cheap and avoids
-// reaching into app.js internals.
+// Song/loading changes arrive through the Phase 2 application subscription below.
 if (HANDHELD) {
   el.handheld.hidden = false;
   // #sep-go is the only control the markup leaves visible; save, cancel and the progress
@@ -228,5 +257,12 @@ if (HANDHELD) {
   renderControls();
 }
 
-setInterval(refresh, 400);
+const unsubscribePlayer = playerApplication.subscribe(refresh);
+playerApplication.registerCleanup(() => {
+  unsubscribePlayer();
+  window.removeEventListener('sansbass:langchange', retranslateStatus);
+  worker?.terminate();
+  worker = null;
+  runToken = null;
+});
 refresh();

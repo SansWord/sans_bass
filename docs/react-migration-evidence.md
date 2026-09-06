@@ -1,5 +1,128 @@
 # React migration evidence
 
+## Phase 2 — player command and subscription boundary
+
+Status: implementation and local gate passed on branch `feat/react-migration-phase-2`;
+PR checks, preview verification, merge, and production verification remain pending. Phase 2
+is not yet accepted. Starting source: `e108c681513ea6004199efac4f0f56ca264e1800`.
+Rollback boundary: accepted Phase 1 at
+`5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d`. The pre-existing untracked `demo.md`
+remains outside this slice.
+
+### Bounded plan and ownership
+
+The source audit and implementation plan are recorded in
+[react-phase-2-plan.md](react-phase-2-plan.md). No DOM region transferred to React. `app.js`
+deliberately retains sole ownership of decoded tracks, the one AudioContext and gain graph,
+transport/loop/rate/routing state, lane/canvas DOM, drawing, status, and song UI. Audio buffers,
+sources, Workers, worklets, peaks, and note renderers remain outside any component lifetime.
+
+Ownership transferred only at the interaction seam: `lib/player-application.js` now owns the
+application lifecycle, command-error value, listener/cleanup registries, and monotonic song
+operation identity. `lib/legacy-player-controls.js` owns the existing file-input, play-button,
+and playback-rate listeners and renders those transport controls from snapshots. It does not
+own or copy engine state. The legacy adapter is mounted by `app.js`; unmount/remount affects
+only its listeners/subscription and preserves the AudioContext, current song, routing, and
+work already in flight.
+
+### Public ESM interface
+
+`lib/player-application.js` exports the production singleton `playerApplication`, the test
+factory `createPlayerApplication()`, and `PlayerCommandError`.
+
+| Surface | Contract |
+|---|---|
+| `getSnapshot()` | Returns one immutable snapshot, stable by identity until the owner publishes. Fields are `lifecycle`, `song`, `loading`, `transport`, `status`, and `commandError`. The snapshot is a read-only projection; commands always act on `app.js`'s authoritative values. |
+| `subscribe(listener)` | Notifies after publications and returns an idempotent unsubscribe. It does not initialize, reset, or dispose the engine. |
+| `commands.load(file)` | Begins a new song operation and routes the one accepted File to existing ZIP/song loading. |
+| `commands.play()` / `pause()` / `togglePlayback()` | Reach the existing synchronous trusted-gesture unlock and shared scheduling path. |
+| `commands.seek(seconds)` | Uses seconds on the existing transport and preserves running/stopped state. |
+| `commands.setPlaybackRate(rate)` | Uses a `0.10`–`1.50` multiplier and delegates to the existing native/worklet transition logic. |
+| `commands.replaceSong(original, stems)` | Replaces a mix with separated stems through the same song-lifetime boundary. |
+| `currentSongToken()` / `isCurrentSongToken(token)` | Let asynchronous services reject a completion belonging to an older operation or disposed application. |
+| `registerCleanup(fn)` | Registers application-lifetime service cleanup; removing a UI subscription does not run it. |
+| `dispose()` | Idempotently invalidates song work, runs service cleanup, unmounts the legacy controls, stops sources/drawing, and closes the AudioContext. |
+
+Command validation and delegated failures become `PlayerCommandError`, are observable as
+`commandError`, and are rendered through the bilingual `status.commandFailed` message. A
+failure from an older load token is ignored after replacement rather than overwriting the
+current song's status.
+
+### Song and asynchronous lifetime guarantees
+
+Every load request advances the application song token before ZIP extraction or audio decode.
+Progress, decode completion, and failure are published only while that token remains current.
+The accepted song records the token that built its lanes. A later load, separated replacement,
+or application disposal invalidates older work.
+
+`notes.js` captures the current token for note analysis, tempo re-detection, deferred chord
+detection, and asynchronous edits import. Worker handlers also capture their exact Worker
+instance, preventing a terminated old worker from clearing or overwriting a newer run.
+Application disposal terminates both note-channel Workers and sonifiers and clears their
+poll/chord timers. `separate.js` subscribes to loading/song publications instead of polling,
+terminates an invalidated run, and ignores stale messages. Successful replacement advances
+song identity only after the result has become final, preserving save availability.
+
+### Temporary adapters and named consumers
+
+- `sansbass:transport` remains the exact-clock adapter from `app.js` to the vocals and bass
+  sonifiers in `notes.js`. It carries the shared `t0`, offset, valid loop bounds, and rate;
+  removing it before an equivalent service seam exists could desynchronize reference tones.
+- `window.sansBass` remains for `notes.js` (`currentMix`, stem/audio/ribbon/tempo/status
+  operations), `separate.js` (`currentMix`, `isSingleTrack`), and the browser harness. The
+  harness-only `application` and `legacyControls` members expose lifecycle/remount assertions.
+  Loading and transport production UI use the ESM facade, and the obsolete separated-load
+  bridge member was removed.
+- Existing note/edit/tempo/chord/ribbon custom events remain page-lifetime adapters with their
+  current named `app.js`/`notes.js` consumers. Their ownership was not broadened in Phase 2.
+
+### Automated and local-build evidence
+
+Environment: Apple M4 Max, macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium 151.0.7922.34.
+
+| Command / boundary | Result |
+|---|---|
+| Failing-first facade test | Failed because `lib/player-application.js` did not exist |
+| `npx vitest run --project node tests/player-application.test.js` | 1 file, 6 tests passed |
+| `npx vitest run --project browser tests/player.test.js` | 1 file, 16 tests passed |
+| Saved/blocked locale target | `tests/i18n.test.js` + `tests/header.test.js`: 17 tests passed |
+| `npm test` | 32 files, 399 tests passed |
+| `npm run build` | Passed; 56 modules transformed; existing intentional worklet URL warning only |
+| Existing isolated build harness at root and `/pr-phase-1/` | Passed 12 route/layout/locale/storage checks with no page/HTTP errors; current branch source was copied to a temporary build |
+| `git diff --check` | Passed |
+
+The browser project uses the documented Vite harness and the real `#file-input`, production
+WAV/ZIP encoders, real AudioContext, and deterministic fake Workers for protocol races. It
+exercised folder ZIPs; standard vocals/bass/guitar/drums combinations; unequal durations;
+one invalid WAV entry with partial recovery; one whole-song WAV; synchronized source starts;
+play/pause/seek; an invalid then valid A/B point; 95% rate; routing gain ramps; replacement;
+legacy unmount/remount; same singleton/one reusable input and repeat selection; stale held decode; stale notes completion;
+and separation completion after disposal. Existing Node ZIP/stem tests cover flat archives,
+stored/deflated entries, unknown lanes, sidecars, explicit mix, and malformed mutations.
+Fake Workers prove protocol handling, not deployed module/model execution.
+
+Phase 1 emitted 368,854 bytes across `dist/assets/*.js`; the final isolated Phase 2 build
+emits 374,997 bytes, +6,143 bytes (+1.7%). The player main chunk is 108,415 bytes. Five
+no-store local samples measured player startup transfer at 151,028 bytes versus Phase 1's
+144,885 (+6,143, +4.2% including HTTP overhead), median DOMContentLoaded 18.7 ms versus
+17.7 ms (+1.0 ms), and median automation-observed ready 33.7 ms versus 33.1 ms (+0.6 ms).
+The time differences are noise-level; the byte increase matches the facade/guard code. React
+still does not load on the player route. A public-host observation remains pending preview.
+
+### Pending and explicitly skipped evidence
+
+PR checks, displayed preview SHA, nested-path Worker/AudioWorklet assets, real-song regression,
+cached-model separation, merge, exact production SHA, and production smoke are pending. Phase 2
+must not be marked complete until those pass and the accepted SHA is added to the rollback table.
+
+Not run locally: uncached 285 MB model download; physical handheld; trusted human audio unlock;
+background-tab longest-source end/native loop timing; subjective visual review; subjective
+native/stretched seam and pitch preservation; auditory note-tone alignment; real-song musical
+accuracy; comprehensive pointer/edit/export scenarios. The generated fixtures and committed
+real-song deployment smoke are different evidence categories; neither is described as the full
+behavior matrix.
+
 ## Phase 1 — isolated React demo header pilot
 
 Status: accepted in production. Evidence collected 2026-09-05 America/Los_Angeles

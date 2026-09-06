@@ -2,9 +2,10 @@
 
 ## Phase 2 — player command and subscription boundary
 
-Status: implementation and local gate passed on branch `feat/react-migration-phase-2`;
-PR checks, preview verification, merge, and production verification remain pending. Phase 2
-is not yet accepted. Starting source: `e108c681513ea6004199efac4f0f56ca264e1800`.
+Status: implementation, local gate, PR checks, and preview verification passed on branch
+`feat/react-migration-phase-2`; merge and production verification remain pending. Phase 2 is
+not yet accepted. Implementation source: `174fffbdc59c9cfd0d7b696ae333566bda6e0275`.
+Starting source: `e108c681513ea6004199efac4f0f56ca264e1800`.
 Rollback boundary: accepted Phase 1 at
 `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d`. The pre-existing untracked `demo.md`
 remains outside this slice.
@@ -108,13 +109,37 @@ no-store local samples measured player startup transfer at 151,028 bytes versus 
 144,885 (+6,143, +4.2% including HTTP overhead), median DOMContentLoaded 18.7 ms versus
 17.7 ms (+1.0 ms), and median automation-observed ready 33.7 ms versus 33.1 ms (+0.6 ms).
 The time differences are noise-level; the byte increase matches the facade/guard code. React
-still does not load on the player route. A public-host observation remains pending preview.
+still does not load on the player route.
+
+### PR-preview deployment evidence
+
+Delivery review: [PR #67](https://github.com/SansWord/sans_bass/pull/67). Both required PR
+checks passed (`test`, 39 seconds; `deploy`, 10 seconds). The published preview at
+`https://sansword.github.io/sans_bass/pr-67/` displayed the exact synthetic merge source
+`b35971b1b706af4b07dd28c08b3425e7184a3c52` (`b35971b`) before behavior assertions.
+
+Chrome 151.0.7922.34 loaded the committed `examples/nov_you.zip` through the real file input,
+decoded the 4:23 song into six lanes, advanced playback from a trusted click, paused, changed
+speed to 95%, and muted bass through the documented `3` shortcut. The selection changed to
+Custom and the all-track action changed to Unmute all. The 95% playback path completed without
+a status or console error, exercising the deployed AudioWorklet-relative asset boundary.
+
+The deployed note Worker path returned the accepted musical regression values: 374 vocal
+notes, 357 bass notes, and 48.0 BPM at 54% confidence. A generated 1.25-second WAV then replaced
+that song through the same real input. Cached-model separation completed into six named stem
+lanes and exposed Save stems without downloading the model again. The `/pr-67/demos/` nested
+route loaded, preserved the preview base path, displayed the same `b35971b` source, and returned
+to the player route. The first-party warning/error console remained empty after playback,
+note detection, separation, and nested navigation.
+
+The real-song ZIP and generated short WAV are deployment-smoke evidence, not a claim that the
+full behavior matrix ran in preview. The full local automated matrix is reported above.
 
 ### Pending and explicitly skipped evidence
 
-PR checks, displayed preview SHA, nested-path Worker/AudioWorklet assets, real-song regression,
-cached-model separation, merge, exact production SHA, and production smoke are pending. Phase 2
-must not be marked complete until those pass and the accepted SHA is added to the rollback table.
+Merge, exact production SHA, required production smoke, and the accepted rollback anchor remain
+pending. Phase 2 must not be marked complete until those pass and the accepted SHA is added to
+the rollback table.
 
 Not run locally: uncached 285 MB model download; physical handheld; trusted human audio unlock;
 background-tab longest-source end/native loop timing; subjective visual review; subjective

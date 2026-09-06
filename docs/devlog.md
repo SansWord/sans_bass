@@ -109,10 +109,15 @@ Running log of what was built and what was learned building it.
   samples put player startup transfer at 151,028 bytes (+4.2% including HTTP overhead), with
   1.0 ms median DOMContentLoaded and 0.6 ms ready-time differences. React remains absent from
   player startup.
-- [note] PR preview, displayed SHA, nested Worker/AudioWorklet, real-song, cached-model,
-  merge, exact production SHA, and production verification remain required before Phase 2 is
-  accepted. Uncached-model, physical-handheld, background, subjective visual, and auditory
-  cases remain separately reported skips unless actually run.
+- [note] PR #67's `test` and `deploy` checks passed. Its preview displayed synthetic merge
+  `b35971b`, decoded the 4:23 real-song fixture into six lanes, advanced trusted-click playback,
+  exercised 95% AudioWorklet playback and bass routing, returned 374 vocal/357 bass notes at
+  48 BPM and 54% confidence through deployed Workers, completed cached-model separation of a
+  generated 1.25-second WAV into six stems, and navigated the nested demos route and back with
+  an empty first-party warning/error console.
+- [note] Merge, exact production SHA, production verification, and the accepted rollback anchor
+  remain required before Phase 2 is accepted. Uncached-model, physical-handheld, background,
+  subjective visual, and auditory cases remain separately reported skips unless actually run.
 
 ---
 

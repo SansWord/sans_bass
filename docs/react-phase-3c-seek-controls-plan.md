@@ -4,6 +4,7 @@ Status: implemented locally; deployment acceptance pending. Planned from
 `9292f0f9688d7763e5fe9e49fced78b23ac5bd2b` on 2026-09-06.
 Previous accepted rollback anchor: Phase 3b at
 `99ac653ec20de0d54035c0c89cb5dfb7ab40a77d`.
+Implementation source: `4a3c9d278cf8788a5571125620fdba6485105aea`.
 
 ## Bounded outcome
 

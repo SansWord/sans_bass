@@ -106,9 +106,12 @@ Running log of what was built and what was learned building it.
   cover paused/playing pointer and keyboard seek, bounds, rate/BPM, loop clamping, focus,
   locale, remount, replacement/stale completion, and analytics/listener uniqueness.
 - [note] The build emits 379,043 bytes of JavaScript, +2,861 bytes (+0.76%) from Phase 3b.
-  Preview, production, genuine-keyboard, hosted saved-locale, visual, auditory, physical
-  handheld, real Worker/model, and real-song evidence remain pending or explicitly separate;
-  Phase 3 is not complete.
+  The local production build displayed exact implementation source `4a3c9d2`; the in-app
+  browser loaded the 4:23 six-stem fixture, exercised genuine Space/Arrow playback and seek,
+  proved focused-seek uniqueness and focused-speed exclusion, retained song state across an
+  English switch, and carried saved English to `/demos/`. Its first-party console was clean.
+  Preview, production, subjective auditory, physical handheld, and real Worker/model evidence
+  remain pending or explicitly separate; Phase 3 is not complete.
 
 ---
 

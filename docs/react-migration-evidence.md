@@ -7,7 +7,8 @@ Evidence collected 2026-09-06 America/Los_Angeles. Branch
 `feat/react-phase-3c-seek-controls`; starting source
 `9292f0f9688d7763e5fe9e49fced78b23ac5bd2b`. Previous accepted boundary:
 `99ac653ec20de0d54035c0c89cb5dfb7ab40a77d`. The pre-existing untracked `demo.md`
-remains outside this slice.
+remains outside this slice. Implementation source:
+`4a3c9d278cf8788a5571125620fdba6485105aea`.
 
 ### Ownership transferred and retained
 
@@ -64,8 +65,16 @@ disposal coverage.
 The local production build emits **379,043 bytes** across JavaScript assets versus Phase
 3b's 376,182: **+2,861 bytes (+0.76%)**. The player entry is 111,591 bytes and the shared
 React/header chunk is 218,172 bytes. No dependency, route, Worker, AudioWorklet, or DSP asset
-was added. Exact-commit in-app-browser evidence is recorded after the implementation commit;
-preview and production assertions remain pending and must begin with their displayed SHA.
+was added. The local production server displayed exact implementation source `4a3c9d2`
+before browser assertions. The in-app browser loaded `examples/nov_you.zip` as the 4:23
+six-stem song; genuine Space started and paused its clock, genuine ArrowRight advanced a
+playing position and then moved the focused seek canvas exactly once while paused, and a
+focused speed slider consumed ArrowRight without changing position. Switching to English
+retained the song and position, the one file input/root/seek canvas, and translated the seek
+semantics to `Seek` / `2:13 of 4:23 · 85%`. The root and `/demos/` displayed the same SHA and
+saved English locale. Desktop structure and focus were visually reviewed; the first-party
+console was clean. Localhost's blocked third-party GoatCounter request was the only warning.
+Preview and production assertions remain pending and must begin with their displayed SHA.
 
 ### Evidence categories and current omissions
 
@@ -73,12 +82,12 @@ preview and production assertions remain pending and must begin with their displ
 |---|---|
 | Synthetic | Generated two-stem WAV/ZIP fixtures cover paused/playing click and drag seek, focused keyboard bounds, 50% clock/BPM, loop clamping, remount, analytics uniqueness, replacement, and stale completion. |
 | Malformed input | Existing malformed ZIP, unsupported/multiple/folder drop, partial decode, and recovery cases pass unchanged; exhaustive mutations remain in Node unzip coverage. |
-| Storage/locale | Both languages and loaded-state/input/canvas identity pass in Chromium; existing jsdom cases cover saved and throwing/blocked storage. Hosted saved-locale evidence is pending. |
+| Storage/locale | Both languages and loaded-state/input/canvas identity pass in automated Chromium; local exact-source switching retained the loaded song/position and one input/root/seek canvas, and `/demos/` read saved English. Existing jsdom cases cover saved and throwing/blocked storage. Hosted saved-locale evidence is pending. |
 | Handheld | Existing capability predicate coverage passes; no physical device was run and no handheld-owned code changed. |
 | Worker | Existing deterministic fake notes/separation stale-result cases pass; no real Worker/model path changed or ran. |
-| Visual | Semantic focus styling and unchanged desktop layout pass automated structure/computed checks; exact-commit and deployed human review remain pending. |
-| Auditory | Not yet claimed. Deterministic clock/source assertions are automated; genuine trusted-key playback/seek and subjective pitch/seam/background listening remain separate. |
-| Real song | Not yet run for this implementation. `examples/nov_you.zip` is reserved for exact-build/preview/production smoke and is not the synthetic matrix. |
+| Visual | Semantic focus styling and unchanged desktop layout pass automated structure/computed checks; exact-source desktop layout, focus, clock, and nested route were reviewed in the in-app browser. Deployed and exhaustive visual comparison remain pending. |
+| Auditory | Genuine trusted-key playback and seek advanced the exact-source AudioContext-backed clock. No subjective pitch, loop-seam, note-tone, or background listening is claimed. |
+| Real song | The exact-source browser loaded `examples/nov_you.zip` as the 4:23 six-stem song and exercised trusted playback/seek. This is deployment-style smoke, not the synthetic behavior matrix; preview and production repetition remain pending. |
 
 The current evidence supports opening the implementation PR, not accepting Phase 3c. Preview
 and production failures stop delivery. Volume, A/B control ownership, mode/routing, lanes,

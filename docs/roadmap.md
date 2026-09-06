@@ -11,9 +11,11 @@ in [`behaviour.md`](behaviour.md).
 
 **In progress.** [Phased migration roadmap](react-migration.md) covering baseline evidence,
 an isolated React pilot, player boundaries, incremental UI conversion, and final acceptance.
-Phase 0 is recorded and the phase-1 demo-header pilot has met its local exit gate; live
-delivery evidence is tracked with the pilot PR. Phase 2, the player command/subscription
-boundary, is next. Progress and remaining legacy ownership are tracked in the roadmap.
+Phase 0 is recorded and the phase-1 demo-header pilot has met its local and PR-preview gates;
+merge and production evidence are tracked with
+[PR #65](https://github.com/SansWord/sans_bass/pull/65). Phase 2, the player command/
+subscription boundary, is next after production acceptance. Progress and remaining legacy
+ownership are tracked in the roadmap.
 
 ## Note editing — layer 4
 

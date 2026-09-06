@@ -1,7 +1,7 @@
 # Incremental React migration
 
-Status: phase 1 isolated demo pilot implemented and locally accepted; live PR/production
-delivery verification pending.
+Status: phase 1 isolated demo pilot implemented and accepted on PR preview; merge and
+production verification pending.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -287,7 +287,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | Phase | Status | Evidence / PRs | Remaining work |
 |---|---|---|---|
 | 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
-| 1 | Local exit gate met; deploy pending | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) | PR preview, merge, and production verification |
+| 1 | PR preview accepted; production pending | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Green checks, merge, and full production verification |
 | 2 | Not started | — | Player boundary |
 | 3 | Not started | — | Shell/loading/transport |
 | 4 | Not started | — | Lanes and waveform hosts |

@@ -115,9 +115,13 @@ Running log of what was built and what was learned building it.
   demo-only entry (192,069 B, 60.79 kB gzip). The player does not load that entry: its measured
   startup transfer fell 0.9% in noise-level chunk factoring. This isolated route cost is the
   explicit pilot tradeoff, to reassess once player components share the runtime.
-- [note] Live PR and production verification remain pending. Entry/static-asset composition
-  changed, so this slice uses the full deployed tier; physical-device and subjective auditory
-  checks remain explicitly separate.
+- [note] PR #65's nested preview passed the full deployed tier at displayed merge SHA
+  `7de7869`: locale persistence, the generated listing and capo export, real-song playback/
+  routing/95% speed, Worker note detection and list export, and cached-model six-stem
+  separation all worked with nested hashed assets and no first-party console/status errors.
+  The uncached model, physical-device, exhaustive malformed-input, background, subjective
+  visual, and auditory cases remain explicitly separate. Merge and the equivalent production
+  verification are still pending.
 
 ## React phase 0 — baseline inventory (2026-09-05)
 

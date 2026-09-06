@@ -2,10 +2,11 @@
 
 ## Phase 1 — isolated React demo header pilot
 
-Status: implementation and local exit gate complete; live PR preview, merge, and production
-verification pending. Evidence collected 2026-09-05 America/Los_Angeles
+Status: implementation, local exit gate, and PR-preview verification complete; merge and
+production verification pending. Evidence collected 2026-09-05 America/Los_Angeles
 (2026-09-06 UTC). Implementation source: `b9b5670`; branch `feat/react-demo-pilot`.
-The pre-existing untracked `demo.md` remains outside the slice.
+Delivery review: [PR #65](https://github.com/SansWord/sans_bass/pull/65). The pre-existing
+untracked `demo.md` remains outside the slice.
 
 ### Bounded plan
 
@@ -102,6 +103,28 @@ for a smaller repository build, while a compatibility substitute would not demon
 requested React architecture. The isolated route cost is accepted for this migration pilot
 and should be revisited when player components begin sharing that runtime.
 
+### PR-preview deployment evidence
+
+The full deployed tier ran in Chrome against the nested PR preview at
+`https://sansword.github.io/sans_bass/pr-65/`. The preview displayed synthetic merge SHA
+`7de7869` before any product assertion; branch head was `b157e08`. Hashed scripts and worker
+assets resolved below `/pr-65/assets/`, and the app logged no first-party warning or error.
+
+| Boundary | Preview result |
+|---|---|
+| Pilot/demo route | Header/list booted with build SHA `7de7869`, no horizontal overflow; English/Chinese switch worked and English persisted across reload |
+| Published export | Opened from the generated listing; capo `0`→`3` changed the first chord `Fm`→`Dm` and play key `D#`→`C`; return navigation found exactly one player file input |
+| Real-song path | `examples/nov_you.zip` loaded locally as 4:23 with six named lanes; trusted click advanced playback, bass mute changed custom routing, and 95% speed played without status error |
+| Analysis/export | Real notes Worker produced 374 vocal and 357 bass notes at 48.0 BPM / 54% confidence; the visible vocal list export was invoked without page or status error |
+| Cached-model separation | A locally generated 1.25-second WAV separated through the cached model into six named stems; save-stems became available and `separate.worker-Bxzm2fuX.js` was observed |
+| Nested dynamic assets | `notes.worker-Ch3qR4G6.js` was observed after detection; 95% playback exercised the production AudioWorklet path with an empty status and clean first-party console |
+
+The uncached 285 MB model download remained opt-in and was not run because the cached-model
+path was available. Physical handheld, background-end/loop timing, exhaustive malformed-input,
+subjective visual, and auditory scenarios were not run and are not implied by this deployed
+smoke. The committed real-song fixture and generated short WAV are deployment evidence, not
+the full behaviour matrix.
+
 ### Exit gate and remaining delivery work
 
 The local Phase 1 exit gate is met: both languages, saved/blocked storage, desktop/narrow
@@ -110,14 +133,12 @@ build SHA, React cleanup/remount behavior, and baseline performance comparison h
 evidence. The player header and every audio/data UI region remain legacy-owned, so the pilot
 does not create a competing owner or couple React to audio.
 
-Because this slice adds JSX/plugin entry composition and changes static assets, the tiered
-policy requires full deployed smoke on both the PR preview and production. Until those checks
-are recorded, live delivery remains pending. Real-song, cached-model, real Worker, physical
-handheld, trusted/background, visual listening, and auditory checks remain separate omissions;
-the deployed tier will exercise the applicable real-song/Worker/AudioWorklet/static boundaries
-without relabeling unrun physical or subjective checks as passes. Rollback is reverting the
-pilot commits; there is no data migration. Next bounded slice after acceptance: Phase 2's
-player command/subscription boundary, with the legacy player UI unchanged first.
+The PR-preview half of the required full deployed tier is complete. Because this slice adds
+JSX/plugin entry composition and changes static assets, merge remains gated on green PR checks;
+the same full smoke must then pass on the production root at the deployed `main` SHA. Rollback
+is reverting the pilot commits; there is no data migration. Next bounded slice after production
+acceptance: Phase 2's player command/subscription boundary, with the legacy player UI unchanged
+first.
 
 ## Phase 0 — automated, ownership, visual and local-build baseline
 

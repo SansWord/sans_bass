@@ -3,14 +3,11 @@
  * because every track is started from one AudioContext clock at the same time.
  */
 
-import { initHeader } from './lib/header.js';
-
 import { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } from './lib/stems.js';
 import { extract } from './lib/unzip.js';
 import { parseNoteName } from './lib/pitch.js';
 import { roundSeconds } from './lib/time.js';
 import * as SansI18n from './lib/i18n.js';
-import * as SansPlatform from './lib/platform.js';
 import * as SansAnalytics from './lib/analytics.js';
 import * as SansRibbon from './lib/ribbon.js';
 import * as SansJianpu from './lib/jianpu.js';
@@ -21,8 +18,7 @@ import { commandState, wholeSong } from './lib/editor-state.js';
 import { transposeChordLabel, transposePitchClass } from './lib/chords.js';
 import { playerApplication } from './lib/player-application.js';
 import { mountLegacyPlayerControls } from './lib/legacy-player-controls.js';
-
-initHeader();
+import { mountPlayerShell } from './components/PlayerShell.jsx';
 
 const BUCKETS = 1400;   // waveform resolution
 const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
@@ -149,17 +145,16 @@ let currentTitle = '';
 let acceptedSongToken = 0;
 let applicationDisposed = false;
 let unmountLegacyControls = null;
+let playerShell = null;
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  dropzone: $('dropzone'), player: $('player'), status: $('status'),
-  fileInput: $('file-input'),
-  play: $('play'), title: $('title'), mainWave: $('main-wave'),
+  player: $('player'), play: $('play'), title: $('title'), mainWave: $('main-wave'),
   tCur: $('t-cur'), tDur: $('t-dur'), tSpeed: $('t-speed'), tBpm: $('t-bpm'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
   speed: $('speed'), speedVal: $('speed-val'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
-  allToggle: $('all-toggle'), dragOverlay: $('drag-overlay'),
+  allToggle: $('all-toggle'),
   buildSha: $('build-sha'),
 };
 
@@ -188,19 +183,6 @@ const tr = (key, params) => SansI18n.t(key, params);
 const gcTrack = (n) => { try { SansAnalytics?.track(n); } catch (e) { /* never */ } };
 const gcOnce  = (n) => { try { SansAnalytics?.once(n);  } catch (e) { /* never */ } };
 const gcBump  = (n) => { try { SansAnalytics?.bump(n);  } catch (e) { /* never */ } };
-
-/* The drop zone promises that a song "can be split into six stems right here in the
- * browser". On a phone that is false — see lib/platform.js. Swap the KEY rather than the
- * text: SansI18n.apply() re-reads data-i18n-html from the element on every run, so the
- * language toggle keeps working for free and t() needs no branch.
- *
- * app.js's script tag sits at the end of <body>; as a module script it runs after parsing
- * but still before DOMContentLoaded, so this executes before apply() first walks the
- * document. */
-if (SansPlatform?.isHandheld()) {
-  const explain = document.getElementById('drop-explain');
-  if (explain) explain.setAttribute('data-i18n-html', 'drop.explainHandheld');
-}
 
 /** The lane's display name. Recognised stems translate; an unrecognised file keeps the
  *  label assignStems derived from its filename, which is not translatable. */
@@ -329,11 +311,7 @@ let lastSay = null;
  * @param {boolean} [isErr]
  */
 function say(key, params, isErr) {
-  if (!el.status) return;   // called from the last-resort error handler below
   lastSay = key ? { key, params, isErr } : null;
-  el.status.hidden = !key;
-  el.status.textContent = key ? tr(key, params) : '';
-  el.status.classList.toggle('err', !!isErr);
   playerApplication.publish();
 }
 
@@ -625,7 +603,6 @@ function buildModeOptions() {
 }
 
 function buildUI(title) {
-  el.dropzone.hidden = true;
   el.player.hidden = false;
   el.title.textContent = title;
   el.tDur.textContent = fmt(duration);
@@ -2714,7 +2691,6 @@ function retranslate() {
   // its text — clobbering "Restore previous". This runs after, and must keep doing so:
   // setLocale applies the markup first and dispatches the event second, in that order.
   renderAllToggle();
-  if (lastSay) say(lastSay.key, lastSay.params, lastSay.isErr);
 }
 
 
@@ -3512,70 +3488,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// drag & drop: one song, or one .zip of stems
-
-/* The drop target is the whole window, and #drag-overlay is what says so. It has to be an
- * overlay rather than a highlight on #dropzone, because #dropzone is hidden the moment a
- * song loads — and dropping a second song over the player is the common case, exactly when
- * there was no visible target at all. The overlay is `pointer-events: none` so it never
- * becomes the drop target itself and never disturbs the depth count below. */
-function showDropTarget(on) {
-  if (el.dragOverlay) el.dragOverlay.hidden = !on;
-}
-
-/* dragenter/dragleave fire once per element the cursor crosses, so "a leave means the file
- * is gone" flickers the overlay off over every lane boundary. Count enters, trust zero. */
-let dragDepth = 0;
-document.addEventListener('dragenter', (e) => { e.preventDefault(); dragDepth++; showDropTarget(true); });
-document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; showDropTarget(false); } });
-document.addEventListener('dragend', () => { dragDepth = 0; showDropTarget(false); });
-
-/* preventDefault on dragover is the one call that makes the window a drop target at all.
- * Without it the browser keeps its default and navigates to the dropped file. */
-document.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-});
-
-/* Drop accepts exactly what the two buttons accept: ONE song, or ONE zip of stems.
- *
- * Dropping a FOLDER is deliberately not supported. It needed the directory entries API,
- * which Chrome blocks on file:// — so it only ever worked over http://, and the whole
- * recursive walk existed to serve that one case. A zip does the same job everywhere.
- * A dropped folder is still *detected*, purely to say what to do about it: degrading that
- * into a generic "nothing usable here" would be a worse answer, not a smaller one. */
-document.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dragDepth = 0;
-  showDropTarget(false);
-  const dt = e.dataTransfer;
-  const dropped = [...(dt.files || [])];
-
-  if (dropped.length === 1) {
-    // A zip is a plain file, so it arrives in dt.files whatever else is blocked. This is
-    // what makes zip drag-and-drop work from disk.
-    if (isZip(dropped[0]) || AUDIO_RE.test(dropped[0].name)) {
-      return ignoreReportedCommandError(playerApplication.commands.load(dropped[0]));
-    }
-  }
-
-  // Nothing usable — say precisely which case it was rather than failing silently.
-  // webkitGetAsEntry is used only to ask "was that a directory?"; it returns null on
-  // file://, where a folder still arrives in dt.files with no type and no extension.
-  const looksLikeFolder =
-    [...(dt.items || [])].some(i => i.webkitGetAsEntry?.()?.isDirectory) ||
-    dropped.some(f => !f.type && !AUDIO_RE.test(f.name) && !isZip(f));
-
-  if (looksLikeFolder) {
-    gcTrack('folder-drop');
-    say('status.folderDrop', null, true);
-  } else if (dropped.length > 1) {
-    say('status.tooManyFiles', { n: dropped.length }, true);
-  } else {
-    say('status.notSongOrZip', null, true);
-  }
-});
-
 let resizeTimer;
 window.addEventListener('resize', () => {
   if (!tracks.length) return;
@@ -3613,7 +3525,6 @@ function mountLegacyControls() {
     play: el.play,
     speed: el.speed,
     speedValue: el.speedVal,
-    fileInput: el.fileInput,
   });
 }
 
@@ -3632,6 +3543,16 @@ playerApplication.initialize({
     seek,
     setPlaybackRate: (rate) => setRate(rate * 100),
     replaceSong: loadSeparated,
+    rejectLoad: (reason, details) => {
+      if (reason === 'folder') {
+        gcTrack('folder-drop');
+        say('status.folderDrop', null, true);
+      } else if (reason === 'multiple') {
+        say('status.tooManyFiles', { n: details.count }, true);
+      } else {
+        say('status.notSongOrZip', null, true);
+      }
+    },
   },
   reportCommandError: (error) => {
     loading = false;
@@ -3651,12 +3572,19 @@ playerApplication.initialize({
   },
 });
 mountLegacyControls();
+playerShell = mountPlayerShell(playerApplication);
 
 /* Temporary compatibility bridge for notes.js, separate.js, and the browser harness.
  * New loading/transport UI imports lib/player-application.js instead. Remove each member
  * when its named consumer migrates; do not add unrelated globals. */
 window.sansBass = {
   application: playerApplication,
+  // Temporary browser-harness adapter for proving React mount cleanup independently of
+  // application/audio/song disposal. Production UI imports the ESM mount directly.
+  playerShell: {
+    unmount: () => playerShell?.unmount(),
+    remount: () => playerShell?.mount(),
+  },
   legacyControls: {
     unmount: unmountLegacyControlsOnly,
     remount: mountLegacyControls,

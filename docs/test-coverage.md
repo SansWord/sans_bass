@@ -275,14 +275,13 @@ release integrity.
 | Analytics | `A6` | `ANALYTICS-001` | Events do not reach GoatCounter from localhost. | merge | — | `ANALYTICS-001` |
 | Analytics | `A7` | `ANALYTICS-001` | `separate-handheld-blocked` fires **once** per visitor shown the message, never once per poll. | merge | — | `ANALYTICS-001` |
 
-## React migration boundary coverage (phases 0–2)
+## React migration boundary coverage (phases 0–3a)
 
-The historical inventory above remains unchanged. `tests/header.test.js` adds jsdom
-evidence for LANG-001 and the demo-listing smoke contract: language button pressed state,
-player file-input/listener identity, active-page navigation, nested-base link resolution,
-and absence of the load control on demos. This does not prove rendered layout, native file
-selection, actual generated-page wiring, or deployed navigation. See
-[phase 0 evidence](react-migration-evidence.md) for remaining gaps.
+The historical inventory above remains unchanged. Phase 0's legacy-header jsdom test added
+LANG-001 and demo-listing evidence for button state, input identity, navigation, and demo
+load-control absence. That transitional test was retired with its `lib/header.js` subject in
+Phase 3a; the React demo test and production-player Chromium test now cover those live owners.
+See [phase 0 evidence](react-migration-evidence.md) for the historical result and gaps.
 
 `tests/demo-header.test.jsx` adds phase-1 jsdom evidence for the React-owned demo header:
 normal/nested relative links, both locale renderings, saved and blocked storage, active-page
@@ -307,3 +306,14 @@ Existing player cases continue to cover MIX-001 gain routing, deterministic SEP-
 drag visibility, and locale/canvas identity. These fake-Worker cases do not prove real Worker,
 model, physical-device, background, visual, or auditory behavior; deployed and manual evidence
 is recorded separately in the [migration evidence log](react-migration-evidence.md).
+
+The Phase 3a additions to `tests/player.test.js` cover the React player shell through the
+production entry: one stable/repeatable file input across locale and snapshot renders;
+language switching before and after generated loading; retained song/canvas state; translated
+loading, success, malformed ZIP, unsupported/multiple/folder drop, and command-error states;
+valid drop; overlay depth and cleanup; header focus restoration plus legacy field shortcut
+exclusion; and shell unmount/remount without application disposal, duplicate roots, controls,
+listeners, or loads. The retained Phase 2 stale-decode test proves that an older load still
+cannot replace a newer song through the React entry. jsdom i18n/demo tests retain saved and
+blocked storage evidence. Deployed, handheld, Worker, visual, auditory, and real-song evidence
+remain separate in the migration log.

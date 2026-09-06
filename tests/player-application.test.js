@@ -15,6 +15,7 @@ function adapter(overrides = {}) {
     getSnapshot: () => state,
     commands: {
       load: vi.fn(),
+      rejectLoad: vi.fn(),
       play: vi.fn(),
       pause: vi.fn(),
       togglePlayback: vi.fn(),
@@ -78,6 +79,7 @@ describe('player application command/subscription facade', () => {
     const file = { name: 'song.wav' };
 
     await application.commands.load(file);
+    application.commands.rejectLoad('multiple', { count: 2 });
     application.commands.play();
     application.commands.pause();
     application.commands.togglePlayback();
@@ -86,6 +88,7 @@ describe('player application command/subscription facade', () => {
     application.commands.replaceSong({ name: 'song.wav' }, { vocals: {} });
 
     expect(owner.commands.load).toHaveBeenCalledWith(file, 1);
+    expect(owner.commands.rejectLoad).toHaveBeenCalledWith('multiple', { count: 2 });
     expect(owner.commands.play).toHaveBeenCalledOnce();
     expect(owner.commands.pause).toHaveBeenCalledOnce();
     expect(owner.commands.togglePlayback).toHaveBeenCalledOnce();
@@ -95,6 +98,7 @@ describe('player application command/subscription facade', () => {
       { name: 'song.wav' }, { vocals: {} }, 2,
     );
     expect(application.currentSongToken()).toBe(2);
+    expect(() => application.commands.rejectLoad('mystery')).toThrow(PlayerCommandError);
   });
 
   it('reports command errors in the snapshot and rejects stale or invalid work', async () => {

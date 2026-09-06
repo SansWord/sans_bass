@@ -1,6 +1,7 @@
 # Incremental React migration
 
-Status: phase 2 player command/subscription boundary accepted in production; phase 3 may begin.
+Status: phase 2 accepted in production; phase 3a player header/loading implementation is in
+review, while transport groups remain legacy-owned.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -305,7 +306,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
 | 1 | Accepted in production at `5de58b6` | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Complete; Phase 2 may begin |
 | 2 | Accepted in production at `6657528` | [Plan](react-phase-2-plan.md) · [Evidence](react-migration-evidence.md#phase-2--player-command-and-subscription-boundary) · [PR #67](https://github.com/SansWord/sans_bass/pull/67) | Complete; Phase 3 may begin |
-| 3 | Not started | — | Shell/loading/transport |
+| 3 | Header/loading in review at `8892b87` | [Plan](react-phase-3-header-loading-plan.md) · [Evidence](react-migration-evidence.md#phase-3a--react-player-header-and-loading) | Accept header/loading in production; transport groups remain |
 | 4 | Not started | — | Lanes and waveform hosts |
 | 5 | Not started | — | Separation/detection controls |
 | 6 | Not started | — | Notes/editor controls |

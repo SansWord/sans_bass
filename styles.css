@@ -275,6 +275,7 @@ code {
 
 .wave { display: block; width: 100%; cursor: pointer; touch-action: none; }
 .wave.main { height: 76px; }
+.wave.main:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /* ---------- controls ---------- */
 

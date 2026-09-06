@@ -58,6 +58,8 @@ where supported, correct.
 
 - Playback can start, pause, seek, and reach the end correctly even when drawing is
   throttled.
+- The primary full-song progress control exposes its current and total time accessibly and
+  remains keyboard-seekable in either interface language.
 - A–B points may be set in either order, repeat continuously when valid, and can be cleared.
 - Loops and seeks keep stems and generated note tones aligned.
 - Playback speed ranges from 10% to 150%, resets for each newly loaded song, and changes

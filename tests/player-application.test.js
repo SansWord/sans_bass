@@ -7,6 +7,7 @@ function adapter(overrides = {}) {
     loading: false,
     transport: {
       playing: false, position: 0, duration: 0, playbackRate: 1, loopA: null, loopB: null,
+      tempoBpm: null,
     },
     status: null,
   };
@@ -20,10 +21,13 @@ function adapter(overrides = {}) {
       pause: vi.fn(),
       togglePlayback: vi.fn(),
       seek: vi.fn(),
+      previewSeek: vi.fn(),
       setPlaybackRate: vi.fn(),
       replaceSong: vi.fn(),
       ...overrides.commands,
     },
+    getTransportSnapshot: () => state.transport,
+    attachPrimarySeekCanvas: vi.fn(() => vi.fn()),
     reportCommandError: vi.fn(),
     dispose: vi.fn(),
     ...overrides,
@@ -84,6 +88,7 @@ describe('player application command/subscription facade', () => {
     application.commands.pause();
     application.commands.togglePlayback();
     application.commands.seek(2.5);
+    application.commands.previewSeek(2.75);
     application.commands.setPlaybackRate(0.95);
     application.commands.replaceSong({ name: 'song.wav' }, { vocals: {} });
 
@@ -93,12 +98,50 @@ describe('player application command/subscription facade', () => {
     expect(owner.commands.pause).toHaveBeenCalledOnce();
     expect(owner.commands.togglePlayback).toHaveBeenCalledOnce();
     expect(owner.commands.seek).toHaveBeenCalledWith(2.5);
+    expect(owner.commands.previewSeek).toHaveBeenCalledWith(2.75);
     expect(owner.commands.setPlaybackRate).toHaveBeenCalledWith(0.95);
     expect(owner.commands.replaceSong).toHaveBeenCalledWith(
       { name: 'song.wav' }, { vocals: {} }, 2,
     );
     expect(application.currentSongToken()).toBe(2);
     expect(() => application.commands.rejectLoad('mystery')).toThrow(PlayerCommandError);
+  });
+
+  it('publishes a deduplicated transport clock and cleans its subscription independently', () => {
+    const application = createPlayerApplication();
+    const owner = adapter();
+    application.initialize(owner);
+    const listener = vi.fn();
+    const unsubscribe = application.subscribeTransport(listener);
+
+    application.publishTransport();
+    expect(listener).not.toHaveBeenCalled();
+    owner.state.transport = { ...owner.state.transport, position: 1.25 };
+    application.publishTransport();
+    application.publishTransport();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(application.getTransportSnapshot().position).toBe(1.25);
+
+    unsubscribe();
+    unsubscribe();
+    owner.state.transport = { ...owner.state.transport, position: 2.5 };
+    application.publishTransport();
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('attaches and detaches the primary seek renderer without disposing the application', () => {
+    const application = createPlayerApplication();
+    const cleanup = vi.fn();
+    const owner = adapter({ attachPrimarySeekCanvas: vi.fn(() => cleanup) });
+    application.initialize(owner);
+    const canvas = {};
+
+    const detach = application.attachPrimarySeekCanvas(canvas);
+    expect(owner.attachPrimarySeekCanvas).toHaveBeenCalledWith(canvas);
+    detach();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(owner.dispose).not.toHaveBeenCalled();
+    expect(application.getSnapshot().lifecycle).toBe('ready');
   });
 
   it('reports command errors in the snapshot and rejects stale or invalid work', async () => {

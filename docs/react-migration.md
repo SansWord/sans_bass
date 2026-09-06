@@ -1,7 +1,8 @@
 # Incremental React migration
 
 Status: phase 3a player header/loading and phase 3b play/pause/speed accepted in production.
-Seek, volume, loop, and mode/routing groups remain legacy-owned.
+Phase 3c primary seek/time ownership is implemented pending deployment acceptance; volume,
+loop controls, and mode/routing groups remain legacy-owned.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -308,7 +309,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
 | 1 | Accepted in production at `5de58b6` | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Complete; Phase 2 may begin |
 | 2 | Accepted in production at `6657528` | [Plan](react-phase-2-plan.md) · [Evidence](react-migration-evidence.md#phase-2--player-command-and-subscription-boundary) · [PR #67](https://github.com/SansWord/sans_bass/pull/67) | Complete; Phase 3 may begin |
-| 3 | Header/loading accepted at `467f91b`; play/pause and speed accepted at `99ac653` | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) | Migrate seek, volume, loop, and mode/routing groups |
+| 3 | Header/loading accepted at `467f91b`; play/pause and speed accepted at `99ac653`; seek/time implementation awaiting acceptance | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Phase 3c plan](react-phase-3c-seek-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) | Accept Phase 3c, then migrate volume, loop controls, and mode/routing groups |
 | 4 | Not started | — | Lanes and waveform hosts |
 | 5 | Not started | — | Separation/detection controls |
 | 6 | Not started | — | Notes/editor controls |

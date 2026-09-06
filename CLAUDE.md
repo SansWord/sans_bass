@@ -24,7 +24,9 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   React/React DOM and Vite JSX support were introduced for the incremental component
   migration; Phase 1 introduced the demo header and Phase 3a shares that header contract
   with the React-owned player header/loading/status/drop shell. Phase 3b adds the primary
-  play/pause and speed controls to that same shell/root. Phase 2's DOM-independent
+  play/pause and speed controls to that same shell/root. Phase 3c adds the primary full-song
+  seek canvas, accessible seek value, and master time/rate/BPM presentation while retaining
+  `app.js` as its imperative waveform painter. Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -117,15 +119,18 @@ The player and demo list share `styles.css`, the translation dictionary, and
 `components/SiteHeader.jsx`. React solely owns both pages' `#site-header` descendants.
 `components/PlayerShell.jsx` additionally owns the one player file input, empty/loading
 affordance, status/error presentation, global drag overlay, primary play/pause button, and
-playback-speed control through one root with explicit portal hosts. Its locale/application
+playback-speed and primary seek/time controls through one root with explicit portal hosts.
+Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
 legacy dictionary traversal cannot overwrite them. Component-specific styles should be
 colocated when needed; these components reuse the established shared classes in `styles.css`.
 
 `app.js` remains authoritative for decoded tracks, song/transport/routing state, audio, and
-all player regions after loading. It publishes stable status keys rather than writing the
-React-owned status or transport-control nodes. `sansbass:transport` remains a temporary exact-clock adapter for the
+all legacy player regions after loading. It publishes stable status keys and a deduplicated
+transport-frame projection rather than writing the React-owned status or transport text and
+accessibility attributes. It still paints pixels and intrinsic dimensions on the React-owned
+primary canvas through an explicit lifecycle attachment. `sansbass:transport` remains a temporary exact-clock adapter for the
 two notes sonifiers. The lowercase `window.sansBass` bridge remains only for named
 notes/separation service operations and browser-harness application/shell
 lifecycle checks; it is migration debt, not the public ESM API.

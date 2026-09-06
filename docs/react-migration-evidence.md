@@ -1,5 +1,115 @@
 # React migration evidence
 
+## Phase 3c — React seek controls
+
+Status: implementation, local gates, and initial preview acceptance complete; final refreshed
+preview and production acceptance pending.
+Evidence collected 2026-09-06 America/Los_Angeles. Branch
+`feat/react-phase-3c-seek-controls`; starting source
+`9292f0f9688d7763e5fe9e49fced78b23ac5bd2b`. Previous accepted boundary:
+`99ac653ec20de0d54035c0c89cb5dfb7ab40a77d`. The pre-existing untracked `demo.md`
+remains outside this slice. Implementation source:
+`4a3c9d278cf8788a5571125620fdba6485105aea`.
+
+### Ownership transferred and retained
+
+The bounded source audit and implementation plan are recorded in
+[react-phase-3c-seek-controls-plan.md](react-phase-3c-seek-controls-plan.md).
+`components/PlayerShell.jsx` now authors the one primary full-song seek canvas, its pointer
+listeners, bilingual slider semantics/current-total value, and the visible master
+current/duration/rate/BPM presentation through two portal hosts in the existing React root.
+The focused canvas continues to reach the one shared document keyboard owner, so Arrow seek
+does not gain a competing listener.
+
+`app.js` remains authoritative for position, the 44.1 kHz AudioContext clock, native and
+stretched sources, playback rate, loop bounds/clamping, seek analytics, waveform data, and
+painting. The application facade adds a narrow deduplicated transport-frame subscription so
+only the seek/time component updates per frame, plus an explicit primary-canvas renderer
+attachment that cleans up with UI lifetime and repaints after remount without seeking or
+changing analytics. Pointermove keeps the established preview-only offset update; pointerdown
+and pointerup retain the existing command/graph/analytics behavior.
+
+The parser-authored primary canvas/time nodes, their eager DOM captures, their direct
+per-frame text/visibility writes, and the primary `attachSeek()` call are removed. The
+`attachSeek()` function, shared `scrubbing` state, and document keyboard listener remain for
+the still-legacy lane/overview/range/zoom surfaces and shortcut groups. Master volume, A/B
+control DOM, mode/routing, lanes, other canvases, separation, detection, notes, Workers,
+AudioWorklets, and DSP retain their prior owners. `window.sansBass.playerShell` remains the
+named browser-harness remount adapter, and `sansbass:transport` remains the exact-clock
+adapter for the two sonifiers. Phase 3 is not complete.
+
+### Failing-first, automated, build, and local evidence
+
+Environment: Apple M4 Max, macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium 151.0.7922.34, and Codex in-app Chromium.
+
+| Command / boundary | Result |
+|---|---|
+| Failing-first `npx vitest run --project browser tests/player.test.js` | 23 existing cases passed and 3 expected Phase 3c cases failed: no React seek owner/semantics, no React frame clock, and the parser canvas survived shell unmount |
+| Focused Node facade/time tests | 2 files, 12 tests passed |
+| Final focused Chromium file | 1 file, 26 tests passed |
+| `npm test` | 31 files, 410 tests passed; expected Node experimental localStorage warning and intentional malformed/decode fixture console entries only |
+| `npm run build` | Passed; 56 modules transformed; existing intentional worklet URL warning only |
+| `git diff --check` | Passed |
+
+The new production-entry cases use generated WAV/ZIP stems through the real file input.
+They prove one React owner/canvas/time region; English and Traditional Chinese seek labels and
+current/total accessible values; pointer click/drag while paused and playing; lower/upper
+bounds; focused Arrow seek; focused range-input exclusion; deterministic 50%-rate clock
+advance and effective/original BPM presentation; active-loop clamping; state and waveform
+repaint across repeated shell remounts; one retained two-command seek analytics sequence after
+remount; and a newer song's duration surviving an older delayed decode. Existing Phase 3a/3b
+cases retain generated loading/replacement, malformed/rejected/partial input, locale/input/
+canvas preservation, synchronized starts, play/rate, stale Worker, routing, and application
+disposal coverage.
+
+The local production build emits **379,043 bytes** across JavaScript assets versus Phase
+3b's 376,182: **+2,861 bytes (+0.76%)**. The player entry is 111,591 bytes and the shared
+React/header chunk is 218,172 bytes. No dependency, route, Worker, AudioWorklet, or DSP asset
+was added. The local production server displayed exact implementation source `4a3c9d2`
+before browser assertions. The in-app browser loaded `examples/nov_you.zip` as the 4:23
+six-stem song; genuine Space started and paused its clock, genuine ArrowRight advanced a
+playing position and then moved the focused seek canvas exactly once while paused, and a
+focused speed slider consumed ArrowRight without changing position. Switching to English
+retained the song and position, the one file input/root/seek canvas, and translated the seek
+semantics to `Seek` / `2:13 of 4:23 · 85%`. The root and `/demos/` displayed the same SHA and
+saved English locale. Desktop structure and focus were visually reviewed; the first-party
+console was clean. Localhost's blocked third-party GoatCounter request was the only warning.
+The final refreshed preview canary and production assertions remain pending and must begin
+with their displayed SHA.
+
+PR [#73](https://github.com/SansWord/sans_bass/pull/73)'s initial `test` and `deploy`
+checks passed in 45s and 12s. Its preview displayed exact synthetic merge
+`b6bf4b5b86a2522757db2a4bab7af1dceaa2472c` before behavior assertions. Root loaded one
+input/root/seek canvas, and `examples/nov_you.zip` decoded to the visible 4:23 six-stem song.
+Genuine Space/ArrowRight input advanced playback and seek; the focused canvas moved exactly
+1.5s once while paused, while focused speed consumed ArrowRight (80% to 85%) without moving
+the playhead. Genuine `a`, ArrowRight, and `b` exposed the 1.5s A–B loop and enabled Clear.
+Switching English to Traditional Chinese retained the 2:14 position, duration, loaded UI,
+and ownership counts, then `/demos/` displayed the same exact SHA and saved locale. Both
+routes and the loaded desktop player were visually reviewed. The preview produced no
+first-party warning or error. Exact-source automation supplies the generated load matrix,
+malformed/blocked-storage paths, remount/repaint, stale completion, Worker doubles, loop
+clamping/laps, and analytics uniqueness that are not safely induced in the hosted smoke.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | Generated two-stem WAV/ZIP fixtures cover paused/playing click and drag seek, focused keyboard bounds, 50% clock/BPM, loop clamping, remount, analytics uniqueness, replacement, and stale completion. |
+| Malformed input | Existing malformed ZIP, unsupported/multiple/folder drop, partial decode, and recovery cases pass unchanged; exhaustive mutations remain in Node unzip coverage. |
+| Storage/locale | Both languages and loaded-state/input/canvas identity pass in automated Chromium; local exact-source switching retained the loaded song/position and one input/root/seek canvas. Preview switching retained loaded state and ownership, and `/demos/` read saved Traditional Chinese. Existing jsdom cases cover saved and throwing/blocked storage. |
+| Handheld | Existing capability predicate coverage passes; no physical device was run and no handheld-owned code changed. |
+| Worker | Existing deterministic fake notes/separation stale-result cases pass; no real Worker/model path changed or ran. |
+| Visual | Semantic focus styling and unchanged desktop layout pass automated structure/computed checks; exact-source and exact-preview desktop player, focus, clock, and nested route were reviewed in the in-app browser. Exhaustive comparison remains pending. |
+| Auditory | Genuine trusted-key playback and seek advanced the exact-source and preview AudioContext-backed clock. No subjective pitch, loop-seam, note-tone, or background listening is claimed. |
+| Real song | Exact-source and exact-preview browsers loaded `examples/nov_you.zip` as the 4:23 six-stem song and exercised trusted playback/seek. This is deployment smoke, not the synthetic behavior matrix; production repetition remains pending. |
+
+The current evidence supports refreshing the implementation PR and rechecking its resulting
+synthetic merge, not yet accepting Phase 3c. Preview or production failures stop delivery.
+Volume, A/B control ownership, mode/routing, lanes, canvases, separation, detection, notes,
+and DSP remain; Phase 3 is not complete.
+
 ## Phase 3b — React primary playback controls
 
 Status: accepted in production. Evidence collected 2026-09-06 America/Los_Angeles.

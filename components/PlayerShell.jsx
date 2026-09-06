@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { AUDIO_RE } from '../lib/stems.js';
 import { t } from '../lib/i18n.js';
 import { isHandheld } from '../lib/platform.js';
+import { formatClockTime } from '../lib/time.js';
 import { SiteHeaderContent } from './SiteHeader.jsx';
 import { useLocale } from './useLocale.js';
 
@@ -73,6 +74,70 @@ function PlaybackSpeed({ application, transport }) {
       value={percent} onChange={onInput} />
     <span id="speed-val" className="dim">{percent}%</span>
   </label>;
+}
+
+function PrimarySeekControls({ application, hosts }) {
+  const transport = useSyncExternalStore(
+    application.subscribeTransport,
+    application.getTransportSnapshot,
+    application.getTransportSnapshot,
+  );
+  const canvasRef = useRef(null);
+  const seeking = useRef(false);
+  const duration = Math.max(0, transport.duration || 0);
+  const position = Math.max(0, Math.min(duration, transport.position || 0));
+  const percent = Math.round(transport.playbackRate * 100);
+  const currentText = formatClockTime(position);
+  const durationText = formatClockTime(duration);
+  const speedText = `${percent}%`;
+  const bpmText = transport.tempoBpm
+    ? `${(transport.tempoBpm * transport.playbackRate).toFixed(1)}/${transport.tempoBpm.toFixed(1)} BPM`
+    : '';
+
+  useLayoutEffect(() => application.attachPrimarySeekCanvas(canvasRef.current), [application]);
+
+  const timeAtPointer = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const fraction = rect.width
+      ? (event.clientX - rect.left) / rect.width
+      : 0;
+    return Math.max(0, Math.min(duration, fraction * duration));
+  };
+  const onPointerDown = (event) => {
+    if (!duration) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    seeking.current = true;
+    ignoreReportedError(application.commands.seek(timeAtPointer(event)));
+  };
+  const onPointerMove = (event) => {
+    if (!seeking.current) return;
+    ignoreReportedError(application.commands.previewSeek(timeAtPointer(event)));
+  };
+  const onPointerUp = (event) => {
+    if (!seeking.current) return;
+    seeking.current = false;
+    ignoreReportedError(application.commands.seek(timeAtPointer(event)));
+  };
+  const onPointerCancel = () => { seeking.current = false; };
+
+  return <>
+    {createPortal(<canvas id="main-wave" className="wave main" ref={canvasRef}
+      role="slider" tabIndex={duration ? 0 : -1} aria-disabled={!duration}
+      aria-label={t('seek.aria')} aria-valuemin={0} aria-valuemax={duration}
+      aria-valuenow={Math.round(position * 1000) / 1000}
+      aria-valuetext={t('seek.value', {
+        current: currentText, duration: durationText, speed: speedText,
+      })}
+      data-react-seek-controls onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel} />, hosts.primarySeek)}
+    {createPortal(<div className="times" data-react-seek-time>
+      <span id="t-cur">{currentText}</span>
+      <span className="dim" id="t-dur">{durationText}</span>
+      <span className="dim" id="t-speed">{speedText}</span>
+      <span className="dim" id="t-bpm" hidden={!bpmText}>{bpmText}</span>
+    </div>, hosts.primaryTime)}
+  </>;
 }
 
 function classifyDrop(dataTransfer) {
@@ -157,6 +222,7 @@ function PlayerShell({ application, hosts }) {
       transport={snapshot.transport} />, hosts.playbackButton)}
     {createPortal(<PlaybackSpeed application={application}
       transport={snapshot.transport} />, hosts.playbackSpeed)}
+    <PrimarySeekControls application={application} hosts={hosts} />
   </>;
 }
 
@@ -170,6 +236,8 @@ export function mountPlayerShell(application, doc = document) {
     overlay: doc.getElementById('drag-overlay-root'),
     playbackButton: doc.getElementById('playback-button-ui-root'),
     playbackSpeed: doc.getElementById('playback-speed-ui-root'),
+    primarySeek: doc.getElementById('primary-seek-ui-root'),
+    primaryTime: doc.getElementById('primary-time-ui-root'),
   };
   if (Object.values(hosts).some((host) => !host)) {
     console.warn('sans_bass: player React shell host missing — skipped');

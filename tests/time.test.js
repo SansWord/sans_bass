@@ -1,5 +1,5 @@
 import { test, assertEq } from './assert.js';
-import { roundSeconds } from '../lib/time.js';
+import { formatClockTime, formatClockTimeCentiseconds, roundSeconds } from '../lib/time.js';
 
 test('time: roundSeconds cleans up floating-point noise from note-editing arithmetic', () => {
   assertEq(roundSeconds(207.45864999999998), 207.459, 'a real dStart/dEnd-derived `at` value');
@@ -15,4 +15,11 @@ test('time: roundSeconds rounds to the nearest millisecond', () => {
 test('time: roundSeconds leaves an already-clean value unchanged', () => {
   assertEq(roundSeconds(4.5), 4.5);
   assertEq(roundSeconds(0), 0);
+});
+
+test('time: transport clocks preserve whole- and hundredth-second presentation', () => {
+  assertEq(formatClockTime(66.99), '1:06');
+  assertEq(formatClockTimeCentiseconds(66.789), '1:06.79');
+  assertEq(formatClockTime(-1), '0:00');
+  assertEq(formatClockTimeCentiseconds(Number.NaN), '0:00.00');
 });

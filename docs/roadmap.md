@@ -9,10 +9,11 @@ in [`behaviour.md`](behaviour.md).
 
 ## React component migration
 
-**Planned.** [Phased migration roadmap](react-migration.md) covering baseline evidence,
+**In progress.** [Phased migration roadmap](react-migration.md) covering baseline evidence,
 an isolated React pilot, player boundaries, incremental UI conversion, and final acceptance.
-Each phase may span multiple sessions and PRs and leaves the application deployable. Start
-with phase 0; progress and remaining legacy ownership are tracked in that document.
+Phase 0 is recorded and the phase-1 demo-header pilot has met its local exit gate; live
+delivery evidence is tracked with the pilot PR. Phase 2, the player command/subscription
+boundary, is next. Progress and remaining legacy ownership are tracked in the roadmap.
 
 ## Note editing — layer 4
 

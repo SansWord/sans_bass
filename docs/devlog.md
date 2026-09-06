@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 2](#react-phase-2--player-command-and-subscription-boundary-2026-09-05) | The unchanged player UI now loads and controls transport through one observable ESM application facade, with disposable UI wiring and stale song/Worker barriers; deployment acceptance is pending. |
+| [React phase 2](#react-phase-2--player-command-and-subscription-boundary-2026-09-05) | The unchanged player UI now loads and controls transport through one observable ESM application facade, with disposable UI wiring and stale song/Worker barriers; accepted in production at `6657528`. |
 | [React phase 1](#react-phase-1--isolated-demo-header-pilot-2026-09-05) | React now solely owns the demo header with cleaned locale subscriptions; the player and audio remain legacy-owned. |
 | [Meta](#meta--tiered-deployment-verification-2026-09-05) | PR previews prove the affected behavior; production normally gets a compact delivery canary. Full two-origin, real-song, model, visual, and device checks now run when their boundary changed or at release acceptance. |
 | [React phase 0](#react-phase-0--baseline-inventory-2026-09-05) | Recorded ownership, automated, screenshot and local-build baselines; use ownership progress instead of mandatory LOC accounting. |
@@ -115,9 +115,15 @@ Running log of what was built and what was learned building it.
   48 BPM and 54% confidence through deployed Workers, completed cached-model separation of a
   generated 1.25-second WAV into six stems, and navigated the nested demos route and back with
   an empty first-party warning/error console.
-- [note] Merge, exact production SHA, production verification, and the accepted rollback anchor
-  remain required before Phase 2 is accepted. Uncached-model, physical-handheld, background,
-  subjective visual, and auditory cases remain separately reported skips unless actually run.
+- [note] PR #67 squash-merged as `6657528afdac67f75c5b3118bbd651d4d6684b6b`.
+  Exact-SHA Deploy main (19 seconds) and Test (36 seconds) passed. Production displayed
+  `6657528`, then repeated real-song decode, trusted-click playback, 95% worklet playback, bass
+  routing, 374/357-note Worker detection at 48 BPM/54%, cached-model six-stem replacement, and
+  nested `/demos/`; there were no first-party warning/errors. Phase 2 is accepted and that full
+  SHA is its rollback anchor.
+- [note] Uncached-model, physical-handheld, background, subjective visual, and auditory cases
+  remain separately reported skips; deployment smoke is not represented as the full manual
+  behavior matrix.
 
 ---
 

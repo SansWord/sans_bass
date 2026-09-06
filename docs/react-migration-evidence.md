@@ -2,11 +2,11 @@
 
 ## Phase 2 — player command and subscription boundary
 
-Status: implementation, local gate, PR checks, and preview verification passed on branch
-`feat/react-migration-phase-2`; merge and production verification remain pending. Phase 2 is
-not yet accepted. Implementation source: `174fffbdc59c9cfd0d7b696ae333566bda6e0275`.
-Starting source: `e108c681513ea6004199efac4f0f56ca264e1800`.
-Rollback boundary: accepted Phase 1 at
+Status: accepted in production. Evidence collected 2026-09-05 America/Los_Angeles
+(2026-09-06 UTC). Implementation source: `174fffbdc59c9cfd0d7b696ae333566bda6e0275`;
+branch `feat/react-migration-phase-2`. Accepted production source:
+`6657528afdac67f75c5b3118bbd651d4d6684b6b`. Starting source:
+`e108c681513ea6004199efac4f0f56ca264e1800`. Previous rollback boundary: Phase 1 at
 `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d`. The pre-existing untracked `demo.md`
 remains outside this slice.
 
@@ -113,10 +113,13 @@ still does not load on the player route.
 
 ### PR-preview deployment evidence
 
-Delivery review: [PR #67](https://github.com/SansWord/sans_bass/pull/67). Both required PR
-checks passed (`test`, 39 seconds; `deploy`, 10 seconds). The published preview at
-`https://sansword.github.io/sans_bass/pr-67/` displayed the exact synthetic merge source
-`b35971b1b706af4b07dd28c08b3425e7184a3c52` (`b35971b`) before behavior assertions.
+Delivery review: [PR #67](https://github.com/SansWord/sans_bass/pull/67). Both final required PR
+checks passed (`test`, 39 seconds; `deploy`, 19 seconds). The published preview at
+`https://sansword.github.io/sans_bass/pr-67/` displayed exact synthetic merge source
+`b35971b1b706af4b07dd28c08b3425e7184a3c52` (`b35971b`) before the full behavior run. The only
+subsequent change recorded this evidence; refreshed checks passed and the preview displayed
+the resulting exact synthetic merge source `ca63080fdfea7f211d1186386e6269bbc5f30a3f`
+(`ca63080`) before the final assertion.
 
 Chrome 151.0.7922.34 loaded the committed `examples/nov_you.zip` through the real file input,
 decoded the 4:23 song into six lanes, advanced playback from a trusted click, paused, changed
@@ -135,18 +138,40 @@ note detection, separation, and nested navigation.
 The real-song ZIP and generated short WAV are deployment-smoke evidence, not a claim that the
 full behavior matrix ran in preview. The full local automated matrix is reported above.
 
-### Pending and explicitly skipped evidence
+### Production deployment evidence
 
-Merge, exact production SHA, required production smoke, and the accepted rollback anchor remain
-pending. Phase 2 must not be marked complete until those pass and the accepted SHA is added to
-the rollback table.
+PR #67 squash-merged at 2026-09-06T06:41:11Z as exact source
+`6657528afdac67f75c5b3118bbd651d4d6684b6b`. The exact-SHA main workflows passed: Deploy main
+[run 34017141774](https://github.com/SansWord/sans_bass/actions/runs/34017141774) in 19 seconds
+and Test [run 34017141763](https://github.com/SansWord/sans_bass/actions/runs/34017141763)
+in 36 seconds. Production at `https://sansword.github.io/sans_bass/?phase2=6657528`
+displayed `6657528` before assertions.
+
+The required production tier repeated the boundaries changed by this slice. The real-song ZIP
+decoded to six lanes at 4:23; trusted-click playback advanced and paused; 95% worklet playback
+succeeded; and bass routing changed Full mix to Custom/Unmute all. Production note Workers
+returned 374 vocal notes, 357 bass notes, and 48.0 BPM at 54% confidence. Cached-model
+separation of the generated 1.25-second WAV completed into six named lanes and exposed Save
+stems. `/demos/` resolved at the production base, displayed `6657528`, and exposed its player
+return link.
+
+No first-party warning/error was logged. Warnings from
+`chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn/` were identified as browser-extension
+output and excluded from the site result. Exact preview and production observations, including
+explicit skips, were also recorded as comments on PR #67.
+
+### Accepted and explicitly skipped evidence
+
+The Phase 2 exit gate, PR checks, preview verification, merge, exact production verification,
+and rollback-anchor requirement have passed.
 
 Not run locally: uncached 285 MB model download; physical handheld; trusted human audio unlock;
 background-tab longest-source end/native loop timing; subjective visual review; subjective
 native/stretched seam and pitch preservation; auditory note-tone alignment; real-song musical
 accuracy; comprehensive pointer/edit/export scenarios. The generated fixtures and committed
 real-song deployment smoke are different evidence categories; neither is described as the full
-behavior matrix.
+behavior matrix. Those omissions remain visible for later release acceptance and are not Phase
+2 parity claims.
 
 ## Phase 1 — isolated React demo header pilot
 

@@ -1,7 +1,8 @@
 # React migration Phase 2 — player boundary plan
 
-Status: implementation plan recorded from source at `e108c681513ea6004199efac4f0f56ca264e1800`.
-Phase 1 production rollback anchor: `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d`.
+Status: accepted in production at `6657528afdac67f75c5b3118bbd651d4d6684b6b`.
+Plan source: `e108c681513ea6004199efac4f0f56ca264e1800`. Previous Phase 1 rollback anchor:
+`5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d`.
 
 ## Bounded outcome
 

@@ -1,7 +1,7 @@
 # Incremental React migration
 
-Status: phase 2 accepted in production; phase 3a player header/loading implementation is in
-review, while transport groups remain legacy-owned.
+Status: phase 3a player header/loading accepted in production; transport groups remain
+legacy-owned and are the next Phase 3 increments.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -275,6 +275,7 @@ Use a revert PR on shared `main` rather than resetting published history.
 | Before React implementation | `087f0cc64bf25f46b97081f5befcf41529431b45` | Last `main` commit before Phase 1. Restore to this code state to remove the entire React migration while retaining the Phase 0 baseline and tiered deployment documentation. |
 | Phase 1 accepted in production | `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d` | Known-good isolated demo-header pilot from [PR #65](https://github.com/SansWord/sans_bass/pull/65). Restore to this boundary if a later phase must be backed out while keeping Phase 1. |
 | Phase 2 accepted in production | `6657528afdac67f75c5b3118bbd651d4d6684b6b` | Known-good player command/subscription boundary from [PR #67](https://github.com/SansWord/sans_bass/pull/67). Restore to this boundary if a later phase must be backed out while keeping the non-React player seam. |
+| Phase 3a header/loading accepted in production | `467f91b06aabb5fed68822bf254736e719e2abee` | Known-good React player header/loading increment from [PR #69](https://github.com/SansWord/sans_bass/pull/69). Restore to this boundary to retain the React-owned header, stable file input, status, and drag overlay while backing out later transport slices. |
 
 Add one row after each phase is accepted in production. The target SHA is a restoration and
 comparison anchor, not permission to `git reset` a shared branch; revert the commits after the
@@ -306,7 +307,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
 | 1 | Accepted in production at `5de58b6` | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Complete; Phase 2 may begin |
 | 2 | Accepted in production at `6657528` | [Plan](react-phase-2-plan.md) · [Evidence](react-migration-evidence.md#phase-2--player-command-and-subscription-boundary) · [PR #67](https://github.com/SansWord/sans_bass/pull/67) | Complete; Phase 3 may begin |
-| 3 | Header/loading in review at `8892b87` | [Plan](react-phase-3-header-loading-plan.md) · [Evidence](react-migration-evidence.md#phase-3a--react-player-header-and-loading) | Accept header/loading in production; transport groups remain |
+| 3 | Header/loading accepted in production at `467f91b`; phase remains in progress | [Plan](react-phase-3-header-loading-plan.md) · [Evidence](react-migration-evidence.md#phase-3a--react-player-header-and-loading) · [PR #69](https://github.com/SansWord/sans_bass/pull/69) | Migrate bounded transport groups; lanes and later UI remain in their phases |
 | 4 | Not started | — | Lanes and waveform hosts |
 | 5 | Not started | — | Separation/detection controls |
 | 6 | Not started | — | Notes/editor controls |

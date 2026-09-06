@@ -116,8 +116,16 @@ Running log of what was built and what was learned building it.
   locale retention, stable input/root/canvases, identical real-song repeat selection, nested
   navigation, narrow layout, and a clean fresh first-party console passed. Throwing storage and
   drag data-transfer/overlay fault injection remain automated exact-source evidence because the
-  deployed page exposes neither capability as a user control. Production and acceptance remain
-  pending; transport controls are the next Phase 3 ownership slices.
+  deployed page exposes neither capability as a user control. Production and acceptance were
+  still pending at this checkpoint.
+- [note] The evidence-only refresh passed and displayed final synthetic merge `b12ac0a`.
+  PR #69 then squash-merged as `467f91b06aabb5fed68822bf254736e719e2abee`;
+  exact-SHA Deploy main (14 seconds) and Test (48 seconds) passed. After Pages propagation,
+  production displayed `467f91b`, then passed root/nested navigation, saved locale, generated
+  load, locale/current-song retention, rejection without replacement, one input/root, repeated
+  4:23 real-song selection, and a clean first-party console. Phase 3a is accepted and that full
+  SHA is its rollback anchor; Phase 3 remains in progress because transport groups have not
+  moved.
 
 ---
 

@@ -2,11 +2,12 @@
 
 ## Phase 3a — React player header and loading
 
-Status: implementation and PR-preview verification complete; production acceptance pending.
-Evidence collected 2026-09-06 America/Los_Angeles. Implementation source:
+Status: accepted in production. Evidence collected 2026-09-06 America/Los_Angeles.
+Implementation source:
 `8892b87cf73e25d60fa2ed6b6988cca04e6b43bf`; branch
 `feat/react-phase-3-header-loading`. Starting source:
-`02aca2022ff8e99f8b510c6e92de17d27179d67d`. Accepted rollback boundary remains Phase 2 at
+`02aca2022ff8e99f8b510c6e92de17d27179d67d`. Accepted production source and rollback anchor:
+`467f91b06aabb5fed68822bf254736e719e2abee`. Previous accepted boundary:
 `6657528afdac67f75c5b3118bbd651d4d6684b6b`. The pre-existing untracked `demo.md` remains
 outside this slice.
 
@@ -28,7 +29,7 @@ the old file-input listener was removed with `lib/header.js` and the legacy drag
 
 Play/pause, seek, master volume, speed, A/B loop controls, mode menus, lanes, canvases,
 separation, detection, notes, and DSP remain legacy-owned. This is an accepted-size Phase 3
-increment candidate, not a claim that all of Phase 3 is complete.
+increment, not a claim that all of Phase 3 is complete.
 
 ### Application seam, cleanup, and temporary adapters
 
@@ -89,8 +90,9 @@ Delivery review: [PR #69](https://github.com/SansWord/sans_bass/pull/69). The in
 checks passed (`test`, 56 seconds; `deploy`, 11 seconds). The nested preview at
 `https://sansword.github.io/sans_bass/pr-69/` displayed exact synthetic merge source
 `f9d3084d722346a77a34858d8772cb28fcffcc59` (`f9d3084`) before the boundary run. This
-evidence-only documentation change requires refreshed checks and a final displayed synthetic
-merge-SHA assertion before merge; that result will be recorded with the accepted anchor.
+evidence-only documentation change then refreshed both checks (`test`, 43 seconds; `deploy`,
+12 seconds). The resulting preview displayed exact final synthetic merge source
+`b12ac0ab1038edfe6fb8ab661942c6743763cfca` (`b12ac0a`) before the final assertion.
 
 Chrome exercised the player root and `/pr-69/demos/` at the preview base, and both routes
 displayed `f9d3084`; header navigation stayed below `/pr-69/`. A clean startup retained the
@@ -117,21 +119,43 @@ stacked header/load affordance without horizontal clipping. The intentional malf
 logged its caught parser error; a separate fresh navigation established the clean first-party
 console result. Browser-extension warnings were excluded by source URL.
 
+### Production deployment evidence
+
+PR #69 squash-merged at 2026-09-06T11:51:56Z as exact source
+`467f91b06aabb5fed68822bf254736e719e2abee`. The exact-SHA main workflows passed: Deploy main
+[run 34031453307](https://github.com/SansWord/sans_bass/actions/runs/34031453307) in 14 seconds
+and Test [run 34031453379](https://github.com/SansWord/sans_bass/actions/runs/34031453379)
+in 48 seconds. Production initially still served the previous build; acceptance waited for
+propagation, then `https://sansword.github.io/sans_bass/?phase3a=467f91b` displayed `467f91b`
+before assertions.
+
+The required production tier repeated the mounting/loading boundary. Root and `/demos/`
+resolved at the production base with the same SHA and retained the saved locale. A generated
+two-stem ZIP loaded through the one cleared input; changing locale retained its title, seven
+canvases, one root, and document focus. Unsupported input rendered the established Chinese
+rejection without replacing that current song. `examples/nov_you.zip`, used only for the
+real-song smoke, decoded twice from identical consecutive selections as the 4:23 six-stem
+song with eleven canvases and empty status. The fresh first-party warning/error console stayed
+empty. Exact-source automated cases remain the evidence for blocked-storage and native
+DataTransfer fault injection, remount cleanup, overlay depth, duplicate prevention, and stale
+completion because the deployed UI exposes no controls for those faults.
+
 ### Evidence categories and omissions
 
-| Category | Local evidence / omission |
+| Category | Evidence / omission |
 |---|---|
 | Synthetic | Generated folder ZIPs cover file input, repeat selection, valid drop, partial decode, song replacement, stable canvases, remount, and stale completion through production encoders. |
 | Malformed input | Three-byte malformed ZIP plus unsupported, multiple-file, and folder-shaped drops render established recovery copy; partial invalid WAV retains usable lanes. Exhaustive ZIP mutations remain in Node unzip tests. |
-| Storage/locale | Both languages before/after load and bilingual status pass in the player; jsdom plus the isolated root/nested build harness cover saved and throwing storage. |
+| Storage/locale | Both languages before/after load and bilingual status pass in the player; saved locale passed on preview and production, while jsdom plus the isolated root/nested build harness cover throwing storage. |
 | Handheld | Existing capability predicate tests pass and the React shell uses the same once-per-page handheld explanation. No physical device was run. |
 | Worker | Existing deterministic stale notes/separation Worker cases pass. No real Worker or model was required for the local UI boundary. |
 | Visual | Computed overlay/hidden visibility and desktop/narrow shared-header layout pass; the 390-by-844 preview header/load affordance was visually reviewed without clipping. Full subjective player comparison remains out of scope. |
 | Auditory | Not run; audio scheduling/DSP ownership did not move. Trusted unlock, background timing, pitch/seam, and note-tone listening remain omitted. |
-| Real song | Preview-only deployment smoke: `examples/nov_you.zip` decoded to the 4:23 six-stem song and accepted identical repeat selection. It is not synthetic-matrix evidence. |
+| Real song | Preview and production deployment smoke: `examples/nov_you.zip` decoded to the 4:23 six-stem song and accepted identical repeat selection. It is not synthetic-matrix evidence. |
 
-Production acceptance and a Phase 3a rollback anchor remain pending; no accepted-complete-
-Phase-3 claim is made here.
+The bounded Phase 3a header/loading increment is accepted and its production SHA is an
+immutable rollback anchor. Transport controls and all later ownership groups remain; this is
+not acceptance or completion of Phase 3 as a whole.
 
 ## Phase 2 — player command and subscription boundary
 

@@ -1,7 +1,8 @@
 # React migration Phase 3b — playback controls plan
 
-Status: implementation planned from `8ab8f63c` on 2026-09-06. Previous accepted rollback
-anchor: Phase 3a at `467f91b06aabb5fed68822bf254736e719e2abee`.
+Status: implementation source `6ae46b2fbbb9ec0b75c892725ee67b050931a0cc` is under
+review. Planned from `8ab8f63c` on 2026-09-06. Previous accepted rollback anchor: Phase 3a
+at `467f91b06aabb5fed68822bf254736e719e2abee`.
 
 ## Bounded outcome
 

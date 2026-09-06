@@ -1,5 +1,85 @@
 # React migration evidence
 
+## Phase 3b — React primary playback controls
+
+Status: implementation and local verification complete; PR preview and production acceptance
+pending. Evidence collected 2026-09-06 America/Los_Angeles. Implementation source:
+`6ae46b2fbbb9ec0b75c892725ee67b050931a0cc`; branch
+`feat/react-phase-3-playback-controls`. Starting source: `8ab8f63c` on current `main`.
+Previous accepted boundary: `467f91b06aabb5fed68822bf254736e719e2abee`.
+The pre-existing untracked `demo.md` remains outside this slice.
+
+### Ownership transferred and retained
+
+The bounded audit and implementation plan are recorded in
+[react-phase-3-playback-controls-plan.md](react-phase-3-playback-controls-plan.md).
+`components/PlayerShell.jsx` is now the sole runtime owner of the primary play/pause button,
+its bilingual accessible label and state class, and the speed label/slider/value. Two portal
+hosts join the existing shell root; no additional React root or application store was added.
+Direct events invoke `playerApplication.commands.togglePlayback()` and
+`setPlaybackRate()`, and the controls render the existing immutable transport snapshot.
+
+`app.js` remains authoritative for the 44.1 kHz AudioContext, decoded song, playback clock,
+source/worklet scheduling, rate/position/loop values, routing, analytics, drawing, Workers,
+lanes, and canvases. The direct play call remains synchronous through `ensureAudio()` before
+the stretched path can await its worklet. The one legacy document keyboard listener remains
+the sole owner of Space, coarse/fine rate, reset, seek, loop, routing, and editing shortcuts;
+focused buttons now return before that owner to avoid native-plus-document double dispatch.
+
+The ownership audit found no remaining production consumer of
+`lib/legacy-player-controls.js`, so its import, play/rate listeners and DOM writes, browser
+harness mount surface, and module were removed together. `window.sansBass.playerShell`
+remains a named browser-harness remount adapter. `window.sansBass` remains for named
+notes/separation services and browser tests, while `sansbass:transport` remains the exact-clock
+adapter for the two sonifiers. Seek, master volume, A/B controls, mode/routing, lanes,
+canvases, separation, detection, notes, and DSP remain legacy-owned. Phase 3 is not complete.
+
+### Failing-first, automated, build, and local browser evidence
+
+Environment: Apple M4 Max, macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium 151.0.7922.34, and Codex in-app Chromium.
+
+| Command / boundary | Result |
+|---|---|
+| Failing-first `npx vitest run --project browser tests/player.test.js` | 2 expected failures against the legacy owner: the adapter still existed/React markers were absent, and the play button retained focus after activation |
+| Final focused Chromium file | 1 file, 23 tests passed |
+| `npm test` | 31 files, 404 tests passed |
+| `npm run build` at implementation source | Passed; 56 modules transformed; existing intentional worklet URL warning only |
+| `git diff --check` | Passed |
+| Codex in-app browser against local production build | Displayed exact `6ae46b2`; root and `/demos/` resolved; one React root/play/speed control; 4:23 six-stem real song loaded; genuine Space advanced playback; genuine `[` rendered and played at 95%; English/Traditional Chinese accessible labels and the existing layout were visually checked |
+
+The new production-entry Chromium cases prove one React owner/root/control set; English and
+Traditional Chinese play labels; synchronous suspended-context `resume()` entry before the
+click returns; truthful play class; native source start-time equality; 10–150 bounds, step 5,
+visible percentage and 100% reset; `[`, `]`, `{`, `}`, and `\\` publications; input/button
+focus exclusion and play focus restoration; locale/status/remount preservation of song,
+playing, rate, loop, routing mode, input, and canvas state; one analytics event and one set of
+source starts across repeated remounts; and replacement/stale completion retaining the newer
+transport. Phase 3a loading, malformed/rejected input, drag cleanup, file-input identity,
+repeat selection, stale Worker, and application-disposal cases remain green in the same file.
+
+Exact-source emitted JavaScript is **376,182 bytes**, versus Phase 3a's 375,976: **+206 bytes
+(+0.05%)**. The already-loaded shared React/header chunk remains 218,021 bytes; the player
+entry is 109.19 kB (36.16 kB gzip). No dependency, route, or startup chunk was added, so the
+Phase 3a player-startup boundary is unchanged apart from the 206-byte emitted delta. Local
+browser timing was not promoted to a latency claim; preview navigation remains the deployed
+startup check.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | Production-entry tests use generated WAV/ZIP stems for play/pause, synchronized starts, rates, loop, routing, locale/remount, replacement, analytics, and stale-completion assertions. |
+| Malformed input | Existing malformed ZIP, unsupported/multiple/folder drop, partial decode, and recovery cases pass unchanged; exhaustive archive mutations remain in Node unzip coverage. |
+| Storage/locale | Both languages and loaded-state/input identity pass in Chromium; existing jsdom saved/blocked-storage cases pass. Deployed saved/blocked evidence is pending. |
+| Handheld | Existing predicate coverage passes; no physical device was run. |
+| Worker | Existing fake stale notes/separation Worker cases pass; no real Worker/model path changed or ran locally. |
+| Visual | Exact-source desktop built controls were visually reviewed with no layout redesign; deployed narrow review is pending. |
+| Auditory | Genuine keyboard input proved AudioContext unlock and advancing native/stretched clocks, but subjective listening, pitch preservation, seam quality, and background playback were not claimed. |
+| Real song | Exact-source local build loaded `examples/nov_you.zip` as `9 十二月的妳`, 4:23, six stems; this is deployment/musical smoke only, not the synthetic behavior matrix. |
+
+No PR, merge, production SHA, or accepted Phase 3b rollback anchor is recorded yet.
+
 ## Phase 3a — React player header and loading
 
 Status: accepted in production. Evidence collected 2026-09-06 America/Los_Angeles.

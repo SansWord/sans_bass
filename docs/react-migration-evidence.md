@@ -2,14 +2,14 @@
 
 ## Phase 3c — React seek controls
 
-Status: implementation, local gates, and initial preview acceptance complete; final refreshed
-preview and production acceptance pending.
+Status: accepted in production.
 Evidence collected 2026-09-06 America/Los_Angeles. Branch
 `feat/react-phase-3c-seek-controls`; starting source
 `9292f0f9688d7763e5fe9e49fced78b23ac5bd2b`. Previous accepted boundary:
 `99ac653ec20de0d54035c0c89cb5dfb7ab40a77d`. The pre-existing untracked `demo.md`
 remains outside this slice. Implementation source:
-`4a3c9d278cf8788a5571125620fdba6485105aea`.
+`4a3c9d278cf8788a5571125620fdba6485105aea`. Accepted production source and rollback
+anchor: `20a55bbf61984b7a49771f5e367bb33729c879ad`.
 
 ### Ownership transferred and retained
 
@@ -75,8 +75,7 @@ retained the song and position, the one file input/root/seek canvas, and transla
 semantics to `Seek` / `2:13 of 4:23 · 85%`. The root and `/demos/` displayed the same SHA and
 saved English locale. Desktop structure and focus were visually reviewed; the first-party
 console was clean. Localhost's blocked third-party GoatCounter request was the only warning.
-The final refreshed preview canary and production assertions remain pending and must begin
-with their displayed SHA.
+Every deployed assertion below began with its displayed SHA.
 
 PR [#73](https://github.com/SansWord/sans_bass/pull/73)'s initial `test` and `deploy`
 checks passed in 45s and 12s. Its preview displayed exact synthetic merge
@@ -92,23 +91,33 @@ first-party warning or error. Exact-source automation supplies the generated loa
 malformed/blocked-storage paths, remount/repaint, stale completion, Worker doubles, loop
 clamping/laps, and analytics uniqueness that are not safely induced in the hosted smoke.
 
+The evidence refresh passed `test` and `deploy` in 45s and 14s. Its preview displayed final
+synthetic merge `e739b89c5a27bd10ad52251359a10da4e17e1d78` before the one-owner,
+4:23 real-song load, genuine-keyboard playback/seek, and clean-console canary passed. PR #73
+was squash-merged as `20a55bbf61984b7a49771f5e367bb33729c879ad`; its exact-SHA `Test`
+and `Deploy main` workflows passed, with the test job completing in 42s. Production displayed
+`20a55bb` before the full affected boundary repeated: one input/root/seek owner; the root and
+`/demos/`; saved locale; the 4:23 six-stem song; genuine Space/ArrowRight playback and seek;
+focused canvas movement exactly once; focused-speed exclusion; the 1.5s A–B interaction;
+loaded-state/accessible-value preservation through a language switch; unchanged loading
+control; desktop visual review; and a clean first-party console.
+
 ### Evidence categories and current omissions
 
 | Category | Evidence / omission |
 |---|---|
 | Synthetic | Generated two-stem WAV/ZIP fixtures cover paused/playing click and drag seek, focused keyboard bounds, 50% clock/BPM, loop clamping, remount, analytics uniqueness, replacement, and stale completion. |
 | Malformed input | Existing malformed ZIP, unsupported/multiple/folder drop, partial decode, and recovery cases pass unchanged; exhaustive mutations remain in Node unzip coverage. |
-| Storage/locale | Both languages and loaded-state/input/canvas identity pass in automated Chromium; local exact-source switching retained the loaded song/position and one input/root/seek canvas. Preview switching retained loaded state and ownership, and `/demos/` read saved Traditional Chinese. Existing jsdom cases cover saved and throwing/blocked storage. |
+| Storage/locale | Both languages and loaded-state/input/canvas identity pass in automated Chromium; local, preview, and production switching retained the loaded song/position and one input/root/seek canvas. Preview and production `/demos/` read the saved locale. Existing jsdom cases cover saved and throwing/blocked storage. |
 | Handheld | Existing capability predicate coverage passes; no physical device was run and no handheld-owned code changed. |
 | Worker | Existing deterministic fake notes/separation stale-result cases pass; no real Worker/model path changed or ran. |
-| Visual | Semantic focus styling and unchanged desktop layout pass automated structure/computed checks; exact-source and exact-preview desktop player, focus, clock, and nested route were reviewed in the in-app browser. Exhaustive comparison remains pending. |
-| Auditory | Genuine trusted-key playback and seek advanced the exact-source and preview AudioContext-backed clock. No subjective pitch, loop-seam, note-tone, or background listening is claimed. |
-| Real song | Exact-source and exact-preview browsers loaded `examples/nov_you.zip` as the 4:23 six-stem song and exercised trusted playback/seek. This is deployment smoke, not the synthetic behavior matrix; production repetition remains pending. |
+| Visual | Semantic focus styling and unchanged desktop layout pass automated structure/computed checks; exact-source, preview, and production desktop player, focus, clock, loop badge, and nested route were reviewed in the in-app browser. Exhaustive comparison remains an omission. |
+| Auditory | Genuine trusted-key playback and seek advanced the exact-source, preview, and production AudioContext-backed clock. No subjective pitch, loop-seam, note-tone, or background listening is claimed. |
+| Real song | Exact-source, preview, and production browsers loaded `examples/nov_you.zip` as the 4:23 six-stem song and exercised trusted playback/seek. This is deployment smoke, not the synthetic behavior matrix. |
 
-The current evidence supports refreshing the implementation PR and rechecking its resulting
-synthetic merge, not yet accepting Phase 3c. Preview or production failures stop delivery.
-Volume, A/B control ownership, mode/routing, lanes, canvases, separation, detection, notes,
-and DSP remain; Phase 3 is not complete.
+Phase 3c is accepted at the exact rollback anchor above. Volume, A/B control ownership,
+mode/routing, lanes, canvases, separation, detection, notes, and DSP remain; Phase 3 is not
+complete.
 
 ## Phase 3b — React primary playback controls
 

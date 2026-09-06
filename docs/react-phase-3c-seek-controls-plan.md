@@ -1,7 +1,7 @@
 # React migration Phase 3c — seek controls plan
 
-Status: implemented; initial PR preview accepted; final refreshed preview and production
-acceptance pending. Planned from
+Status: accepted in production through [PR #73](https://github.com/SansWord/sans_bass/pull/73)
+at rollback anchor `20a55bbf61984b7a49771f5e367bb33729c879ad`. Planned from
 `9292f0f9688d7763e5fe9e49fced78b23ac5bd2b` on 2026-09-06.
 Previous accepted rollback anchor: Phase 3b at
 `99ac653ec20de0d54035c0c89cb5dfb7ab40a77d`.

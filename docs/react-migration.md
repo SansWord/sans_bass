@@ -1,8 +1,8 @@
 # Incremental React migration
 
-Status: phase 3a player header/loading and phase 3b play/pause/speed accepted in production.
-Phase 3c primary seek/time ownership is implemented pending deployment acceptance; volume,
-loop controls, and mode/routing groups remain legacy-owned.
+Status: phase 3a player header/loading, phase 3b play/pause/speed, and phase 3c primary
+seek/time ownership are accepted in production. Volume, loop controls, and mode/routing
+groups remain legacy-owned.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -278,6 +278,7 @@ Use a revert PR on shared `main` rather than resetting published history.
 | Phase 2 accepted in production | `6657528afdac67f75c5b3118bbd651d4d6684b6b` | Known-good player command/subscription boundary from [PR #67](https://github.com/SansWord/sans_bass/pull/67). Restore to this boundary if a later phase must be backed out while keeping the non-React player seam. |
 | Phase 3a header/loading accepted in production | `467f91b06aabb5fed68822bf254736e719e2abee` | Known-good React player header/loading increment from [PR #69](https://github.com/SansWord/sans_bass/pull/69). Restore to this boundary to retain the React-owned header, stable file input, status, and drag overlay while backing out later transport slices. |
 | Phase 3b play/pause and speed accepted in production | `99ac653ec20de0d54035c0c89cb5dfb7ab40a77d` | Known-good React primary playback-control increment from [PR #71](https://github.com/SansWord/sans_bass/pull/71). Restore to this boundary to retain React-owned play/pause and speed while backing out later transport slices. |
+| Phase 3c seek controls accepted in production | `20a55bbf61984b7a49771f5e367bb33729c879ad` | Known-good React primary seek/time increment from [PR #73](https://github.com/SansWord/sans_bass/pull/73). Restore to this boundary to retain React-owned loading, playback, speed, and seek/time controls while backing out later player-shell slices. |
 
 Add one row after each phase is accepted in production. The target SHA is a restoration and
 comparison anchor, not permission to `git reset` a shared branch; revert the commits after the
@@ -309,7 +310,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
 | 1 | Accepted in production at `5de58b6` | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Complete; Phase 2 may begin |
 | 2 | Accepted in production at `6657528` | [Plan](react-phase-2-plan.md) · [Evidence](react-migration-evidence.md#phase-2--player-command-and-subscription-boundary) · [PR #67](https://github.com/SansWord/sans_bass/pull/67) | Complete; Phase 3 may begin |
-| 3 | Header/loading accepted at `467f91b`; play/pause and speed accepted at `99ac653`; seek/time implementation awaiting acceptance | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Phase 3c plan](react-phase-3c-seek-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) | Accept Phase 3c, then migrate volume, loop controls, and mode/routing groups |
+| 3 | Header/loading accepted at `467f91b`; play/pause and speed at `99ac653`; seek/time at `20a55bb` | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Phase 3c plan](react-phase-3c-seek-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) · [PR #73](https://github.com/SansWord/sans_bass/pull/73) | Migrate volume, loop controls, and mode/routing groups in later bounded slices |
 | 4 | Not started | — | Lanes and waveform hosts |
 | 5 | Not started | — | Separation/detection controls |
 | 6 | Not started | — | Notes/editor controls |

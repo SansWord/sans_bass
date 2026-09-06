@@ -1,7 +1,6 @@
 # Incremental React migration
 
-Status: phase 1 isolated demo pilot implemented and accepted on PR preview; merge and
-production verification pending.
+Status: phase 1 isolated demo pilot accepted in production; phase 2 not started.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -263,6 +262,20 @@ from structural migration. Preserve data formats so rollback requires reverting 
 transforming user exports. Use version history for rollback rather than maintaining permanent
 duplicate UIs or runtime migration flags. Do not hand-edit the CI-owned deployment branch.
 
+## Rollback anchors
+
+These immutable full commit SHAs identify the last accepted state at each migration boundary.
+Use a revert PR on shared `main` rather than resetting published history.
+
+| Restore boundary | Commit | Meaning |
+|---|---|---|
+| Before React implementation | `087f0cc64bf25f46b97081f5befcf41529431b45` | Last `main` commit before Phase 1. Restore to this code state to remove the entire React migration while retaining the Phase 0 baseline and tiered deployment documentation. |
+| Phase 1 accepted in production | `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d` | Known-good isolated demo-header pilot from [PR #65](https://github.com/SansWord/sans_bass/pull/65). Restore to this boundary if a later phase must be backed out while keeping Phase 1. |
+
+Add one row after each phase is accepted in production. The target SHA is a restoration and
+comparison anchor, not permission to `git reset` a shared branch; revert the commits after the
+chosen anchor through normal review and repeat deployment verification.
+
 ## Progress and session handoff
 
 ### Lightweight progress reporting
@@ -287,7 +300,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | Phase | Status | Evidence / PRs | Remaining work |
 |---|---|---|---|
 | 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
-| 1 | PR preview accepted; production pending | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Green checks, merge, and full production verification |
+| 1 | Accepted in production at `5de58b6` | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Complete; Phase 2 may begin |
 | 2 | Not started | — | Player boundary |
 | 3 | Not started | — | Shell/loading/transport |
 | 4 | Not started | — | Lanes and waveform hosts |

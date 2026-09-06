@@ -120,8 +120,13 @@ Running log of what was built and what was learned building it.
   routing/95% speed, Worker note detection and list export, and cached-model six-stem
   separation all worked with nested hashed assets and no first-party console/status errors.
   The uncached model, physical-device, exhaustive malformed-input, background, subjective
-  visual, and auditory cases remain explicitly separate. Merge and the equivalent production
-  verification are still pending.
+  visual, and auditory cases remain explicitly separate.
+- [note] PR #65 was squash-merged and the same full deployed boundary passed in production at
+  `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d`; its deploy, post-merge test, and preview cleanup
+  workflows passed. The migration roadmap now records full immutable rollback anchors:
+  `087f0cc64bf25f46b97081f5befcf41529431b45` for the last pre-React state and
+  `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d` for accepted Phase 1. Shared `main` should be
+  restored with revert PRs, not reset.
 
 ## React phase 0 — baseline inventory (2026-09-05)
 

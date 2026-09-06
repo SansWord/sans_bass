@@ -47,6 +47,34 @@ function Status({ status }) {
     hidden={!status}>{status ? t(status.key, status.params) : ''}</section>;
 }
 
+function PlaybackButton({ application, transport }) {
+  const onClick = (event) => {
+    // Keep command entry inside the trusted gesture turn: play() synchronously reaches
+    // ensureAudio() before its optional stretched-worklet await. Blur afterwards so the
+    // document shortcuts work on the next keypress without a button's native Space click
+    // competing with the document keyboard owner.
+    ignoreReportedError(application.commands.togglePlayback());
+    event.currentTarget.blur();
+  };
+  return <button id="play" className={`play${transport.playing ? ' playing' : ''}`}
+    aria-label={t('play.aria')} onClick={onClick} data-react-playback-controls>
+    <span className="ico-play" />
+  </button>;
+}
+
+function PlaybackSpeed({ application, transport }) {
+  const percent = Math.round(transport.playbackRate * 100);
+  const onInput = (event) => {
+    ignoreReportedError(application.commands.setPlaybackRate(Number(event.currentTarget.value) / 100));
+  };
+  return <label className="ctl" data-react-playback-controls>
+    <span>{t('ctl.speed')}</span>
+    <input type="range" id="speed" min="10" max="150" step="5"
+      value={percent} onChange={onInput} />
+    <span id="speed-val" className="dim">{percent}%</span>
+  </label>;
+}
+
 function classifyDrop(dataTransfer) {
   const files = [...(dataTransfer?.files || [])];
   if (files.length === 1 && (isZip(files[0]) || AUDIO_RE.test(files[0].name))) {
@@ -125,6 +153,10 @@ function PlayerShell({ application, hosts }) {
     {createPortal(<DropAffordance song={snapshot.song} />, hosts.loading)}
     {createPortal(<Status status={snapshot.status} />, hosts.status)}
     {createPortal(<DragOverlay application={application} />, hosts.overlay)}
+    {createPortal(<PlaybackButton application={application}
+      transport={snapshot.transport} />, hosts.playbackButton)}
+    {createPortal(<PlaybackSpeed application={application}
+      transport={snapshot.transport} />, hosts.playbackSpeed)}
   </>;
 }
 
@@ -136,6 +168,8 @@ export function mountPlayerShell(application, doc = document) {
     loading: doc.getElementById('loading-ui-root'),
     status: doc.getElementById('status-ui-root'),
     overlay: doc.getElementById('drag-overlay-root'),
+    playbackButton: doc.getElementById('playback-button-ui-root'),
+    playbackSpeed: doc.getElementById('playback-speed-ui-root'),
   };
   if (Object.values(hosts).some((host) => !host)) {
     console.warn('sans_bass: player React shell host missing — skipped');

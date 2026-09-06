@@ -23,10 +23,10 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js` and `lib/unzip.js`.
   React/React DOM and Vite JSX support were introduced for the incremental component
   migration; Phase 1 introduced the demo header and Phase 3a shares that header contract
-  with the React-owned player header/loading/status/drop shell. Phase 2's DOM-independent
+  with the React-owned player header/loading/status/drop shell. Phase 3b adds the primary
+  play/pause and speed controls to that same shell/root. Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
-  seam; unchanged legacy play/rate controls consume it through
-  `lib/legacy-player-controls.js`.
+  seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
   serialization, canvas renderers, Workers, and AudioWorklets stay ordinary JavaScript
   modules outside React. Vanilla JS remains the default where a component lifecycle is not
@@ -76,9 +76,8 @@ A-B repeat / routing / input).
   decoded tracks, song/UI state, audio scheduling, and transport algorithms. Immutable
   snapshots are a read-only projection, stable between publications; commands never mutate a
   second store. The facade owns only lifecycle, command errors, subscriptions, registered
-  cleanup, and song-operation identity. `lib/legacy-player-controls.js` mounts the current
-  file/play/rate controls and returns an unmount function; unmounting those controls does not
-  dispose or reset the application.
+  cleanup, and song-operation identity. React UI mount/unmount is separate from application
+  lifetime and does not dispose or reset the engine.
 
 - **Sync model.** Every stem is decoded to an `AudioBuffer` and played from *one*
   `AudioContext` clock — all `BufferSource`s `start(t0, offset)` at the same `t0`
@@ -117,18 +116,18 @@ A-B repeat / routing / input).
 The player and demo list share `styles.css`, the translation dictionary, and
 `components/SiteHeader.jsx`. React solely owns both pages' `#site-header` descendants.
 `components/PlayerShell.jsx` additionally owns the one player file input, empty/loading
-affordance, status/error presentation, and global drag overlay through one root with explicit
-portal hosts. Its locale/application subscriptions and document drag listeners clean up on UI
+affordance, status/error presentation, global drag overlay, primary play/pause button, and
+playback-speed control through one root with explicit portal hosts. Its locale/application
+subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
 legacy dictionary traversal cannot overwrite them. Component-specific styles should be
 colocated when needed; these components reuse the established shared classes in `styles.css`.
 
 `app.js` remains authoritative for decoded tracks, song/transport/routing state, audio, and
 all player regions after loading. It publishes stable status keys rather than writing the
-React-owned status node. The disposable legacy adapter owns only the play-button and
-playback-rate listeners. `sansbass:transport` remains a temporary exact-clock adapter for the
+React-owned status or transport-control nodes. `sansbass:transport` remains a temporary exact-clock adapter for the
 two notes sonifiers. The lowercase `window.sansBass` bridge remains only for named
-notes/separation service operations and browser-harness application/shell/legacy-control
+notes/separation service operations and browser-harness application/shell
 lifecycle checks; it is migration debt, not the public ESM API.
 
 `npm run dev` and `npm run build` first generate `demos/index.html` from files directly
@@ -141,7 +140,6 @@ index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
 lib/stems.js                       stem identity — ESM, no window bridge
 lib/unzip.js                       zip reading — ESM, no window bridge
 lib/player-application.js          DOM-independent player commands, snapshots and lifecycle
-lib/legacy-player-controls.js      disposable adapter for unchanged legacy play/rate UI
 lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
 components/{SiteHeader,DemoHeader,PlayerShell}.jsx  React headers + player loading shell
 components/useLocale.js            cleaned React locale subscription

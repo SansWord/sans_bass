@@ -197,7 +197,7 @@ describe('production player integration', () => {
     expect(player.win.sansBass.application.getSnapshot().song.title).toBe('Repeat');
   });
 
-  it('unsubscribes and remounts legacy controls without resetting the song or duplicating playback', async () => {
+  it('renders React-owned play state and bilingual labels without duplicate playback after remount', async () => {
     player = await openPlayer();
     const audio = instrumentAudio(player.win);
     await loadZip(player, { vocals: 440, bass: 110 });
@@ -210,16 +210,122 @@ describe('production player integration', () => {
     application.publish();
     expect(listener).toHaveBeenCalledOnce();
 
-    player.win.sansBass.legacyControls.unmount();
-    player.win.sansBass.legacyControls.remount();
-    player.win.sansBass.legacyControls.remount();
+    expect(player.win.sansBass.legacyControls).toBeUndefined();
+    expect(player.doc.querySelectorAll('[data-react-playback-controls]')).toHaveLength(2);
+    expect(player.doc.querySelectorAll('#play')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#speed')).toHaveLength(1);
+    const firstPlay = player.doc.getElementById('play');
+    expect(firstPlay.getAttribute('aria-label')).toBe('Play/pause');
+
+    firstPlay.click();
+    await waitFor(() => application.getSnapshot().transport.playing, 'playing publication');
+    expect(firstPlay.classList.contains('playing')).toBe(true);
+    expect(audio.starts).toHaveLength(2);
+    firstPlay.click();
+    await waitFor(() => !application.getSnapshot().transport.playing, 'paused publication');
+    expect(audio.starts).toHaveLength(2);
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => firstPlay.getAttribute('aria-label') === '播放／暫停', 'Chinese play label');
+
+    player.win.sansBass.playerShell.unmount();
+    expect(player.doc.getElementById('play')).toBeNull();
+    expect(application.getSnapshot().song).toEqual(song);
+    player.win.sansBass.playerShell.remount();
+    player.win.sansBass.playerShell.remount();
     expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#play')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#speed')).toHaveLength(1);
     expect(application.getSnapshot().song).toEqual(song);
 
     player.doc.getElementById('play').click();
-    await waitFor(() => audio.starts.length === 2, 'one source per loaded stem');
-    expect(audio.starts[0][0]).toBe(audio.starts[1][0]);
+    await waitFor(() => audio.starts.length === 4, 'one source per stem after remount');
+    expect(audio.starts[2][0]).toBe(audio.starts[3][0]);
     expect(application.getSnapshot().transport.playing).toBe(true);
+  });
+
+  it('does not duplicate play analytics or source starts across React remounts', async () => {
+    player = await openPlayer();
+    const events = [];
+    player.win.goatcounter = { count: (event) => events.push(event) };
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const audio = instrumentAudio(player.win);
+    await loadZip(player, { vocals: 440, bass: 110 });
+
+    player.win.sansBass.playerShell.unmount();
+    player.win.sansBass.playerShell.remount();
+    player.win.sansBass.playerShell.remount();
+    player.doc.getElementById('play').click();
+    await waitFor(() => audio.starts.length === 2, 'first remounted playback');
+    player.doc.getElementById('play').click();
+
+    player.win.sansBass.playerShell.unmount();
+    player.win.sansBass.playerShell.remount();
+    player.doc.getElementById('play').click();
+    await waitFor(() => audio.starts.length === 4, 'second remounted playback');
+    player.doc.getElementById('play').click();
+    expect(events.filter((event) => event.path === 'play')).toHaveLength(1);
+  });
+
+  it('enters playback synchronously and renders direct and keyboard rate changes in React', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, bass: 110 });
+    const application = player.win.sansBass.application;
+    const context = player.win.sansBass.notesAudio('vocals').ctx;
+    const realResume = context.resume.bind(context);
+    const resume = vi.fn(() => Promise.resolve());
+    Object.defineProperty(context, 'state', { configurable: true, get: () => 'suspended' });
+    context.resume = resume;
+
+    const play = player.doc.getElementById('play');
+    play.focus();
+    play.click();
+    expect(resume).toHaveBeenCalledOnce();
+    expect(application.getSnapshot().transport.playing).toBe(true);
+    expect(player.doc.activeElement).not.toBe(play);
+    application.commands.pause();
+    context.resume = realResume;
+
+    const speed = player.doc.getElementById('speed');
+    const speedValue = player.doc.getElementById('speed-val');
+    expect([speed.min, speed.max, speed.step, speed.value, speedValue.textContent])
+      .toEqual(['10', '150', '5', '100', '100%']);
+    Object.getOwnPropertyDescriptor(player.win.HTMLInputElement.prototype, 'value')
+      .set.call(speed, '95');
+    speed.dispatchEvent(new player.win.Event('input', { bubbles: true }));
+    await waitFor(() => speedValue.textContent === '95%', 'React speed input publication');
+    expect(application.getSnapshot().transport.playbackRate).toBe(0.95);
+
+    for (const key of [']', '{', '}', '\\']) {
+      player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+        key, bubbles: true, cancelable: true,
+      }));
+    }
+    await waitFor(() => speedValue.textContent === '100%', 'legacy reset publication');
+    expect(speed.value).toBe('100');
+
+    application.commands.setPlaybackRate(-1);
+    await waitFor(() => speed.value === '10', 'lower rate bound');
+    application.commands.setPlaybackRate(2);
+    await waitFor(() => speed.value === '150', 'upper rate bound');
+    application.commands.setPlaybackRate(1);
+
+    speed.focus();
+    speed.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+      key: '[', bubbles: true, cancelable: true,
+    }));
+    expect(application.getSnapshot().transport.playbackRate).toBe(1);
+    speed.blur();
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+      key: '[', bubbles: true, cancelable: true,
+    }));
+    await waitFor(() => speed.value === '95', 'shortcut after focus restoration');
+
+    play.focus();
+    play.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+      key: ']', bubbles: true, cancelable: true,
+    }));
+    expect(application.getSnapshot().transport.playbackRate).toBe(0.95);
   });
 
   it('loads, replaces, and controls transport through application commands', async () => {
@@ -284,6 +390,7 @@ describe('production player integration', () => {
 
   it('ignores a decoded song that finishes after a newer replacement', async () => {
     player = await openPlayer();
+    const application = player.win.sansBass.application;
     const originalDecode = player.win.AudioContext.prototype.decodeAudioData;
     let releaseFirst;
     let decodeCount = 0;
@@ -309,10 +416,13 @@ describe('production player integration', () => {
     await waitFor(() => releaseFirst, 'first decode to be held');
     await select('new.wav', 220);
     await waitFor(() => player.doc.getElementById('title').textContent === 'new', 'new song');
+    application.commands.setPlaybackRate(0.95);
+    const transport = application.getSnapshot().transport;
     releaseFirst();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(player.doc.getElementById('title').textContent).toBe('new');
     expect(player.win.sansBass.application.getSnapshot().song.title).toBe('new');
+    expect(application.getSnapshot().transport).toEqual(transport);
   });
 
   it('ignores stale notes and separation Worker results after replacement or disposal', async () => {
@@ -454,13 +564,39 @@ describe('production player integration', () => {
 
   it('rerenders language without replacing playback canvases or routing', async () => {
     player = await openPlayer();
-    await loadZip(player, { vocals: 440, bass: 110 });
+    await loadZip(player, { vocals: sine(440, 2), bass: sine(110, 2) });
+    const application = player.win.sansBass.application;
     const canvases = [...player.doc.querySelectorAll('.lane canvas')];
+    const input = player.doc.getElementById('file-input');
     player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-name').click();
     const mode = player.doc.getElementById('mode').value;
+    application.commands.seek(0.1);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    application.commands.seek(0.4);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    application.commands.setPlaybackRate(0.95);
+    await application.commands.play();
+    const song = application.getSnapshot().song;
+    const before = application.getSnapshot().transport;
     player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
     expect(player.doc.documentElement.lang).toBe('zh-TW');
     expect(player.doc.title).toContain('分軌播放器');
+    expect(player.doc.getElementById('mode').value).toBe(mode);
+    expect([...player.doc.querySelectorAll('.lane canvas')]).toEqual(canvases);
+    expect(player.doc.getElementById('file-input')).toBe(input);
+    expect(application.getSnapshot().song).toEqual(song);
+    expect(application.getSnapshot().transport).toMatchObject({
+      playing: true, playbackRate: 0.95, loopA: before.loopA, loopB: before.loopB,
+    });
+    application.publish();
+    await waitFor(() => player.doc.getElementById('speed-val').textContent === '95%',
+      'React rate after status publication');
+    player.win.sansBass.playerShell.unmount();
+    player.win.sansBass.playerShell.remount();
+    expect(application.getSnapshot().song).toEqual(song);
+    expect(application.getSnapshot().transport).toMatchObject({
+      playing: true, playbackRate: 0.95, loopA: before.loopA, loopB: before.loopB,
+    });
     expect(player.doc.getElementById('mode').value).toBe(mode);
     expect([...player.doc.querySelectorAll('.lane canvas')]).toEqual(canvases);
     expect(player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .txt').textContent)

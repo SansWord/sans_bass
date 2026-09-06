@@ -17,7 +17,6 @@ import * as SansLoopState from './lib/loop-state.js';
 import { commandState, wholeSong } from './lib/editor-state.js';
 import { transposeChordLabel, transposePitchClass } from './lib/chords.js';
 import { playerApplication } from './lib/player-application.js';
-import { mountLegacyPlayerControls } from './lib/legacy-player-controls.js';
 import { mountPlayerShell } from './components/PlayerShell.jsx';
 
 const BUCKETS = 1400;   // waveform resolution
@@ -143,16 +142,13 @@ let workletReady = null;   // Promise: resolves once lib/stretch-processor.js is
 let loading = false;
 let currentTitle = '';
 let acceptedSongToken = 0;
-let applicationDisposed = false;
-let unmountLegacyControls = null;
 let playerShell = null;
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  player: $('player'), play: $('play'), title: $('title'), mainWave: $('main-wave'),
+  player: $('player'), title: $('title'), mainWave: $('main-wave'),
   tCur: $('t-cur'), tDur: $('t-dur'), tSpeed: $('t-speed'), tBpm: $('t-bpm'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
-  speed: $('speed'), speedVal: $('speed-val'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
   allToggle: $('all-toggle'),
   buildSha: $('build-sha'),
@@ -3425,6 +3421,10 @@ document.addEventListener('keydown', (e) => {
   // hotkey can't change `selectedNote` while an inline field has focus. Loosen it and
   // syncNoteFields' own document.activeElement check (see its comment) is the only thing
   // still standing between a hotkey and an in-progress keystroke.
+  // Buttons keep their native keyboard activation without also reaching this document
+  // owner. Fields retain the established Space-to-play exception; other shortcuts must not
+  // rewrite a focused input/select/textarea value.
+  if (/button/i.test(e.target.tagName)) return;
   if (/input|select|textarea/i.test(e.target.tagName) && e.key !== ' ') return;
   if (!tracks.length) return;
   if (editMode && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
@@ -3519,20 +3519,6 @@ function applicationSnapshot() {
   };
 }
 
-function mountLegacyControls() {
-  if (unmountLegacyControls || applicationDisposed) return;
-  unmountLegacyControls = mountLegacyPlayerControls(playerApplication, {
-    play: el.play,
-    speed: el.speed,
-    speedValue: el.speedVal,
-  });
-}
-
-function unmountLegacyControlsOnly() {
-  unmountLegacyControls?.();
-  unmountLegacyControls = null;
-}
-
 playerApplication.initialize({
   getSnapshot: applicationSnapshot,
   commands: {
@@ -3559,8 +3545,6 @@ playerApplication.initialize({
     say('status.commandFailed', { message: error.message }, true);
   },
   dispose: () => {
-    applicationDisposed = true;
-    unmountLegacyControlsOnly();
     clearTimeout(resizeTimer);
     cancelAnimationFrame(raf);
     stop(false);
@@ -3571,7 +3555,6 @@ playerApplication.initialize({
     if (audio && audio.state !== 'closed') audio.close().catch(() => {});
   },
 });
-mountLegacyControls();
 playerShell = mountPlayerShell(playerApplication);
 
 /* Temporary compatibility bridge for notes.js, separate.js, and the browser harness.
@@ -3584,10 +3567,6 @@ window.sansBass = {
   playerShell: {
     unmount: () => playerShell?.unmount(),
     remount: () => playerShell?.mount(),
-  },
-  legacyControls: {
-    unmount: unmountLegacyControlsOnly,
-    remount: mountLegacyControls,
   },
   /** The currently loaded full-mix track, or null. */
   currentMix: () => {

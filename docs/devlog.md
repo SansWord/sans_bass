@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; PR #71 preview passed and production acceptance remains pending. |
 | [React phase 3a](#react-phase-3a--player-header-and-loading-2026-09-06) | React now solely owns the shared player header, stable file input, loading/status UI, and cleaned drag overlay; transport groups remain legacy-owned pending later Phase 3 slices. |
 | [React phase 2](#react-phase-2--player-command-and-subscription-boundary-2026-09-05) | The unchanged player UI now loads and controls transport through one observable ESM application facade, with disposable UI wiring and stale song/Worker barriers; accepted in production at `6657528`. |
 | [React phase 1](#react-phase-1--isolated-demo-header-pilot-2026-09-05) | React now solely owns the demo header with cleaned locale subscriptions; the player and audio remain legacy-owned. |
@@ -78,6 +79,34 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## React phase 3b — primary playback controls (2026-09-06)
+
+- [note] `PlayerShell` now solely owns the primary play/pause button and complete speed
+  control through two portals in its existing root. Both invoke the Phase 2 application
+  commands and render the published transport snapshot; decoded audio, scheduling, looping,
+  routing, canvases, Workers, worklets, loading UI, and file input keep their existing owners.
+- [insight] The trusted playback boundary is command entry, not component ownership. Calling
+  `togglePlayback()` directly in React's click handler keeps `ensureAudio()` synchronous in
+  the native gesture turn; the stretched path may await only after unlock and engine entry.
+- [gotcha] A focused button previously reached both native keyboard activation and the
+  document shortcut owner. The document listener now excludes buttons, while the play click
+  blurs after dispatch so later document shortcuts resume without duplicate playback.
+- [note] The ownership audit found no remaining production consumer for
+  `lib/legacy-player-controls.js`, so the adapter and its browser-harness mount surface were
+  removed with the transferred listeners and DOM writes. Seek, volume, A/B, mode/routing,
+  lanes, canvases, separation, detection, notes, and DSP remain legacy-owned; Phase 3 is not
+  complete.
+- [note] Failing-first Chromium produced two expected ownership/focus failures. The local
+  gate passes 404 tests and the production build. Deployment evidence and acceptance remain
+  pending on the focused implementation PR.
+- [note] PR #71's initial `test` and `deploy` checks passed. Its preview displayed exact
+  synthetic merge `72776ed` before root/nested-route, saved-locale, real six-stem song,
+  genuine-keyboard play and 95% rate, focused-control, control-uniqueness, and clean-console
+  checks passed. Exact-source automation supplies the blocked-storage, remount, and generated
+  loading matrix; production acceptance is still pending.
 
 ---
 

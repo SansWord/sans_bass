@@ -23,32 +23,19 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/main-PJNP_JtX.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/i18n-Drnc0Mhq.js">
+  <script type="module" crossorigin src="./assets/main-Cisod32u.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/SiteHeader-Dze8SJmf.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/sonify-D8HC-ICE.js">
-  <link rel="stylesheet" crossorigin href="./assets/i18n-CQaGsfGb.css">
+  <link rel="stylesheet" crossorigin href="./assets/SiteHeader-CQaGsfGb.css">
 </head>
 <body>
 
-<header class="bar" id="site-header">
-  <div class="loadzone">
-    <label class="btn">
-      <span data-i18n="btn.load">Load song or zip</span>
-      <input type="file" id="file-input" accept="audio/*,.wav,.flac,.m4a,.mp3,.opus,.ogg,.aiff,.zip,application/zip" hidden>
-    </label>
-  </div>
-</header>
+<header class="bar" id="site-header"></header>
 
 <main id="app">
 
-  <section id="dropzone" class="dropzone">
-    <p class="big" data-i18n-html="drop.title">Drop a song, or a .zip of stems</p>
-    <p id="drop-explain" class="dim" data-i18n-html="drop.explain"><strong>One audio file</strong> &mdash; a whole song &mdash; plays as a single track,
-      and can be split into six stems right here in the browser. <strong>A .zip</strong>
-      of stems already separated loads them as one lane each.</p>
-    <p class="dim" data-i18n="drop.privacy">Everything is decoded locally in your browser. Nothing is uploaded.</p>
-  </section>
+  <div id="loading-ui-root"></div>
 
   <section id="player" hidden>
     <div class="master">
@@ -327,18 +314,14 @@
     <div id="lanes" class="lanes"></div>
   </section>
 
-  <section id="status" class="status" hidden></section>
+  <div id="status-ui-root"></div>
 </main>
 
 <!-- The visible drop target. #dropzone above explains the two ways in, but it disappears
      as soon as a song loads; this covers the window in both states, and is the only thing
-     on screen while a file is being dragged. pointer-events: none — see app.js. -->
-<div id="drag-overlay" class="drag-overlay" hidden aria-hidden="true">
-  <div class="drag-card">
-    <p class="big" data-i18n="drag.title">Drop to load</p>
-    <p class="dim" data-i18n-html="drag.sub">One song, or one .zip of stems</p>
-  </div>
-</div>
+     on screen while a file is being dragged. pointer-events: none — see PlayerShell.jsx. -->
+<div id="drag-overlay-root"></div>
+<div id="player-react-root" data-react-player-shell hidden></div>
 
 <!-- Which commit is actually live, for checking a deploy (dev, PR preview, or main) is the
      one under test — see vite.config.js's __COMMIT_SHA__. Decorative/technical, not

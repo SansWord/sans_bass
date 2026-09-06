@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; deployment acceptance is pending. |
+| [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; accepted in production at `20a55bb`. |
 | [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; accepted in production at `99ac653`. |
 | [React phase 3a](#react-phase-3a--player-header-and-loading-2026-09-06) | React now solely owns the shared player header, stable file input, loading/status UI, and cleaned drag overlay; transport groups remain legacy-owned pending later Phase 3 slices. |
 | [React phase 2](#react-phase-2--player-command-and-subscription-boundary-2026-09-05) | The unchanged player UI now loads and controls transport through one observable ESM application facade, with disposable UI wiring and stale song/Worker barriers; accepted in production at `6657528`. |
@@ -110,14 +110,20 @@ Running log of what was built and what was learned building it.
   browser loaded the 4:23 six-stem fixture, exercised genuine Space/Arrow playback and seek,
   proved focused-seek uniqueness and focused-speed exclusion, retained song state across an
   English switch, and carried saved English to `/demos/`. Its first-party console was clean.
-  Preview, production, subjective auditory, physical handheld, and real Worker/model evidence
-  remain pending or explicitly separate; Phase 3 is not complete.
+  Subjective auditory, physical handheld, and real Worker/model evidence remain explicit
+  omissions; Phase 3 is not complete.
 - [note] PR #73's initial `test` and `deploy` checks passed. Its preview displayed exact
   synthetic merge `b6bf4b5`, loaded the 4:23 six-stem fixture, exercised genuine-keyboard
   play/seek and focused-control exclusion, exposed a 1.5s A–B loop, preserved loaded state and
   one-owner counts across a locale switch, carried saved Traditional Chinese to `/demos/`,
-  rendered cleanly in desktop review, and kept a clean first-party console. The evidence
-  refresh still needs its own final checks and exact-SHA canary before merge.
+  rendered cleanly in desktop review, and kept a clean first-party console.
+- [note] The evidence refresh passed `test` and `deploy`, then displayed final synthetic
+  merge `e739b89` before its exact-SHA canary passed. PR #73 was squash-merged as `20a55bb`;
+  that exact SHA's Test and Deploy main workflows passed, and production repeated root/nested
+  routes, saved locale, the 4:23 six-stem fixture, genuine playback/seek, focused-control
+  uniqueness and exclusion, A–B interaction, loaded-state preservation, desktop review, and
+  a clean first-party console. That full SHA is the Phase 3c rollback anchor. Volume, A–B
+  DOM ownership, and mode/routing remain for later Phase 3 slices.
 
 ---
 

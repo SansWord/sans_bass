@@ -22,7 +22,10 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   dev, `npm run build` for `dist/`, both CI workflows build before publishing. The player
   core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js` and `lib/unzip.js`.
   React/React DOM and Vite JSX support were introduced for the incremental component
-  migration; the demo-page header is the isolated phase-1 owner. Audio, analysis,
+  migration; the demo-page header is the isolated phase-1 owner. Phase 2 adds a
+  DOM-independent player command/subscription facade in `lib/player-application.js`; the
+  unchanged legacy player controls consume it through `lib/legacy-player-controls.js`.
+  Audio, analysis,
   serialization, canvas renderers, Workers, and AudioWorklets stay ordinary JavaScript
   modules outside React. Vanilla JS remains the default where a component lifecycle is not
   needed. `file://`
@@ -63,8 +66,17 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
 
 ## Architecture in one pass
 
-`app.js` (~700 lines, sectioned by comment banners: helpers / loading / UI / transport /
+`app.js` (sectioned by comment banners: helpers / loading / UI / transport /
 A-B repeat / routing / input).
+
+- **Player boundary.** `lib/player-application.js` exports the singleton application facade
+  plus a factory for tests. `app.js` explicitly initializes it and remains the sole owner of
+  decoded tracks, song/UI state, audio scheduling, and transport algorithms. Immutable
+  snapshots are a read-only projection, stable between publications; commands never mutate a
+  second store. The facade owns only lifecycle, command errors, subscriptions, registered
+  cleanup, and song-operation identity. `lib/legacy-player-controls.js` mounts the current
+  file/play/rate controls and returns an unmount function; unmounting those controls does not
+  dispose or reset the application.
 
 - **Sync model.** Every stem is decoded to an `AudioBuffer` and played from *one*
   `AudioContext` clock — all `BufferSource`s `start(t0, offset)` at the same `t0`
@@ -110,6 +122,13 @@ hook subscribes to `lib/i18n.js` and cleans up on unmount; React-owned descendan
 styles should be colocated when needed; the pilot reuses the established shared header
 classes from `styles.css` to preserve appearance.
 
+The player remains entirely legacy-rendered in Phase 2. `app.js` still owns every player DOM
+region and authoritative state value; only command invocation and observation cross the new
+facade. The disposable legacy adapter owns the one file-input, play-button, and rate-control
+listeners. `sansbass:transport` remains a temporary exact-clock adapter for the two notes
+sonifiers. The lowercase `window.sansBass` bridge remains only for named notes/separation
+service operations and the browser harness; it is migration debt, not the public ESM API.
+
 `npm run dev` and `npm run build` first generate `demos/index.html` from files directly
 inside `public/demos/`. Vite bundles the generated list as an entry and copies the demo
 exports unchanged. Edit the generator, not the ignored generated HTML. See
@@ -119,6 +138,8 @@ exports unchanged. Edit the generator, not the ignored generated HTML. See
 index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
 lib/stems.js                       stem identity — ESM, no window bridge
 lib/unzip.js                       zip reading — ESM, no window bridge
+lib/player-application.js          DOM-independent player commands, snapshots and lifecycle
+lib/legacy-player-controls.js      disposable adapter for unchanged legacy load/transport UI
 lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
 lib/header.js                      legacy player header and language controls
 components/{DemoHeader.jsx,useLocale.js}  React demo header + cleaned locale subscription

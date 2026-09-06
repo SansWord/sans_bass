@@ -19,6 +19,8 @@ import { allToggleLabel, initialRouting, route } from './lib/routing-state.js';
 import * as SansLoopState from './lib/loop-state.js';
 import { commandState, wholeSong } from './lib/editor-state.js';
 import { transposeChordLabel, transposePitchClass } from './lib/chords.js';
+import { playerApplication } from './lib/player-application.js';
+import { mountLegacyPlayerControls } from './lib/legacy-player-controls.js';
 
 initHeader();
 
@@ -142,6 +144,11 @@ let loopA = null;          // A-B repeat start, seconds (null = unset)
 let loopB = null;          // A-B repeat end, seconds
 let routingState = initialRouting([]);
 let workletReady = null;   // Promise: resolves once lib/stretch-processor.js is registered
+let loading = false;
+let currentTitle = '';
+let acceptedSongToken = 0;
+let applicationDisposed = false;
+let unmountLegacyControls = null;
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -167,6 +174,10 @@ if (el.buildSha) el.buildSha.textContent = BUILD_SHA;
 function on(node, ev, fn, opts) {
   if (!node) { console.warn(`sans_bass: no element for the "${ev}" handler — skipped`); return; }
   node.addEventListener(ev, fn, opts);
+}
+
+function ignoreReportedCommandError(result) {
+  if (result && typeof result.catch === 'function') result.catch(() => {});
 }
 
 const tr = (key, params) => SansI18n.t(key, params);
@@ -323,6 +334,7 @@ function say(key, params, isErr) {
   el.status.hidden = !key;
   el.status.textContent = key ? tr(key, params) : '';
   el.status.classList.toggle('err', !!isErr);
+  playerApplication.publish();
 }
 
 /* Last resort. A script error here is nearly always a stale cached asset paired with a
@@ -335,10 +347,21 @@ window.addEventListener('error', (e) => {
 
 // ---------------------------------------------------------------- loading
 
-async function loadFiles(fileList, fallbackName, source) {
-  const files = [...fileList].filter(f => AUDIO_RE.test(f.name));
-  if (!files.length) { gcTrack('load-error'); say('status.noAudioFiles', null, true); return; }
+function finishLoading(token) {
+  if (!playerApplication.isCurrentSongToken(token)) return false;
+  loading = false;
+  return true;
+}
 
+async function loadFiles(fileList, fallbackName, source, token) {
+  const files = [...fileList].filter(f => AUDIO_RE.test(f.name));
+  if (!files.length) {
+    finishLoading(token);
+    gcTrack('load-error'); say('status.noAudioFiles', null, true); return;
+  }
+
+  loading = true;
+  playerApplication.publish();
   ensureAudio();
   stop(true);
   ({ a: loopA, b: loopB } = SansLoopState.clearLoop());
@@ -355,7 +378,9 @@ async function loadFiles(fileList, fallbackName, source) {
   const settled = await Promise.all(files.map(async (file) => {
     try {
       const buf = await audio.decodeAudioData(await file.arrayBuffer());
-      say('status.decodingProgress', { done: ++done, total: files.length });
+      if (playerApplication.isCurrentSongToken(token)) {
+        say('status.decodingProgress', { done: ++done, total: files.length });
+      }
       return { file, buffer: buf };
     } catch (e) {
       done++;
@@ -365,6 +390,9 @@ async function loadFiles(fileList, fallbackName, source) {
     }
   }));
 
+  if (!playerApplication.isCurrentSongToken(token)) return;
+  finishLoading(token);
+
   const loaded = settled.filter(Boolean);
   if (!loaded.length) {
     gcTrack('load-error');
@@ -373,7 +401,7 @@ async function loadFiles(fileList, fallbackName, source) {
   }
 
   const items = loaded.map((l) => ({ name: l.file.name, buffer: l.buffer }));
-  buildTracks(items, commonName(files, fallbackName));
+  buildTracks(items, commonName(files, fallbackName), token);
   gcTrack(source === 'zip' ? 'zip-load' : 'song-load');
 
   if (failed.length) {
@@ -391,13 +419,14 @@ async function loadFiles(fileList, fallbackName, source) {
  * song from the folder inside the zip, and a real File cannot carry one (it is read-only
  * and always empty).
  */
-async function loadZip(file) {
+async function loadZip(file, token) {
   if (!file) return;
   say('status.readingZip');
   let entries;
   try {
     entries = await extract(file);
   } catch (err) {
+    if (!finishLoading(token)) return;
     console.error(err);
     gcTrack('load-error');
     /* lib/unzip.js tags every error with a stable `code` and an English `message`. Keying
@@ -409,7 +438,9 @@ async function loadZip(file) {
     say(SansI18n.has(key) ? key : err.message, null, true);
     return;
   }
+  if (!playerApplication.isCurrentSongToken(token)) return;
   if (!entries.length) {
+    finishLoading(token);
     gcTrack('load-error');
     say('status.noAudioInZip', null, true);
     return;
@@ -418,7 +449,7 @@ async function loadZip(file) {
     name: e.name,
     webkitRelativePath: e.webkitRelativePath,
     arrayBuffer: async () => e.bytes.buffer,
-  })), file.name.replace(/\.zip$/i, ''), 'zip');
+  })), file.name.replace(/\.zip$/i, ''), 'zip', token);
 }
 
 const isZip = (f) => /\.zip$/i.test(f.name);
@@ -428,9 +459,11 @@ const isZip = (f) => /\.zip$/i.test(f.name);
  * There is still exactly one question — song or zip — but the extension answers it, so the
  * user is never asked to classify the file before the file dialog even opens.
  */
-function loadAny(file) {
+function loadAny(file, token) {
   if (!file) return;
-  return isZip(file) ? loadZip(file) : loadSong(file);
+  loading = true;
+  playerApplication.publish();
+  return isZip(file) ? loadZip(file, token) : loadSong(file, token);
 }
 
 /**
@@ -438,14 +471,15 @@ function loadAny(file) {
  * and a set of loose stem files is what a zip is for. `loadFiles` still takes many, because
  * loadZip hands it six.
  */
-function loadSong(file) {
+function loadSong(file, token) {
   if (!file) return;
   if (!AUDIO_RE.test(file.name)) {
+    finishLoading(token);
     gcTrack('load-error');
     say('status.notAudioFile', { name: file.name }, true);
     return;
   }
-  return loadFiles([file], undefined, 'song');
+  return loadFiles([file], undefined, 'song', token);
 }
 
 /**
@@ -453,7 +487,7 @@ function loadSong(file) {
  * @param {{name: string, buffer: AudioBuffer, stem?: string}[]} items
  * @param {string} title
  */
-function buildTracks(items, title) {
+function buildTracks(items, title, token) {
   tracks = assignStems(items).map((t) => ({
     name: t.name,          // source filename — the ZIP folder name is derived from it
     stem: t.stem,
@@ -469,6 +503,8 @@ function buildTracks(items, title) {
   tracks.sort((a, b) => a.order - b.order);
   duration = Math.max(...tracks.map((t) => t.buffer.duration));
   offset = 0;
+  currentTitle = title;
+  acceptedSongToken = token;
 
   tracks.forEach((t) => {
     t.gain = audio.createGain();
@@ -483,6 +519,7 @@ function buildTracks(items, title) {
 
   buildUI(title);
   syncRoutingState(routingState);
+  playerApplication.publish();
 }
 
 /**
@@ -490,7 +527,7 @@ function buildTracks(items, title) {
  * @param {{name: string, buffer: AudioBuffer}} original
  * @param {Object<string, {left: Float32Array, right: Float32Array}>} stems
  */
-function loadSeparated(original, stems) {
+function loadSeparated(original, stems, token) {
   // The original is deliberately dropped: the six stems already sum to it, and keeping
   // it would either double the audio or need permanent suppression. Its name still
   // becomes the title. (assignStems' explicit-'mix' path still guards the disk case,
@@ -516,7 +553,7 @@ function loadSeparated(original, stems) {
   syncSpeedUI();
   // No mix track means hasMixPlusStems() is false, so setMode('mix') inside buildTracks
   // leaves every stem unmuted — all six lanes on by default.
-  buildTracks(items, original.name.replace(AUDIO_RE, ''));
+  buildTracks(items, original.name.replace(AUDIO_RE, ''), token);
   say('');
 }
 
@@ -2269,7 +2306,7 @@ async function play() {
   if (stretched) {
     try { await workletReady; } catch (err) {
       console.error('sans_bass: stretch worklet failed to load', err);
-      return;
+      throw err;
     }
     if (myGen !== playGen) return;   // stopped or replaced while the module was loading
   }
@@ -2321,14 +2358,13 @@ async function play() {
 
   startedAt = t0;
   playing = true;
-  el.play.classList.add('playing');
   applyGains();
   announceTransport(t0);
+  playerApplication.publish();
   tick();
 }
 
-/* notes.js is an ES module and cannot share scope with this file, so the transport is
- * broadcast the way the language switch already is. It carries t0 and offset rather than
+/* Temporary exact-clock adapter for the two notes.js sonifiers. It carries t0 and offset rather than
  * "we started": the synth has to schedule against the SAME clock reading the stems were
  * started from, or it lands near them instead of with them. */
 function announceTransport(t0) {
@@ -2353,16 +2389,16 @@ function stop(keepPosition) {
   stretchNodes.forEach(n => { n.port.onmessage = null; n.disconnect(); });
   stretchNodes = [];
   playing = false;
-  el.play.classList.remove('playing');
   cancelAnimationFrame(raf);
   if (!keepPosition) offset = 0;
   announceTransport(0);
   draw();
+  playerApplication.publish();
 }
 
 function toggle() {
   if (!playing) gcOnce('play');   // the bounce gate: did this visitor ever start audio?
-  playing ? stop(true) : play();
+  return playing ? stop(true) : play();
 }
 
 function seek(seconds) {
@@ -2381,7 +2417,9 @@ function seek(seconds) {
     const win = SansRibbon.zoomWindow(zoomCenter, zoomSeconds, duration);
     if (offset < win.from || offset > win.to) zoomCenter = offset;
   }
-  if (wasPlaying) play(); else draw();
+  if (wasPlaying) return play();
+  draw();
+  playerApplication.publish();
 }
 
 // ---------------------------------------------------------------- A-B repeat
@@ -2408,6 +2446,7 @@ function clearLoop() {
 function refreshLoop() {
   renderLoopBadge();
   if (playing) { stop(true); play(); } else { draw(); }
+  playerApplication.publish();
 }
 
 function renderLoopBadge() {
@@ -2426,8 +2465,7 @@ function renderLoopBadge() {
 }
 
 function syncSpeedUI() {
-  if (el.speed) el.speed.value = ratePercent;
-  if (el.speedVal) el.speedVal.textContent = `${ratePercent}%`;
+  playerApplication.publish();
 }
 
 /** Change the active playback rate. Crossing the 100% <-> non-100% boundary rebuilds the
@@ -2448,7 +2486,9 @@ function setRate(newPercent) {
   if (SansTransportMath.rateChangePlan(ratePercent, clamped) === 'rebuild') {
     stop(true);          // captures offset under the OLD rate
     ratePercent = clamped;
-    play();
+    const restarting = play();
+    syncSpeedUI();
+    return restarting;
   } else {
     const rebased = currentTime();   // under the OLD rate, before it changes
     ratePercent = clamped;
@@ -2775,7 +2815,9 @@ function attachZoom(canvas) {
     }
     // Proportional to the current zoom span, so a tick feels similarly sized whether
     // zoomed to a 2s window or a 60s one — the same principle zoomBy's factor already uses.
-    seek(currentTime() + (e.deltaY > 0 ? 1 : -1) * zoomSeconds * WHEEL_SEEK_FRACTION);
+    ignoreReportedCommandError(playerApplication.commands.seek(
+      currentTime() + (e.deltaY > 0 ? 1 : -1) * zoomSeconds * WHEEL_SEEK_FRACTION,
+    ));
   }, { passive: false });
 
   /* A click seeks, a drag pans. Distinguished by distance travelled rather than by a
@@ -2914,7 +2956,7 @@ function attachZoom(canvas) {
     }
     if (noteDrag) {
       if (noteDrag.travelled <= DRAG_SLOP) {
-        seek(zoomTimeAt(canvas, e.clientX));
+        ignoreReportedCommandError(playerApplication.commands.seek(zoomTimeAt(canvas, e.clientX)));
         noteDrag = null;
         draw();
         return;
@@ -2932,7 +2974,9 @@ function attachZoom(canvas) {
     }
     if (!panning) return;
     panning = false;
-    if (travelled <= DRAG_SLOP) seek(zoomTimeAt(canvas, e.clientX));
+    if (travelled <= DRAG_SLOP) {
+      ignoreReportedCommandError(playerApplication.commands.seek(zoomTimeAt(canvas, e.clientX)));
+    }
   });
   canvas.addEventListener('pointercancel', () => {
     addDrag = null; rangeDrag = null; noteDrag = null; panning = false;
@@ -3324,7 +3368,7 @@ function attachSeek(canvas, opts) {
     }
     canvas.setPointerCapture(e.pointerId);
     scrubbing = true;
-    seek(posToTime(e));
+    ignoreReportedCommandError(playerApplication.commands.seek(posToTime(e)));
   });
   canvas.addEventListener('pointermove', (e) => {
     if (tempoRangeDrag) { tempoRangeDrag.curT = posToTime(e); draw(); return; }
@@ -3353,12 +3397,11 @@ function attachSeek(canvas, opts) {
     }
     if (!scrubbing) return;
     scrubbing = false;
-    seek(posToTime(e));
+    ignoreReportedCommandError(playerApplication.commands.seek(posToTime(e)));
   });
   canvas.addEventListener('pointercancel', () => { tempoRangeDrag = null; rangeDrag = null; scrubbing = false; });
 }
 
-on(el.play, 'click', toggle);
 on(el.loopClear, 'click', clearLoop);
 on(el.allToggle, 'click', toggleAllTracks);
 /* Hand focus back after a choice. The global keydown handler ignores events aimed at a
@@ -3400,16 +3443,6 @@ on(el.masterVol, 'input', () => {
   master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
   if (overviewVolEl) overviewVolEl.value = el.masterVol.value;
 });
-on(el.speed, 'input', () => setRate(parseInt(el.speed.value, 10)));
-
-/* The value is cleared after dispatching so picking the *same* file twice in a row still
- * fires `change`. With two inputs that was rare; with one it is the obvious retry after a
- * decode error, and a silent no-op there looks like the button is broken. */
-on(el.fileInput, 'change', (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  loadAny(file);
-});
 
 document.addEventListener('keydown', (e) => {
   // This exclusion is also what keeps syncNoteFields' clobber-avoidance sound: it's why a
@@ -3435,22 +3468,44 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); editRangeDelete(); return; }
     if (e.key === 'g' || e.key === 'G') { e.preventDefault(); editSnapRange(); return; }
   }
-  if (e.key === ' ') { e.preventDefault(); toggle(); }
-  else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }
-  else if (e.key === 'ArrowRight') { e.preventDefault(); seek(currentTime() + (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION)); }
+  if (e.key === ' ') { e.preventDefault(); ignoreReportedCommandError(playerApplication.commands.togglePlayback()); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); ignoreReportedCommandError(playerApplication.commands.seek(currentTime() - (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION))); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); ignoreReportedCommandError(playerApplication.commands.seek(currentTime() + (e.shiftKey ? FINE_SEEK_STEP : zoomSeconds * ARROW_SEEK_FRACTION))); }
   else if (e.key === '0') toggleAllTracks();
   else if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setLoopPoint('a'); }
   else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setLoopPoint('b'); }
   else if (e.key === 'c' || e.key === 'C' || e.key === 'Escape') { e.preventDefault(); clearLoop(); }
-  else if (e.key === '[') { e.preventDefault(); setRate(SansTransportMath.nudgeRatePercent(ratePercent, -SansTransportMath.RATE_STEP)); }
-  else if (e.key === ']') { e.preventDefault(); setRate(SansTransportMath.nudgeRatePercent(ratePercent, SansTransportMath.RATE_STEP)); }
+  else if (e.key === '[') {
+    e.preventDefault();
+    ignoreReportedCommandError(playerApplication.commands.setPlaybackRate(
+      SansTransportMath.nudgeRatePercent(ratePercent, -SansTransportMath.RATE_STEP) / 100,
+    ));
+  } else if (e.key === ']') {
+    e.preventDefault();
+    ignoreReportedCommandError(playerApplication.commands.setPlaybackRate(
+      SansTransportMath.nudgeRatePercent(ratePercent, SansTransportMath.RATE_STEP) / 100,
+    ));
+  }
   // Shift+[ / Shift+] for the fine ±1% step. NOT `e.key === '[' && e.shiftKey` — holding
   // Shift while pressing the physical [ / ] key changes e.key to '{' / '}' on a standard
   // layout, so a shiftKey check here would just never fire; checking the produced
   // character directly is what actually matches a real Shift+[ keypress.
-  else if (e.key === '{') { e.preventDefault(); setRate(SansTransportMath.nudgeRatePercent(ratePercent, -SansTransportMath.RATE_FINE_STEP)); }
-  else if (e.key === '}') { e.preventDefault(); setRate(SansTransportMath.nudgeRatePercent(ratePercent, SansTransportMath.RATE_FINE_STEP)); }
-  else if (e.key === '\\') { e.preventDefault(); setRate(SansTransportMath.RATE_DEFAULT); }
+  else if (e.key === '{') {
+    e.preventDefault();
+    ignoreReportedCommandError(playerApplication.commands.setPlaybackRate(
+      SansTransportMath.nudgeRatePercent(ratePercent, -SansTransportMath.RATE_FINE_STEP) / 100,
+    ));
+  } else if (e.key === '}') {
+    e.preventDefault();
+    ignoreReportedCommandError(playerApplication.commands.setPlaybackRate(
+      SansTransportMath.nudgeRatePercent(ratePercent, SansTransportMath.RATE_FINE_STEP) / 100,
+    ));
+  } else if (e.key === '\\') {
+    e.preventDefault();
+    ignoreReportedCommandError(playerApplication.commands.setPlaybackRate(
+      SansTransportMath.RATE_DEFAULT / 100,
+    ));
+  }
   else if (/^[1-9]$/.test(e.key)) {
     const t = tracks[parseInt(e.key, 10) - 1];
     if (t) toggleTrack(t);
@@ -3499,7 +3554,9 @@ document.addEventListener('drop', (e) => {
   if (dropped.length === 1) {
     // A zip is a plain file, so it arrives in dt.files whatever else is blocked. This is
     // what makes zip drag-and-drop work from disk.
-    if (isZip(dropped[0]) || AUDIO_RE.test(dropped[0].name)) return loadAny(dropped[0]);
+    if (isZip(dropped[0]) || AUDIO_RE.test(dropped[0].name)) {
+      return ignoreReportedCommandError(playerApplication.commands.load(dropped[0]));
+    }
   }
 
   // Nothing usable — say precisely which case it was rather than failing silently.
@@ -3526,10 +3583,84 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(renderAll, 120);
 });
 
-/* Interface for separate.js, which is an ES module and cannot share scope with this
- * classic script. Kept deliberately small. */
+function applicationSnapshot() {
+  const song = tracks.length ? {
+    id: acceptedSongToken,
+    title: currentTitle,
+    duration,
+    tracks: tracks.map((track, index) => ({
+      id: laneKey(track, index), stem: track.stem || null, name: track.name,
+    })),
+  } : null;
+  return {
+    song,
+    loading,
+    transport: {
+      playing,
+      position: currentTime(),
+      duration,
+      playbackRate: ratePercent / 100,
+      loopA,
+      loopB,
+    },
+    status: lastSay ? { key: lastSay.key, params: lastSay.params || null, error: !!lastSay.isErr } : null,
+  };
+}
+
+function mountLegacyControls() {
+  if (unmountLegacyControls || applicationDisposed) return;
+  unmountLegacyControls = mountLegacyPlayerControls(playerApplication, {
+    play: el.play,
+    speed: el.speed,
+    speedValue: el.speedVal,
+    fileInput: el.fileInput,
+  });
+}
+
+function unmountLegacyControlsOnly() {
+  unmountLegacyControls?.();
+  unmountLegacyControls = null;
+}
+
+playerApplication.initialize({
+  getSnapshot: applicationSnapshot,
+  commands: {
+    load: loadAny,
+    play,
+    pause: () => { if (playing) stop(true); },
+    togglePlayback: toggle,
+    seek,
+    setPlaybackRate: (rate) => setRate(rate * 100),
+    replaceSong: loadSeparated,
+  },
+  reportCommandError: (error) => {
+    loading = false;
+    say('status.commandFailed', { message: error.message }, true);
+  },
+  dispose: () => {
+    applicationDisposed = true;
+    unmountLegacyControlsOnly();
+    clearTimeout(resizeTimer);
+    cancelAnimationFrame(raf);
+    stop(false);
+    tracks = [];
+    duration = 0;
+    loading = false;
+    currentTitle = '';
+    if (audio && audio.state !== 'closed') audio.close().catch(() => {});
+  },
+});
+mountLegacyControls();
+
+/* Temporary compatibility bridge for notes.js, separate.js, and the browser harness.
+ * New loading/transport UI imports lib/player-application.js instead. Remove each member
+ * when its named consumer migrates; do not add unrelated globals. */
 window.sansBass = {
-  loadSeparated,
+  application: playerApplication,
+  legacyControls: {
+    unmount: unmountLegacyControlsOnly,
+    remount: mountLegacyControls,
+  },
   /** The currently loaded full-mix track, or null. */
   currentMix: () => {
     const t = tracks.find((x) => x.stem === 'mix');

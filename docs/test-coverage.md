@@ -275,7 +275,7 @@ release integrity.
 | Analytics | `A6` | `ANALYTICS-001` | Events do not reach GoatCounter from localhost. | merge | — | `ANALYTICS-001` |
 | Analytics | `A7` | `ANALYTICS-001` | `separate-handheld-blocked` fires **once** per visitor shown the message, never once per poll. | merge | — | `ANALYTICS-001` |
 
-## React migration boundary coverage (phases 0–1)
+## React migration boundary coverage (phases 0–2)
 
 The historical inventory above remains unchanged. `tests/header.test.js` adds jsdom
 evidence for LANG-001 and the demo-listing smoke contract: language button pressed state,
@@ -290,3 +290,20 @@ semantics, and Strict Mode-style mount/unmount/remount cleanup. The phase-1 buil
 adds actual generated-page, normal/nested build, exported-demo, and responsive-layout
 evidence. These checks do not claim player audio continuity or deployed delivery; see the
 [migration evidence log](react-migration-evidence.md).
+
+`tests/player-application.test.js` adds Phase 2 Node evidence for explicit initialization and
+the initial snapshot; stable immutable snapshot reads; loading/transport/replacement command
+delegation; validation and asynchronous command errors; stale-load error suppression;
+idempotent subscribe/unsubscribe; application-lifetime cleanup; and disposal token invalidation.
+It proves the facade contract without DOM, audio, or Worker claims.
+
+The Phase 2 additions to `tests/player.test.js` use the production entry, real AudioContext,
+generated WAV/ZIP encoders, and the one real file input. They add LOAD-001/TRN-001/LOOP-001/
+SPD-001/LANG-001/BOOT-001 seam evidence for initial observation, legacy control
+unmount/remount, synchronized starts, play/pause/seek/rate, invalid/valid A–B points, song
+replacement/reset, bilingual command errors, partial decode recovery, stale decode rejection,
+stale notes completion after replacement, and separation completion after application disposal.
+Existing player cases continue to cover MIX-001 gain routing, deterministic SEP-001 success,
+drag visibility, and locale/canvas identity. These fake-Worker cases do not prove real Worker,
+model, physical-device, background, visual, or auditory behavior; deployed and manual evidence
+is recorded separately in the [migration evidence log](react-migration-evidence.md).

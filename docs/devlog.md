@@ -110,8 +110,14 @@ Running log of what was built and what was learned building it.
 - [note] Exact-commit root/nested build checks pass with no page/HTTP errors. Total emitted JS
   is 375,976 bytes (+979, +0.26% from Phase 2), while the player route now intentionally loads
   React: median local transfer 343,436 bytes (+127.4%), DOMContentLoaded 21.6 ms (+2.9 ms), and
-  observed ready 43.8 ms (+10.1 ms). Preview, production, and acceptance remain pending;
-  transport controls are the next Phase 3 ownership slices.
+  observed ready 43.8 ms (+10.1 ms).
+- [note] PR #69's initial preview displayed exact synthetic merge `f9d3084` before its boundary
+  run. Generated two-stem input, unsupported and malformed recovery, saved locale, post-load
+  locale retention, stable input/root/canvases, identical real-song repeat selection, nested
+  navigation, narrow layout, and a clean fresh first-party console passed. Throwing storage and
+  drag data-transfer/overlay fault injection remain automated exact-source evidence because the
+  deployed page exposes neither capability as a user control. Production and acceptance remain
+  pending; transport controls are the next Phase 3 ownership slices.
 
 ---
 

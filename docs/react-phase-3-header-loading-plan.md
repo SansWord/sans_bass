@@ -1,7 +1,8 @@
 # React migration Phase 3a — player header and loading plan
 
-Status: implemented locally at `8892b87cf73e25d60fa2ed6b6988cca04e6b43bf`;
-deployment review pending. Plan source: `02aca2022ff8e99f8b510c6e92de17d27179d67d`.
+Status: implemented locally at `8892b87cf73e25d60fa2ed6b6988cca04e6b43bf` and verified
+on PR #69's preview; production acceptance pending. Plan source:
+`02aca2022ff8e99f8b510c6e92de17d27179d67d`.
 Accepted Phase 2 rollback anchor: `6657528afdac67f75c5b3118bbd651d4d6684b6b`.
 
 ## Bounded outcome

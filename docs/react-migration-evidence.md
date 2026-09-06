@@ -2,8 +2,8 @@
 
 ## Phase 3a — React player header and loading
 
-Status: local implementation and verification complete; PR-preview/production acceptance
-pending. Evidence collected 2026-09-06 America/Los_Angeles. Implementation source:
+Status: implementation and PR-preview verification complete; production acceptance pending.
+Evidence collected 2026-09-06 America/Los_Angeles. Implementation source:
 `8892b87cf73e25d60fa2ed6b6988cca04e6b43bf`; branch
 `feat/react-phase-3-header-loading`. Starting source:
 `02aca2022ff8e99f8b510c6e92de17d27179d67d`. Accepted rollback boundary remains Phase 2 at
@@ -83,6 +83,40 @@ the player main chunk is 108,984 bytes. The startup increase is the expected Pha
 cost of bringing the already accepted React runtime onto the player route, with no measured
 audio/drawing claim implied by local startup timing.
 
+### PR-preview deployment evidence
+
+Delivery review: [PR #69](https://github.com/SansWord/sans_bass/pull/69). The initial required
+checks passed (`test`, 56 seconds; `deploy`, 11 seconds). The nested preview at
+`https://sansword.github.io/sans_bass/pr-69/` displayed exact synthetic merge source
+`f9d3084d722346a77a34858d8772cb28fcffcc59` (`f9d3084`) before the boundary run. This
+evidence-only documentation change requires refreshed checks and a final displayed synthetic
+merge-SHA assertion before merge; that result will be recorded with the accepted anchor.
+
+Chrome exercised the player root and `/pr-69/demos/` at the preview base, and both routes
+displayed `f9d3084`; header navigation stayed below `/pr-69/`. A clean startup retained the
+saved Traditional Chinese choice, rendered exactly one React player shell and one file input,
+and produced no first-party warning or error. The exact-commit normal/nested build harness
+separately injected throwing `localStorage` and proved boot plus both language choices; live
+GitHub Pages has no user-visible control that can revoke storage for fault injection.
+
+A generated 0.2-second two-stem WAV/ZIP fixture loaded through the real input as `Preview
+synthetic`. Switching English to Traditional Chinese after load retained the song, lanes,
+seven canvases, one input, and one React root, and returned focus to the document. An
+unsupported `.txt` rendered the established Chinese rejection, which rerendered in English
+without a new input; a three-byte ZIP rendered the established damaged-ZIP recovery. The PR's
+production-entry Chromium gate supplies the cancelable file-drop/data-transfer boundary that
+cannot be driven by the deployed page's native file picker: valid drop, unsupported/multiple/
+folder rejection, overlay depth and cleanup, fixed folder-drop analytics, and one listener/load
+set after remount all passed against this source.
+
+The committed `examples/nov_you.zip` was used only for the real-song deployment smoke. It
+decoded as `9 十二月的妳`, 4:23, with six named stems; the cleared input accepted the identical
+file a second time, while input/root counts stayed one. A subsequent language render retained
+the same title, lanes, and eleven canvases. A 390-by-844 visual check showed the existing
+stacked header/load affordance without horizontal clipping. The intentional malformed-ZIP run
+logged its caught parser error; a separate fresh navigation established the clean first-party
+console result. Browser-extension warnings were excluded by source URL.
+
 ### Evidence categories and omissions
 
 | Category | Local evidence / omission |
@@ -92,13 +126,12 @@ audio/drawing claim implied by local startup timing.
 | Storage/locale | Both languages before/after load and bilingual status pass in the player; jsdom plus the isolated root/nested build harness cover saved and throwing storage. |
 | Handheld | Existing capability predicate tests pass and the React shell uses the same once-per-page handheld explanation. No physical device was run. |
 | Worker | Existing deterministic stale notes/separation Worker cases pass. No real Worker or model was required for the local UI boundary. |
-| Visual | Computed overlay/hidden visibility and desktop/narrow shared-header layout pass. Subjective player visual comparison is pending preview review. |
+| Visual | Computed overlay/hidden visibility and desktop/narrow shared-header layout pass; the 390-by-844 preview header/load affordance was visually reviewed without clipping. Full subjective player comparison remains out of scope. |
 | Auditory | Not run; audio scheduling/DSP ownership did not move. Trusted unlock, background timing, pitch/seam, and note-tone listening remain omitted. |
-| Real song | Not run locally for this UI slice; `examples/nov_you.zip` is reserved for the required deployed real-song smoke. |
+| Real song | Preview-only deployment smoke: `examples/nov_you.zip` decoded to the 4:23 six-stem song and accepted identical repeat selection. It is not synthetic-matrix evidence. |
 
-PR preview must verify the exact displayed synthetic merge SHA before the boundary-relevant
-player assertions. Production acceptance and a Phase 3a rollback anchor remain pending; no
-accepted-Phase-3 claim is made here.
+Production acceptance and a Phase 3a rollback anchor remain pending; no accepted-complete-
+Phase-3 claim is made here.
 
 ## Phase 2 — player command and subscription boundary
 

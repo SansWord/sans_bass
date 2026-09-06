@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; PR #71 preview passed and production acceptance remains pending. |
+| [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; accepted in production at `99ac653`. |
 | [React phase 3a](#react-phase-3a--player-header-and-loading-2026-09-06) | React now solely owns the shared player header, stable file input, loading/status UI, and cleaned drag overlay; transport groups remain legacy-owned pending later Phase 3 slices. |
 | [React phase 2](#react-phase-2--player-command-and-subscription-boundary-2026-09-05) | The unchanged player UI now loads and controls transport through one observable ESM application facade, with disposable UI wiring and stale song/Worker barriers; accepted in production at `6657528`. |
 | [React phase 1](#react-phase-1--isolated-demo-header-pilot-2026-09-05) | React now solely owns the demo header with cleaned locale subscriptions; the player and audio remain legacy-owned. |
@@ -106,7 +106,13 @@ Running log of what was built and what was learned building it.
   synthetic merge `72776ed` before root/nested-route, saved-locale, real six-stem song,
   genuine-keyboard play and 95% rate, focused-control, control-uniqueness, and clean-console
   checks passed. Exact-source automation supplies the blocked-storage, remount, and generated
-  loading matrix; production acceptance is still pending.
+  loading matrix.
+- [note] The evidence refresh passed `test` and `deploy`, then displayed final synthetic
+  merge `62c444a`. PR #71 was squash-merged as `99ac653`; its exact-SHA Test and Deploy main
+  workflows passed, and production displayed `99ac653` before root/nested-route, saved-locale,
+  real-song, genuine-keyboard playback/rate, focus, uniqueness, and clean-console canaries.
+  That full SHA is the Phase 3b rollback anchor. Phase 3 remains in progress because seek,
+  volume, A/B loop, and mode/routing ownership have not moved.
 
 ---
 

@@ -122,8 +122,8 @@ canary is still required because it proves that the intended commit reached the 
 Add self-contained HTML files directly to `public/demos/` and merge into `main`.
 `npm run build` first runs `scripts/build-demos.js`, which scans `.html`/`.htm` files,
 sorts their filenames, and regenerates the ignored `demos/index.html`.
-Vite bundles the generated list as an HTML entry, including hashed shared-header/i18n
-assets, and copies the source demo exports unchanged to `dist/demos/`. Both existing
+Vite bundles the generated list as an HTML entry, including its hashed React header and
+shared i18n assets, and copies the source demo exports unchanged to `dist/demos/`. Both existing
 deploy workflows publish the output automatically. Removing or renaming a file updates
 the next build's list.
 

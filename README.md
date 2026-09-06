@@ -496,9 +496,10 @@ layers; [`docs/product-contract.md`](docs/product-contract.md) describes support
 index.html                markup
 styles.css                styling
 app.js                    player: decode, waveform render, transport, mixing
-lib/header.js             shared header, navigation, and language controls
+lib/header.js             player header, navigation, and language controls
 lib/i18n.js               English/Traditional Chinese dictionary and saved locale
-demos.js                  demo listing localization
+components/DemoHeader.jsx React demo header (shares the header contract and styles)
+demos.jsx                 demo React mount and listing localization
 scripts/build-demos.js    generates demos/index.html before dev/build
 public/demos/             committed HTML examples for the public demo list
 lib/stems.js              stem identity (ES module shared with app.js and tests)

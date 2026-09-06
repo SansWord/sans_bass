@@ -18,10 +18,14 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
 
 ## Hard constraints — do not break these
 
-- **npm + Vite build the site; no UI framework.** `npm run dev` for local dev, `npm run
-  build` for `dist/`, both CI workflows build before publishing. The player core is
-  `index.html`, `styles.css`, `app.js` plus `lib/stems.js` and `lib/unzip.js`. Vanilla JS
-  stays the default for code this project writes — React/Vue/etc. are still out. `file://`
+- **npm + Vite build the site; React is for component UI only.** `npm run dev` for local
+  dev, `npm run build` for `dist/`, both CI workflows build before publishing. The player
+  core is `index.html`, `styles.css`, `app.js` plus `lib/stems.js` and `lib/unzip.js`.
+  React/React DOM and Vite JSX support were introduced for the incremental component
+  migration; the demo-page header is the isolated phase-1 owner. Audio, analysis,
+  serialization, canvas renderers, Workers, and AudioWorklets stay ordinary JavaScript
+  modules outside React. Vanilla JS remains the default where a component lifecycle is not
+  needed. `file://`
   support was dropped in v1.5.0. `app.js` and every `lib/*.js` file (`stems.js`, `i18n.js`,
   `platform.js`, `unzip.js`, `ribbon.js`, `jianpu.js`, `transport-math.js`, `analytics.js`)
   are real ES modules as of v1.21.0 — actual `import`/`export`, not just the
@@ -96,10 +100,15 @@ A-B repeat / routing / input).
 
 ## Repo layout
 
-The player and demo list share `lib/header.js` and `styles.css`. `initHeader()` mounts
-ordinary DOM before the player captures its controls; it moves the existing player-owned
-file input rather than replacing it. Header language events and button state belong to
-that module. All translations and the saved locale remain in `lib/i18n.js`.
+The player and demo list share `styles.css`, the translation dictionary, and the same header
+contract, but have deliberately separate owners during the React migration. The player still
+uses `lib/header.js`; `initHeader()` mounts ordinary DOM before the player captures its
+controls and moves the existing player-owned file input rather than replacing it. The demo
+page's `#site-header` descendants are owned only by `components/DemoHeader.jsx`. Its locale
+hook subscribes to `lib/i18n.js` and cleans up on unmount; React-owned descendants do not use
+`data-i18n`, so the legacy document traversal cannot overwrite them. Component-specific
+styles should be colocated when needed; the pilot reuses the established shared header
+classes from `styles.css` to preserve appearance.
 
 `npm run dev` and `npm run build` first generate `demos/index.html` from files directly
 inside `public/demos/`. Vite bundles the generated list as an entry and copies the demo
@@ -111,9 +120,10 @@ index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
 lib/stems.js                       stem identity — ESM, no window bridge
 lib/unzip.js                       zip reading — ESM, no window bridge
 lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
-lib/header.js                      shared player/demo header and language controls
-demos.js                           demo-page title/count localization
-scripts/build-demos.js              generates the ignored demos/index.html before dev/build
+lib/header.js                      legacy player header and language controls
+components/{DemoHeader.jsx,useLocale.js}  React demo header + cleaned locale subscription
+demos.jsx                          demo React mount plus legacy title/count localization
+scripts/build-demos.js             generates the ignored demos/index.html before dev/build
 public/demos/                      explicitly published HTML demos; source files are committed
 lib/platform.js                    isHandheld() device predicate — ESM, no window bridge
 lib/{wav,zip,overlap}.js           ESM — WAV encode, ZIP write, segment planning

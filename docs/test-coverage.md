@@ -275,7 +275,7 @@ release integrity.
 | Analytics | `A6` | `ANALYTICS-001` | Events do not reach GoatCounter from localhost. | merge | — | `ANALYTICS-001` |
 | Analytics | `A7` | `ANALYTICS-001` | `separate-handheld-blocked` fires **once** per visitor shown the message, never once per poll. | merge | — | `ANALYTICS-001` |
 
-## React migration boundary coverage (phase 0)
+## React migration boundary coverage (phases 0–1)
 
 The historical inventory above remains unchanged. `tests/header.test.js` adds jsdom
 evidence for LANG-001 and the demo-listing smoke contract: language button pressed state,
@@ -283,3 +283,10 @@ player file-input/listener identity, active-page navigation, nested-base link re
 and absence of the load control on demos. This does not prove rendered layout, native file
 selection, actual generated-page wiring, or deployed navigation. See
 [phase 0 evidence](react-migration-evidence.md) for remaining gaps.
+
+`tests/demo-header.test.jsx` adds phase-1 jsdom evidence for the React-owned demo header:
+normal/nested relative links, both locale renderings, saved and blocked storage, active-page
+semantics, and Strict Mode-style mount/unmount/remount cleanup. The phase-1 build harness
+adds actual generated-page, normal/nested build, exported-demo, and responsive-layout
+evidence. These checks do not claim player audio continuity or deployed delivery; see the
+[migration evidence log](react-migration-evidence.md).

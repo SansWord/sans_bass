@@ -1,7 +1,7 @@
 # Incremental React migration
 
-Status: phase 3a player header/loading accepted in production; phase 3b play/pause and speed
-implementation is under review. Seek, volume, loop, and mode/routing groups remain legacy-owned.
+Status: phase 3a player header/loading and phase 3b play/pause/speed accepted in production.
+Seek, volume, loop, and mode/routing groups remain legacy-owned.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -276,6 +276,7 @@ Use a revert PR on shared `main` rather than resetting published history.
 | Phase 1 accepted in production | `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d` | Known-good isolated demo-header pilot from [PR #65](https://github.com/SansWord/sans_bass/pull/65). Restore to this boundary if a later phase must be backed out while keeping Phase 1. |
 | Phase 2 accepted in production | `6657528afdac67f75c5b3118bbd651d4d6684b6b` | Known-good player command/subscription boundary from [PR #67](https://github.com/SansWord/sans_bass/pull/67). Restore to this boundary if a later phase must be backed out while keeping the non-React player seam. |
 | Phase 3a header/loading accepted in production | `467f91b06aabb5fed68822bf254736e719e2abee` | Known-good React player header/loading increment from [PR #69](https://github.com/SansWord/sans_bass/pull/69). Restore to this boundary to retain the React-owned header, stable file input, status, and drag overlay while backing out later transport slices. |
+| Phase 3b play/pause and speed accepted in production | `99ac653ec20de0d54035c0c89cb5dfb7ab40a77d` | Known-good React primary playback-control increment from [PR #71](https://github.com/SansWord/sans_bass/pull/71). Restore to this boundary to retain React-owned play/pause and speed while backing out later transport slices. |
 
 Add one row after each phase is accepted in production. The target SHA is a restoration and
 comparison anchor, not permission to `git reset` a shared branch; revert the commits after the
@@ -307,7 +308,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
 | 1 | Accepted in production at `5de58b6` | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Complete; Phase 2 may begin |
 | 2 | Accepted in production at `6657528` | [Plan](react-phase-2-plan.md) · [Evidence](react-migration-evidence.md#phase-2--player-command-and-subscription-boundary) · [PR #67](https://github.com/SansWord/sans_bass/pull/67) | Complete; Phase 3 may begin |
-| 3 | Header/loading accepted at `467f91b`; play/pause and speed under review | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Evidence](react-migration-evidence.md) | Accept Phase 3b, then migrate seek, volume, loop, and mode/routing groups |
+| 3 | Header/loading accepted at `467f91b`; play/pause and speed accepted at `99ac653` | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) | Migrate seek, volume, loop, and mode/routing groups |
 | 4 | Not started | — | Lanes and waveform hosts |
 | 5 | Not started | — | Separation/detection controls |
 | 6 | Not started | — | Notes/editor controls |

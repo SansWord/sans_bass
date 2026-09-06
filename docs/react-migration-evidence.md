@@ -2,10 +2,12 @@
 
 ## Phase 3b — React primary playback controls
 
-Status: implementation and PR-preview verification complete; production acceptance pending.
-Evidence collected 2026-09-06 America/Los_Angeles. Implementation source:
+Status: accepted in production. Evidence collected 2026-09-06 America/Los_Angeles.
+Implementation source:
 `6ae46b2fbbb9ec0b75c892725ee67b050931a0cc`; branch
 `feat/react-phase-3-playback-controls`. Starting source: `8ab8f63c` on current `main`.
+Accepted production source and rollback anchor:
+`99ac653ec20de0d54035c0c89cb5dfb7ab40a77d`.
 Previous accepted boundary: `467f91b06aabb5fed68822bf254736e719e2abee`.
 The pre-existing untracked `demo.md` remains outside this slice.
 
@@ -84,8 +86,29 @@ Remount/state/resource preservation, unchanged generated/malformed loading paths
 storage are covered by the exact production-entry automated gate above rather than browser
 mutation of the deployed page. The full synthetic fixture matrix was not rerun against the
 hosted origin; the real-song check is deployment smoke, not a substitute for that matrix.
-This evidence commit intentionally triggers a final synthetic merge build whose displayed
-SHA will be checked before merge.
+The preview-evidence commit intentionally triggered a final synthetic merge build whose
+displayed SHA was checked before merge.
+
+The evidence-only refresh produced final synthetic merge source
+`62c444a86a38c3379849b1c22051a4c13a467d03`; refreshed `test` (38 seconds) and `deploy`
+(13 seconds) checks passed, and the preview displayed exact `62c444a` before the final
+delivery canary.
+
+### Production acceptance evidence
+
+PR #71 was squash-merged as `99ac653ec20de0d54035c0c89cb5dfb7ab40a77d`. The exact-SHA
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34056691143) passed in
+39 seconds and the [Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34056691279)
+passed in 11 seconds. Before any production behavior assertion, the root displayed exact
+`99ac653`.
+
+The required production tier repeated the affected delivery boundary. Root and `/demos/`
+resolved at the production base with the same SHA and retained saved English. The real
+`examples/nov_you.zip` loaded as the 4:23 six-stem song; genuine Space advanced playback,
+genuine `[` selected active and rendered 95% playback, and play activation returned focus to
+the page. One React shell root, play button, and speed input remained, and first-party
+warning/error console output was empty. The same automated-versus-deployed evidence boundary
+and explicit omissions below apply; Phase 3b accepts only play/pause and speed ownership.
 
 ### Evidence categories and current omissions
 
@@ -98,10 +121,11 @@ SHA will be checked before merge.
 | Worker | Existing fake stale notes/separation Worker cases pass; no real Worker/model path changed or ran locally. |
 | Visual | Exact-source and deployed desktop controls were visually reviewed with no layout redesign; no deployed narrow or physical-device review ran. |
 | Auditory | Genuine keyboard input proved AudioContext unlock and advancing native/stretched clocks, but subjective listening, pitch preservation, seam quality, and background playback were not claimed. |
-| Real song | Exact-source local build loaded `examples/nov_you.zip` as `9 十二月的妳`, 4:23, six stems; this is deployment/musical smoke only, not the synthetic behavior matrix. |
+| Real song | Exact-source, preview, and production builds loaded `examples/nov_you.zip` as `9 十二月的妳`, 4:23, six stems; this is deployment/musical smoke only, not the synthetic behavior matrix. |
 
-PR #71 and its initial preview evidence are recorded; merge, production SHA, and the accepted
-Phase 3b rollback anchor remain pending.
+The Phase 3b play/pause and speed increment is accepted, and its production SHA is an
+immutable rollback anchor. Seek, volume, A/B loop, mode/routing, lanes, canvases, separation,
+detection, notes, and DSP remain; Phase 3 is not complete.
 
 ## Phase 3a — React player header and loading
 

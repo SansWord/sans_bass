@@ -2,8 +2,8 @@
 
 ## Phase 3b — React primary playback controls
 
-Status: implementation and local verification complete; PR preview and production acceptance
-pending. Evidence collected 2026-09-06 America/Los_Angeles. Implementation source:
+Status: implementation and PR-preview verification complete; production acceptance pending.
+Evidence collected 2026-09-06 America/Los_Angeles. Implementation source:
 `6ae46b2fbbb9ec0b75c892725ee67b050931a0cc`; branch
 `feat/react-phase-3-playback-controls`. Starting source: `8ab8f63c` on current `main`.
 Previous accepted boundary: `467f91b06aabb5fed68822bf254736e719e2abee`.
@@ -65,20 +65,43 @@ Phase 3a player-startup boundary is unchanged apart from the 206-byte emitted de
 browser timing was not promoted to a latency claim; preview navigation remains the deployed
 startup check.
 
+### PR-preview deployment evidence
+
+[PR #71](https://github.com/SansWord/sans_bass/pull/71) `test` (41 seconds) and `deploy`
+(11 seconds) checks passed. Before any behavioral assertion, the published preview displayed
+exact synthetic merge source `72776ed1abe82e0dd1425890352f8b00df8f1c0b` at
+`https://sansword.github.io/sans_bass/pr-71/`.
+
+Codex in-app Chromium exercised the player root and `/pr-71/demos/`; both resolved at the
+preview base, showed `72776ed`, and retained the saved English locale after a fresh
+navigation. The real `examples/nov_you.zip` loaded as `9 十二月的妳`, 4:23, with six stems.
+A genuine Space key event unlocked and advanced playback, a genuine `[` changed the rendered
+and active rate to 95%, a focused speed input ignored the document shortcut, and activating
+play returned focus to the page. The loaded page retained exactly one React shell root, play
+button, and speed input, and the first-party warning/error console remained empty.
+
+Remount/state/resource preservation, unchanged generated/malformed loading paths, and blocked
+storage are covered by the exact production-entry automated gate above rather than browser
+mutation of the deployed page. The full synthetic fixture matrix was not rerun against the
+hosted origin; the real-song check is deployment smoke, not a substitute for that matrix.
+This evidence commit intentionally triggers a final synthetic merge build whose displayed
+SHA will be checked before merge.
+
 ### Evidence categories and current omissions
 
 | Category | Evidence / omission |
 |---|---|
 | Synthetic | Production-entry tests use generated WAV/ZIP stems for play/pause, synchronized starts, rates, loop, routing, locale/remount, replacement, analytics, and stale-completion assertions. |
 | Malformed input | Existing malformed ZIP, unsupported/multiple/folder drop, partial decode, and recovery cases pass unchanged; exhaustive archive mutations remain in Node unzip coverage. |
-| Storage/locale | Both languages and loaded-state/input identity pass in Chromium; existing jsdom saved/blocked-storage cases pass. Deployed saved/blocked evidence is pending. |
+| Storage/locale | Both languages and loaded-state/input identity pass in Chromium; saved English persisted across a fresh preview navigation. Existing jsdom production-entry cases cover throwing/blocked storage; that condition was not injected into the hosted page. |
 | Handheld | Existing predicate coverage passes; no physical device was run. |
 | Worker | Existing fake stale notes/separation Worker cases pass; no real Worker/model path changed or ran locally. |
-| Visual | Exact-source desktop built controls were visually reviewed with no layout redesign; deployed narrow review is pending. |
+| Visual | Exact-source and deployed desktop controls were visually reviewed with no layout redesign; no deployed narrow or physical-device review ran. |
 | Auditory | Genuine keyboard input proved AudioContext unlock and advancing native/stretched clocks, but subjective listening, pitch preservation, seam quality, and background playback were not claimed. |
 | Real song | Exact-source local build loaded `examples/nov_you.zip` as `9 十二月的妳`, 4:23, six stems; this is deployment/musical smoke only, not the synthetic behavior matrix. |
 
-No PR, merge, production SHA, or accepted Phase 3b rollback anchor is recorded yet.
+PR #71 and its initial preview evidence are recorded; merge, production SHA, and the accepted
+Phase 3b rollback anchor remain pending.
 
 ## Phase 3a — React player header and loading
 

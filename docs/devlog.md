@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; preview and production acceptance remain pending. |
+| [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; PR #71 preview passed and production acceptance remains pending. |
 | [React phase 3a](#react-phase-3a--player-header-and-loading-2026-09-06) | React now solely owns the shared player header, stable file input, loading/status UI, and cleaned drag overlay; transport groups remain legacy-owned pending later Phase 3 slices. |
 | [React phase 2](#react-phase-2--player-command-and-subscription-boundary-2026-09-05) | The unchanged player UI now loads and controls transport through one observable ESM application facade, with disposable UI wiring and stale song/Worker barriers; accepted in production at `6657528`. |
 | [React phase 1](#react-phase-1--isolated-demo-header-pilot-2026-09-05) | React now solely owns the demo header with cleaned locale subscriptions; the player and audio remain legacy-owned. |
@@ -102,6 +102,11 @@ Running log of what was built and what was learned building it.
 - [note] Failing-first Chromium produced two expected ownership/focus failures. The local
   gate passes 404 tests and the production build. Deployment evidence and acceptance remain
   pending on the focused implementation PR.
+- [note] PR #71's initial `test` and `deploy` checks passed. Its preview displayed exact
+  synthetic merge `72776ed` before root/nested-route, saved-locale, real six-stem song,
+  genuine-keyboard play and 95% rate, focused-control, control-uniqueness, and clean-console
+  checks passed. Exact-source automation supplies the blocked-storage, remount, and generated
+  loading matrix; production acceptance is still pending.
 
 ---
 

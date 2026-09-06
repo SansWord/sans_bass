@@ -213,6 +213,9 @@ code {
 
 /* ---------- master row ---------- */
 
+/* React portals own selected descendants without adding a layout box or a second root. */
+.react-portal-host { display: contents; }
+
 .master {
   display: flex;
   align-items: center;

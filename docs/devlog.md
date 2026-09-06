@@ -81,6 +81,29 @@ Running log of what was built and what was learned building it.
 
 ---
 
+## React phase 3b — primary playback controls (2026-09-06)
+
+- [note] `PlayerShell` now solely owns the primary play/pause button and complete speed
+  control through two portals in its existing root. Both invoke the Phase 2 application
+  commands and render the published transport snapshot; decoded audio, scheduling, looping,
+  routing, canvases, Workers, worklets, loading UI, and file input keep their existing owners.
+- [insight] The trusted playback boundary is command entry, not component ownership. Calling
+  `togglePlayback()` directly in React's click handler keeps `ensureAudio()` synchronous in
+  the native gesture turn; the stretched path may await only after unlock and engine entry.
+- [gotcha] A focused button previously reached both native keyboard activation and the
+  document shortcut owner. The document listener now excludes buttons, while the play click
+  blurs after dispatch so later document shortcuts resume without duplicate playback.
+- [note] The ownership audit found no remaining production consumer for
+  `lib/legacy-player-controls.js`, so the adapter and its browser-harness mount surface were
+  removed with the transferred listeners and DOM writes. Seek, volume, A/B, mode/routing,
+  lanes, canvases, separation, detection, notes, and DSP remain legacy-owned; Phase 3 is not
+  complete.
+- [note] Failing-first Chromium produced two expected ownership/focus failures. The local
+  gate passes 404 tests and the production build. Deployment evidence and acceptance remain
+  pending on the focused implementation PR.
+
+---
+
 ## React phase 3a — player header and loading (2026-09-06)
 
 - [note] `components/PlayerShell.jsx` now solely owns the player header descendants, one

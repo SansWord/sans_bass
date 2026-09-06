@@ -9,6 +9,22 @@ afterEach(() => {
   localStorage.removeItem('sans_bass.lang');
 });
 
+function dispatchPrimarySeek(player, fromFraction, toFraction = fromFraction) {
+  const canvas = player.doc.getElementById('main-wave');
+  const rect = canvas.getBoundingClientRect();
+  canvas.setPointerCapture = vi.fn();
+  const dispatch = (type, fraction) => canvas.dispatchEvent(new player.win.PointerEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    clientX: rect.left + rect.width * fraction,
+    clientY: rect.top + rect.height / 2,
+  }));
+  dispatch('pointerdown', fromFraction);
+  if (toFraction !== fromFraction) dispatch('pointermove', toFraction);
+  dispatch('pointerup', toFraction);
+}
+
 describe('production player integration', () => {
   it('keeps React-owned loading UI stable across locale and application publications', async () => {
     player = await openPlayer();
@@ -267,6 +283,123 @@ describe('production player integration', () => {
     expect(events.filter((event) => event.path === 'play')).toHaveLength(1);
   });
 
+  it('renders one React-owned accessible seek control and seeks by pointer and focused keyboard at both bounds', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: sine(440, 2), bass: sine(110, 2) });
+    const application = player.win.sansBass.application;
+    const seek = player.doc.getElementById('main-wave');
+
+    expect(player.doc.querySelectorAll('[data-react-seek-controls]')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#main-wave')).toHaveLength(1);
+    expect(seek.getAttribute('role')).toBe('slider');
+    expect(seek.tabIndex).toBe(0);
+    expect(seek.getAttribute('aria-label')).toBe('Seek');
+    expect(Number(seek.getAttribute('aria-valuemin'))).toBe(0);
+    expect(Number(seek.getAttribute('aria-valuemax'))).toBeCloseTo(2, 2);
+    expect(seek.getAttribute('aria-valuetext')).toContain('0:00 of 0:02');
+
+    dispatchPrimarySeek(player, 0.25, 0.4);
+    await waitFor(() => Math.abs(application.getSnapshot().transport.position - 0.8) < 0.05,
+      'paused pointer seek');
+    expect(application.getSnapshot().transport.playing).toBe(false);
+    expect(Number(seek.getAttribute('aria-valuenow'))).toBeCloseTo(0.8, 1);
+
+    application.commands.seek(0);
+    seek.focus();
+    seek.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+      key: 'ArrowLeft', bubbles: true, cancelable: true,
+    }));
+    expect(application.getSnapshot().transport.position).toBe(0);
+    application.commands.seek(2);
+    seek.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+      key: 'ArrowRight', bubbles: true, cancelable: true,
+    }));
+    expect(application.getSnapshot().transport.position).toBeCloseTo(2, 2);
+
+    const speed = player.doc.getElementById('speed');
+    speed.focus();
+    speed.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+      key: 'ArrowLeft', bubbles: true, cancelable: true,
+    }));
+    expect(application.getSnapshot().transport.position).toBeCloseTo(2, 2);
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => seek.getAttribute('aria-label') === '搜尋播放位置',
+      'translated seek label');
+    expect(seek.getAttribute('aria-valuetext')).toContain('0:02／0:02');
+  });
+
+  it('keeps the React clock rate-aware while playing and clamps pointer seeks into an active loop', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: sine(440, 2), bass: sine(110, 2) });
+    const application = player.win.sansBass.application;
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:tempo', {
+      detail: { bpmValue: 120, confidence: 1 },
+    }));
+    const context = player.win.sansBass.notesAudio('vocals').ctx;
+    let clock = context.currentTime;
+    Object.defineProperty(context, 'currentTime', { configurable: true, get: () => clock });
+    application.commands.setPlaybackRate(0.5);
+    await application.commands.play();
+    const seek = player.doc.getElementById('main-wave');
+    clock += 0.2;
+    await waitFor(() => Number(seek.getAttribute('aria-valuenow')) > 0.05,
+      'rate-aware playing clock');
+    expect(Number(seek.getAttribute('aria-valuenow'))).toBeCloseTo(0.1, 1);
+    expect(player.doc.getElementById('t-speed').textContent).toBe('50%');
+    expect(player.doc.getElementById('t-bpm').textContent).toBe('60.0/120.0 BPM');
+    expect(application.getSnapshot().transport.playing).toBe(true);
+
+    dispatchPrimarySeek(player, 0.5);
+    await waitFor(() => Math.abs(Number(seek.getAttribute('aria-valuenow')) - 1) < 0.1,
+      'playing pointer seek');
+    expect(application.getSnapshot().transport.playing).toBe(true);
+
+    application.commands.seek(0.4);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    application.commands.seek(0.8);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: 0.4, loopB: 0.8 });
+    dispatchPrimarySeek(player, 0.95);
+    await waitFor(() => {
+      const position = Number(player.doc.getElementById('main-wave').getAttribute('aria-valuenow'));
+      return position >= 0.4 && position < 0.8;
+    }, 'loop-clamped seek');
+    expect(application.getSnapshot().transport.playing).toBe(true);
+  });
+
+  it('preserves seek state and one pointer/analytics owner across React remounts', async () => {
+    player = await openPlayer();
+    const events = [];
+    player.win.goatcounter = { count: (event) => events.push(event) };
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await loadZip(player, { vocals: sine(440, 1), bass: sine(110, 1) }, { folder: 'Seek remount' });
+    const application = player.win.sansBass.application;
+    application.commands.seek(0.25);
+    const song = application.getSnapshot().song;
+    const firstCanvas = player.doc.getElementById('main-wave');
+
+    player.win.sansBass.playerShell.unmount();
+    expect(player.doc.getElementById('main-wave')).toBeNull();
+    expect(application.getSnapshot().song).toEqual(song);
+    expect(application.getSnapshot().transport.position).toBeCloseTo(0.25, 2);
+    player.win.sansBass.playerShell.remount();
+    player.win.sansBass.playerShell.remount();
+    const remountedCanvas = player.doc.getElementById('main-wave');
+    expect(remountedCanvas).not.toBe(firstCanvas);
+    expect(player.doc.querySelectorAll('[data-react-seek-controls]')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#main-wave')).toHaveLength(1);
+    await waitFor(() => Number(remountedCanvas.getAttribute('aria-valuenow')) === 0.25,
+      'remounted seek position');
+    expect(remountedCanvas.width).toBeGreaterThan(1);
+
+    dispatchPrimarySeek(player, 0.5);
+    await waitFor(() => Math.abs(application.getSnapshot().transport.position - 0.5) < 0.05,
+      'single remounted seek');
+    const seekEvents = events.filter((event) => /^seek(?:-|$)/.test(event.path));
+    expect(seekEvents.map((event) => event.path)).toEqual(['seek', 'seek-2']);
+  });
+
   it('enters playback synchronously and renders direct and keyboard rate changes in React', async () => {
     player = await openPlayer();
     await loadZip(player, { vocals: 440, bass: 110 });
@@ -402,8 +535,8 @@ describe('production player integration', () => {
       }
       return originalDecode.call(this, bytes);
     };
-    const select = async (name, frequency) => {
-      const source = wavFile(name, sine(frequency, 0.04));
+    const select = async (name, frequency, seconds = 0.04) => {
+      const source = wavFile(name, sine(frequency, seconds));
       const file = new player.win.File([await source.arrayBuffer()], name, { type: 'audio/wav' });
       const transfer = new player.win.DataTransfer();
       transfer.items.add(file);
@@ -412,10 +545,12 @@ describe('production player integration', () => {
       input.dispatchEvent(new player.win.Event('change', { bubbles: true }));
     };
 
-    await select('old.wav', 110);
+    await select('old.wav', 110, 0.2);
     await waitFor(() => releaseFirst, 'first decode to be held');
     await select('new.wav', 220);
     await waitFor(() => player.doc.getElementById('title').textContent === 'new', 'new song');
+    expect(Number(player.doc.getElementById('main-wave').getAttribute('aria-valuemax')))
+      .toBeCloseTo(0.04, 2);
     application.commands.setPlaybackRate(0.95);
     const transport = application.getSnapshot().transport;
     releaseFirst();
@@ -423,6 +558,8 @@ describe('production player integration', () => {
     expect(player.doc.getElementById('title').textContent).toBe('new');
     expect(player.win.sansBass.application.getSnapshot().song.title).toBe('new');
     expect(application.getSnapshot().transport).toEqual(transport);
+    expect(Number(player.doc.getElementById('main-wave').getAttribute('aria-valuemax')))
+      .toBeCloseTo(0.04, 2);
   });
 
   it('ignores stale notes and separation Worker results after replacement or disposal', async () => {

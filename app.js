@@ -6,7 +6,7 @@
 import { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } from './lib/stems.js';
 import { extract } from './lib/unzip.js';
 import { parseNoteName } from './lib/pitch.js';
-import { roundSeconds } from './lib/time.js';
+import { formatClockTime, formatClockTimeCentiseconds, roundSeconds } from './lib/time.js';
 import * as SansI18n from './lib/i18n.js';
 import * as SansAnalytics from './lib/analytics.js';
 import * as SansRibbon from './lib/ribbon.js';
@@ -143,11 +143,11 @@ let loading = false;
 let currentTitle = '';
 let acceptedSongToken = 0;
 let playerShell = null;
+let primarySeekCanvas = null; // React-owned DOM; app.js retains only imperative waveform painting
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  player: $('player'), title: $('title'), mainWave: $('main-wave'),
-  tCur: $('t-cur'), tDur: $('t-dur'), tSpeed: $('t-speed'), tBpm: $('t-bpm'), mode: $('mode'),
+  player: $('player'), title: $('title'), mode: $('mode'),
   masterVol: $('master-vol'), lanes: $('lanes'),
   loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
   allToggle: $('all-toggle'),
@@ -256,23 +256,12 @@ function hexToRgba(hex, alpha) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
-function fmt(t) {
-  if (!isFinite(t) || t < 0) t = 0;
-  const m = Math.floor(t / 60);
-  const s = Math.floor(t % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+const fmt = formatClockTime;
 
 /** Like fmt(), but to the hundredth of a second — for the overview/zoom time-code, where the
  *  playhead visibly moves within a single displayed second and whole-second precision would
  *  look frozen. */
-function fmtCs(t) {
-  if (!isFinite(t) || t < 0) t = 0;
-  const totalCs = Math.round(t * 100);
-  const m = Math.floor(totalCs / 6000);
-  const s = ((totalCs % 6000) / 100).toFixed(2).padStart(5, '0');
-  return `${m}:${s}`;
-}
+const fmtCs = formatClockTimeCentiseconds;
 
 /** Like fmt(), but to the millisecond — fmt()'s whole-second precision is too coarse for a
  *  note boundary, which is meaningful down to the 20ms floor (MIN_DUR). */
@@ -601,7 +590,6 @@ function buildModeOptions() {
 function buildUI(title) {
   el.player.hidden = false;
   el.title.textContent = title;
-  el.tDur.textContent = fmt(duration);
 
   buildModeOptions();
 
@@ -1266,7 +1254,6 @@ function buildUI(title) {
   }
 
   syncRangeHints();
-  attachSeek(el.mainWave);
   renderAll();
 }
 
@@ -1329,8 +1316,10 @@ function ensureZoomPeaks(stem) {
 function renderAll() {
   const mp = mixPeaks();
   // The overview keeps true relative dynamics; it only ever shrinks, never boosts.
-  renderWave(el.mainWave, mp, '#ffffff', el.mainWave.parentElement.clientWidth, 'main',
-             Math.min(1, laneScale(mp)));
+  if (primarySeekCanvas) {
+    renderWave(primarySeekCanvas, mp, '#ffffff', primarySeekCanvas.clientWidth, 'main',
+               Math.min(1, laneScale(mp)));
+  }
   tracks.forEach(t => {
     t.layers = renderWave(t.canvas, t.peaks, t.color, t.canvas.clientWidth, 'lane', laneScale(t.peaks));
   });
@@ -1340,6 +1329,20 @@ function renderAll() {
   }
   renderOverview();
   draw();
+}
+
+/** React owns the primary seek canvas node and its listeners; this is the explicit
+ * imperative-renderer attachment allowed by the migration architecture. */
+function attachPrimarySeekCanvas(canvas) {
+  primarySeekCanvas = canvas;
+  if (tracks.length) {
+    const mp = mixPeaks();
+    renderWave(canvas, mp, '#ffffff', canvas.clientWidth, 'main', Math.min(1, laneScale(mp)));
+    paint(canvas, duration ? Math.min(1, currentTime() / duration) : 0);
+  }
+  return () => {
+    if (primarySeekCanvas === canvas) primarySeekCanvas = null;
+  };
 }
 
 /**
@@ -1935,7 +1938,7 @@ function renderZoom(canvas) {
 function draw() {
   const t = currentTime();
   const frac = duration ? Math.min(1, t / duration) : 0;
-  paint(el.mainWave, frac);
+  if (primarySeekCanvas) paint(primarySeekCanvas, frac);
   tracks.forEach(tr => paint(tr.canvas, frac));
   for (const stem of NOTE_STEMS) {
     const lane = noteLanes[stem];
@@ -1963,9 +1966,7 @@ function draw() {
     syncChordEditor(t);
   }
   if (editMode) syncEditToolbar();
-  el.tCur.textContent = fmt(t);
-  if (el.tSpeed) el.tSpeed.textContent = speedTag;
-  if (el.tBpm) { el.tBpm.hidden = !haveBpm; if (haveBpm) el.tBpm.textContent = bpmText; }
+  playerApplication.publishTransport();
 }
 
 function syncChordEditor(time) {
@@ -2106,7 +2107,7 @@ function paint(canvas, frac) {
     c.restore();
   }
   if (tracks.some((t) => t.canvas === canvas)) paintLaneGrid(c, canvas, dpr);
-  paintLoopRegion(c, canvas, dpr, canvas === el.mainWave);
+  paintLoopRegion(c, canvas, dpr, canvas === primarySeekCanvas);
   const selLane = zoomNotesStem && noteLanes[zoomNotesStem];
   if (selLane && canvas === selLane.el.canvas) paintRangeBand(c, canvas, dpr);
   if (overviewEl && canvas === overviewEl.canvas) paintRangeBand(c, canvas, dpr);
@@ -2393,6 +2394,13 @@ function seek(seconds) {
   if (wasPlaying) return play();
   draw();
   playerApplication.publish();
+}
+
+/** Preserve the legacy drag preview: update the drawn/read-out position without seeking the
+ * audio graph or counting another analytics interaction until pointerup commits the seek. */
+function previewSeek(seconds) {
+  offset = Math.max(0, Math.min(duration, seconds));
+  draw();
 }
 
 // ---------------------------------------------------------------- A-B repeat
@@ -3495,6 +3503,18 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(renderAll, 120);
 });
 
+function applicationTransportSnapshot() {
+  return {
+    playing,
+    position: currentTime(),
+    duration,
+    playbackRate: ratePercent / 100,
+    loopA,
+    loopB,
+    tempoBpm: tempoInfo && tempoInfo.confidence > 0 ? tempoInfo.bpmValue : null,
+  };
+}
+
 function applicationSnapshot() {
   const song = tracks.length ? {
     id: acceptedSongToken,
@@ -3507,26 +3527,22 @@ function applicationSnapshot() {
   return {
     song,
     loading,
-    transport: {
-      playing,
-      position: currentTime(),
-      duration,
-      playbackRate: ratePercent / 100,
-      loopA,
-      loopB,
-    },
+    transport: applicationTransportSnapshot(),
     status: lastSay ? { key: lastSay.key, params: lastSay.params || null, error: !!lastSay.isErr } : null,
   };
 }
 
 playerApplication.initialize({
   getSnapshot: applicationSnapshot,
+  getTransportSnapshot: applicationTransportSnapshot,
+  attachPrimarySeekCanvas,
   commands: {
     load: loadAny,
     play,
     pause: () => { if (playing) stop(true); },
     togglePlayback: toggle,
     seek,
+    previewSeek,
     setPlaybackRate: (rate) => setRate(rate * 100),
     replaceSong: loadSeparated,
     rejectLoad: (reason, details) => {

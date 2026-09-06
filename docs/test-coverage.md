@@ -275,7 +275,7 @@ release integrity.
 | Analytics | `A6` | `ANALYTICS-001` | Events do not reach GoatCounter from localhost. | merge | — | `ANALYTICS-001` |
 | Analytics | `A7` | `ANALYTICS-001` | `separate-handheld-blocked` fires **once** per visitor shown the message, never once per poll. | merge | — | `ANALYTICS-001` |
 
-## React migration boundary coverage (phases 0–3a)
+## React migration boundary coverage (phases 0–3c)
 
 The historical inventory above remains unchanged. Phase 0's legacy-header jsdom test added
 LANG-001 and demo-listing evidence for button state, input identity, navigation, and demo
@@ -317,3 +317,19 @@ listeners, or loads. The retained Phase 2 stale-decode test proves that an older
 cannot replace a newer song through the React entry. jsdom i18n/demo tests retain saved and
 blocked storage evidence. Deployed, handheld, Worker, visual, auditory, and real-song evidence
 remain separate in the migration log.
+
+The Phase 3b production-entry additions cover React ownership of one play button and speed
+control, bilingual accessible play state, synchronous trusted-command entry, direct and
+keyboard rate changes/bounds/reset, focused-control exclusion, song/loop/routing/canvas state
+across locale publication and shell remount, and one analytics/source-start sequence after
+repeated remounts.
+
+The Phase 3c additions cover one React-authored semantic primary seek canvas and time/rate/BPM
+presentation; paused/playing pointer seek and drag preview; focused arrow-key seek and both
+bounds; rate-scaled clock publication; loop clamping; bilingual accessible current/total
+copy; focused input exclusion; renderer/subscription cleanup and repaint across shell remount;
+new-song duration replacement and stale completion; and one preserved seek analytics sequence
+after repeated remounts. `tests/player-application.test.js` separately proves deduplicated
+transport subscriptions and canvas attachment cleanup, while `tests/time.test.js` owns the
+shared deterministic clock formatting. Deployed trusted input, real-song, physical handheld,
+Worker/model, subjective visual, background, and auditory evidence remains separate.

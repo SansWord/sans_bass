@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; deployment acceptance is pending. |
 | [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; accepted in production at `99ac653`. |
 | [React phase 3a](#react-phase-3a--player-header-and-loading-2026-09-06) | React now solely owns the shared player header, stable file input, loading/status UI, and cleaned drag overlay; transport groups remain legacy-owned pending later Phase 3 slices. |
 | [React phase 2](#react-phase-2--player-command-and-subscription-boundary-2026-09-05) | The unchanged player UI now loads and controls transport through one observable ESM application facade, with disposable UI wiring and stale song/Worker barriers; accepted in production at `6657528`. |
@@ -79,6 +80,35 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## React phase 3c — primary seek controls (2026-09-06)
+
+- [note] The bounded ownership audit is recorded in
+  `docs/react-phase-3c-seek-controls-plan.md`. `PlayerShell` now authors the one primary
+  full-song seek canvas, its pointer listeners, bilingual slider semantics, and the visible
+  master current/duration/rate/BPM readout. The existing shared document keyboard owner still
+  handles focused Arrow seek once; volume, A/B control DOM, routing, every other canvas,
+  notes, separation, Workers, worklets, and DSP remain outside this slice.
+- [insight] The clock needs a narrower publication cadence than the rest of the application
+  snapshot. A dedicated deduplicated transport-frame subscription lets only the seek/time
+  subtree update from `draw()`, while the AudioContext-derived `currentTime()` remains the
+  single authority and the whole shell avoids a per-frame render.
+- [insight] React DOM ownership does not require moving waveform computation into React. An
+  explicit lifecycle attachment lets `app.js` paint the React-authored canvas, detach on shell
+  unmount, and repaint a paused song after remount without seeking, rebuilding audio, or
+  incrementing analytics.
+- [note] Failing-first Chromium retained 23 passing cases and produced the 3 expected Phase
+  3c failures. The implementation then passed 26 focused browser cases, 12 focused Node
+  facade/time cases, the full 31-file/410-test suite, the 56-module production build with the
+  existing intentional worklet warning, and `git diff --check`. Generated fixtures separately
+  cover paused/playing pointer and keyboard seek, bounds, rate/BPM, loop clamping, focus,
+  locale, remount, replacement/stale completion, and analytics/listener uniqueness.
+- [note] The build emits 379,043 bytes of JavaScript, +2,861 bytes (+0.76%) from Phase 3b.
+  Preview, production, genuine-keyboard, hosted saved-locale, visual, auditory, physical
+  handheld, real Worker/model, and real-song evidence remain pending or explicitly separate;
+  Phase 3 is not complete.
 
 ---
 

@@ -42,14 +42,9 @@ init();
       <div id="playback-button-ui-root" class="react-portal-host"></div>
       <div class="master-mid">
         <div id="title" class="title">&mdash;</div>
-        <canvas id="main-wave" class="wave main"></canvas>
+        <div id="primary-seek-ui-root" class="react-portal-host"></div>
       </div>
-      <div class="times">
-        <span id="t-cur">0:00</span>
-        <span class="dim" id="t-dur">0:00</span>
-        <span class="dim" id="t-speed">100%</span>
-        <span class="dim" id="t-bpm" hidden></span>
-      </div>
+      <div id="primary-time-ui-root" class="react-portal-host"></div>
     </div>
 
     <div class="controls">

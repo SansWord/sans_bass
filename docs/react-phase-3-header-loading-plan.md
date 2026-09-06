@@ -1,9 +1,10 @@
 # React migration Phase 3a — player header and loading plan
 
-Status: implemented locally at `8892b87cf73e25d60fa2ed6b6988cca04e6b43bf` and verified
-on PR #69's preview; production acceptance pending. Plan source:
-`02aca2022ff8e99f8b510c6e92de17d27179d67d`.
-Accepted Phase 2 rollback anchor: `6657528afdac67f75c5b3118bbd651d4d6684b6b`.
+Status: accepted in production at `467f91b06aabb5fed68822bf254736e719e2abee`
+through [PR #69](https://github.com/SansWord/sans_bass/pull/69). Implementation source:
+`8892b87cf73e25d60fa2ed6b6988cca04e6b43bf`; plan source:
+`02aca2022ff8e99f8b510c6e92de17d27179d67d`. Previous accepted Phase 2 rollback anchor:
+`6657528afdac67f75c5b3118bbd651d4d6684b6b`.
 
 ## Bounded outcome
 

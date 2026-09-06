@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 3a](#react-phase-3a--player-header-and-loading-2026-09-06) | React now solely owns the shared player header, stable file input, loading/status UI, and cleaned drag overlay; transport groups remain legacy-owned pending later Phase 3 slices. |
 | [React phase 2](#react-phase-2--player-command-and-subscription-boundary-2026-09-05) | The unchanged player UI now loads and controls transport through one observable ESM application facade, with disposable UI wiring and stale song/Worker barriers; accepted in production at `6657528`. |
 | [React phase 1](#react-phase-1--isolated-demo-header-pilot-2026-09-05) | React now solely owns the demo header with cleaned locale subscriptions; the player and audio remain legacy-owned. |
 | [Meta](#meta--tiered-deployment-verification-2026-09-05) | PR previews prove the affected behavior; production normally gets a compact delivery canary. Full two-origin, real-song, model, visual, and device checks now run when their boundary changed or at release acceptance. |
@@ -77,6 +78,40 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## React phase 3a — player header and loading (2026-09-06)
+
+- [note] `components/PlayerShell.jsx` now solely owns the player header descendants, one
+  file input, loading explanation, status/error presentation, and drag overlay. One React root
+  uses portal hosts around the untouched legacy player, so transport, lanes, canvases, notes,
+  separation, Workers, and DSP never enter the component tree.
+- [insight] A portal shell is a useful incremental boundary when migrated UI surrounds a
+  large legacy island. React can reconcile several owned regions from one root without
+  reparsing the island or forcing it into a component lifetime.
+- [gotcha] Importing React for the first time inside Vitest's production-page iframe triggered
+  Vite dependency optimization after the host test had already loaded React, leaving renderer
+  and hooks on different module instances. Pre-bundling the four React entry specifiers in the
+  browser project keeps one dispatcher and prevents the optimizer reload.
+- [note] `SiteHeader` is shared with the Phase 1 demo header. Locale and player subscriptions,
+  file selection, and five document drag listeners all clean up on shell unmount; remount is
+  idempotent and does not dispose the application, reset the song, replace canvases, or
+  duplicate loads. Header actions blur after use so document shortcuts regain focus, while
+  legacy input/select shortcut exclusions remain unchanged.
+- [note] Drop rejection adds the smallest required facade command: three closed reasons route
+  React validation back to the established bilingual status and fixed folder-drop analytics
+  path. Valid files still use `commands.load()` and Phase 2's stale-operation token.
+- [note] Failing-first coverage produced five expected legacy-owner failures. The final local
+  gate passes 402 tests and the production build; generated synthetic, partial-decode,
+  malformed-ZIP, unsupported/multiple/folder drop, locale, focus, remount, and stale-load cases
+  are separate from physical handheld, real Worker/model, visual, auditory, and real-song
+  evidence.
+- [note] Exact-commit root/nested build checks pass with no page/HTTP errors. Total emitted JS
+  is 375,976 bytes (+979, +0.26% from Phase 2), while the player route now intentionally loads
+  React: median local transfer 343,436 bytes (+127.4%), DOMContentLoaded 21.6 ms (+2.9 ms), and
+  observed ready 43.8 ms (+10.1 ms). Preview, production, and acceptance remain pending;
+  transport controls are the next Phase 3 ownership slices.
 
 ---
 

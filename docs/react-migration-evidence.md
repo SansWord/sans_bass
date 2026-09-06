@@ -1,5 +1,105 @@
 # React migration evidence
 
+## Phase 3a — React player header and loading
+
+Status: local implementation and verification complete; PR-preview/production acceptance
+pending. Evidence collected 2026-09-06 America/Los_Angeles. Implementation source:
+`8892b87cf73e25d60fa2ed6b6988cca04e6b43bf`; branch
+`feat/react-phase-3-header-loading`. Starting source:
+`02aca2022ff8e99f8b510c6e92de17d27179d67d`. Accepted rollback boundary remains Phase 2 at
+`6657528afdac67f75c5b3118bbd651d4d6684b6b`. The pre-existing untracked `demo.md` remains
+outside this slice.
+
+### Bounded plan and ownership transfer
+
+The source audit and implementation boundary are recorded in
+[react-phase-3-header-loading-plan.md](react-phase-3-header-loading-plan.md).
+`components/PlayerShell.jsx` is now the sole runtime owner of the player header descendants,
+one real file input and its change listener, empty/loading affordance, status/error node, and
+drag overlay plus its five document listeners. One React root reconciles those regions through
+explicit portal hosts without claiming or rebuilding the intervening legacy player markup.
+`components/SiteHeader.jsx` is shared by the player and the existing `DemoHeader` wrapper.
+
+`app.js` remains the sole authoritative owner of decoded tracks, accepted song, the 44.1 kHz
+AudioContext, audio graph, routing, transport/loop/rate values, Workers/service state, lanes,
+and canvases. Its `lastSay` value remains a stable status key/params/error projection, but it
+no longer writes a status node. `lib/legacy-player-controls.js` now owns only play and speed;
+the old file-input listener was removed with `lib/header.js` and the legacy drag/status writes.
+
+Play/pause, seek, master volume, speed, A/B loop controls, mode menus, lanes, canvases,
+separation, detection, notes, and DSP remain legacy-owned. This is an accepted-size Phase 3
+increment candidate, not a claim that all of Phase 3 is complete.
+
+### Application seam, cleanup, and temporary adapters
+
+File selection and valid drop call `playerApplication.commands.load()` and continue through
+the Phase 2 loader/token barrier. The facade gained only `rejectLoad(reason, details)`, with
+the closed reasons `folder`, `multiple`, and `unsupported`: this extension is required because
+React now owns drop validation but the authoritative application still owns status publication
+and the fixed `folder-drop` analytics event. React does not import or mutate `app.js` state.
+
+Shell unmount removes the application/locale subscriptions and drag listeners, clears the
+portal descendants, and leaves the application, current song, canvases, AudioContext, Workers,
+and legacy controls alive. Remount is idempotent and creates one current input/listener set.
+The existing `window.sansBass.playerShell` harness adapter names the browser tests as its only
+consumer; production mounting imports the ESM function. `window.sansBass` otherwise remains
+for `notes.js`, `separate.js`, and the browser harness, and `sansbass:transport` remains for the
+vocals/bass sonifiers. The legacy adapter remains temporarily for the play/rate controls until
+their later Phase 3 slices.
+
+### Automated and local-build evidence
+
+Environment: Apple M4 Max, macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium 151.0.7922.34.
+
+| Command / boundary | Result |
+|---|---|
+| Failing-first Chromium run | 5 new cases failed against the legacy owner: missing React shell/remount surface, missing React drop path, and retained header focus |
+| `npx vitest run --project node tests/player-application.test.js` | 1 file, 6 tests passed |
+| `npx vitest run --project jsdom tests/demo-header.test.jsx` | 1 file, 4 tests passed; expected Node experimental localStorage warning |
+| `npx vitest run --project browser tests/player.test.js` | 1 file, 21 tests passed |
+| `npm test` | 31 files, 402 tests passed |
+| `npm run build` | Passed; 57 modules transformed; existing intentional worklet URL warning only |
+| Existing isolated build harness at `/` and `/pr-phase-1/` | 12 route/layout/locale/storage checks passed at displayed `8892b87`, with no page/HTTP errors |
+| `git diff --check` | Passed |
+
+The player Chromium cases use the production entry, real AudioContext, and the documented
+`stemsZip()`/WAV/ZIP encoders through the real `#file-input` or cancelable drop events. New
+coverage proves input identity across language and status publications, same-file repeat,
+language changes before and after loading, retained song/canvas identity, visible loading and
+hidden success, malformed ZIP and unsupported/multiple/folder rejection, English/Chinese
+command errors, overlay visibility/depth/cleanup, focus restoration and legacy field shortcut
+exclusion, idempotent shell remount, and one load after remount. The retained stale-decode case
+proves an older completion cannot replace a newer song; fake stale notes/separation results
+remain lifetime evidence rather than real-Worker/model evidence.
+
+The exact-commit isolated build emitted **375,976 bytes** across all JavaScript assets versus
+Phase 2's 374,997 (+979, +0.26%); React was already present in the shared demo build. The player
+route now intentionally loads that runtime: five no-store samples measured median player JS
+transfer at **343,436 bytes** versus 151,028 (+192,408, +127.4%, including HTTP overhead),
+DOMContentLoaded at **21.6 ms** versus 18.7 (+2.9 ms), and automation-observed ready at
+**43.8 ms** versus 33.7 (+10.1 ms). The shared React/header chunk is 218,021 emitted bytes;
+the player main chunk is 108,984 bytes. The startup increase is the expected Phase 3 milestone
+cost of bringing the already accepted React runtime onto the player route, with no measured
+audio/drawing claim implied by local startup timing.
+
+### Evidence categories and omissions
+
+| Category | Local evidence / omission |
+|---|---|
+| Synthetic | Generated folder ZIPs cover file input, repeat selection, valid drop, partial decode, song replacement, stable canvases, remount, and stale completion through production encoders. |
+| Malformed input | Three-byte malformed ZIP plus unsupported, multiple-file, and folder-shaped drops render established recovery copy; partial invalid WAV retains usable lanes. Exhaustive ZIP mutations remain in Node unzip tests. |
+| Storage/locale | Both languages before/after load and bilingual status pass in the player; jsdom plus the isolated root/nested build harness cover saved and throwing storage. |
+| Handheld | Existing capability predicate tests pass and the React shell uses the same once-per-page handheld explanation. No physical device was run. |
+| Worker | Existing deterministic stale notes/separation Worker cases pass. No real Worker or model was required for the local UI boundary. |
+| Visual | Computed overlay/hidden visibility and desktop/narrow shared-header layout pass. Subjective player visual comparison is pending preview review. |
+| Auditory | Not run; audio scheduling/DSP ownership did not move. Trusted unlock, background timing, pitch/seam, and note-tone listening remain omitted. |
+| Real song | Not run locally for this UI slice; `examples/nov_you.zip` is reserved for the required deployed real-song smoke. |
+
+PR preview must verify the exact displayed synthetic merge SHA before the boundary-relevant
+player assertions. Production acceptance and a Phase 3a rollback anchor remain pending; no
+accepted-Phase-3 claim is made here.
+
 ## Phase 2 — player command and subscription boundary
 
 Status: accepted in production. Evidence collected 2026-09-05 America/Los_Angeles

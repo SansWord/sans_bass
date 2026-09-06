@@ -1,6 +1,7 @@
 # React migration Phase 3a — player header and loading plan
 
-Status: implementation in progress. Plan source: `02aca2022ff8e99f8b510c6e92de17d27179d67d`.
+Status: implemented locally at `8892b87cf73e25d60fa2ed6b6988cca04e6b43bf`;
+deployment review pending. Plan source: `02aca2022ff8e99f8b510c6e92de17d27179d67d`.
 Accepted Phase 2 rollback anchor: `6657528afdac67f75c5b3118bbd651d4d6684b6b`.
 
 ## Bounded outcome
@@ -25,7 +26,7 @@ and DSP remain legacy-owned after it ships.
 | Real file input | `index.html` authors it; `lib/header.js` moves the same node; `lib/legacy-player-controls.js` owns its `change` listener and clears `value`. | React authors exactly one keyed/stable input and owns its listener. Clear `value` before invoking `playerApplication.commands.load()` and release control focus. Remove the legacy listener and element dependency in the same slice. |
 | Empty loading affordance | `index.html` authors `#dropzone`; `app.js:buildUI()` hides it after a song loads; handheld startup mutates its translation key. | React renders it from the application snapshot and the unchanged handheld predicate. Remove the legacy hidden/key writes. |
 | Status/loading/error | `app.js:say()` stores the stable translation key and writes `#status`; language changes call `say()` again. | Keep `lastSay` as authoritative application state, but make `say()` publish only. React translates and renders the snapshot. No legacy code writes the migrated node. |
-| Drag/drop overlay and validation | `index.html` authors `#drag-overlay`; four page-lifetime document listeners and `showDropTarget()` in `app.js` own visibility, cleanup, validation, load dispatch, and rejection copy. | A React effect owns all drag listeners and component-local overlay visibility/depth. Valid drops call `commands.load`; invalid drops call one narrowly added `commands.rejectLoad(reason, details)` because React cannot otherwise publish the established app status/analytics without reaching into private engine state. Cleanup removes every listener and clears the overlay without disposing the application. |
+| Drag/drop overlay and validation | `index.html` authors `#drag-overlay`; five page-lifetime document listeners and `showDropTarget()` in `app.js` own visibility, cleanup, validation, load dispatch, and rejection copy. | A React effect owns all drag listeners and component-local overlay visibility/depth. Valid drops call `commands.load`; invalid drops call one narrowly added `commands.rejectLoad(reason, details)` because React cannot otherwise publish the established app status/analytics without reaching into private engine state. Cleanup removes every listener and clears the overlay without disposing the application. |
 | Player application/audio/song lifetime | `lib/player-application.js` plus `app.js`; subscribers are disposable independently of the application. | Retain. Shell mount/unmount subscribes only; it never initializes or disposes the application. Language, status, and overlay renders cannot recreate engine resources. |
 | Legacy transport and all later UI | `app.js`, `lib/legacy-player-controls.js`, `notes.js`, and `separate.js`. | Retain exactly. The legacy adapter continues to own play and speed only; existing mode, volume, loop, keyboard, lane/canvas, notes, and separation listeners remain unchanged. |
 

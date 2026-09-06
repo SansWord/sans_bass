@@ -2,11 +2,12 @@
 
 ## Phase 1 — isolated React demo header pilot
 
-Status: implementation, local exit gate, and PR-preview verification complete; merge and
-production verification pending. Evidence collected 2026-09-05 America/Los_Angeles
+Status: accepted in production. Evidence collected 2026-09-05 America/Los_Angeles
 (2026-09-06 UTC). Implementation source: `b9b5670`; branch `feat/react-demo-pilot`.
+Accepted production source: `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d`; complete
+rollback anchor before React implementation: `087f0cc64bf25f46b97081f5befcf41529431b45`.
 Delivery review: [PR #65](https://github.com/SansWord/sans_bass/pull/65). The pre-existing
-untracked `demo.md` remains outside the slice.
+untracked `demo.md` remained outside the slice.
 
 ### Bounded plan
 
@@ -125,7 +126,17 @@ subjective visual, and auditory scenarios were not run and are not implied by th
 smoke. The committed real-song fixture and generated short WAV are deployment evidence, not
 the full behaviour matrix.
 
-### Exit gate and remaining delivery work
+### Production deployment evidence
+
+After PR #65 was squash-merged, both the `Deploy main` and post-merge `Test` workflows passed
+for `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d`; preview cleanup also passed. The production
+root displayed `5de58b6` before assertions. The same full deployed boundary passed there:
+both locales and persistence, generated listing/export/capo, real-song playback and routing,
+95% AudioWorklet playback, 374/357-note Worker analysis and export, and cached-model six-stem
+separation. Status and first-party console output remained clean. The preview omissions listed
+above remain omissions; this was deployment smoke, not the full behaviour matrix.
+
+### Exit gate and next work
 
 The local Phase 1 exit gate is met: both languages, saved/blocked storage, desktop/narrow
 layout, normal/nested build paths, discovery/removal, demo export/capo, relative navigation,
@@ -133,12 +144,11 @@ build SHA, React cleanup/remount behavior, and baseline performance comparison h
 evidence. The player header and every audio/data UI region remain legacy-owned, so the pilot
 does not create a competing owner or couple React to audio.
 
-The PR-preview half of the required full deployed tier is complete. Because this slice adds
-JSX/plugin entry composition and changes static assets, merge remains gated on green PR checks;
-the same full smoke must then pass on the production root at the deployed `main` SHA. Rollback
-is reverting the pilot commits; there is no data migration. Next bounded slice after production
-acceptance: Phase 2's player command/subscription boundary, with the legacy player UI unchanged
-first.
+The complete Phase 1 exit gate and both deployed tiers passed. Roll back the entire React
+migration to `087f0cc64bf25f46b97081f5befcf41529431b45`, or roll later phases back to the
+accepted Phase 1 boundary `5de58b634e4a11b0baf2bfca6f4a1e98f3eae31d`, using revert PRs
+rather than rewriting shared history. There is no data migration. Next bounded slice: Phase 2's
+player command/subscription boundary, with the legacy player UI unchanged first.
 
 ## Phase 0 — automated, ownership, visual and local-build baseline
 

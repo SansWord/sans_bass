@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 3d](#react-phase-3d--volume-and-ab-loop-controls-2026-09-06) | React now owns the primary master-volume and A/B presentation controls; implementation is complete at `f2e0b70`, with preview/production acceptance pending. |
+| [React phase 3d](#react-phase-3d--volume-and-ab-loop-controls-2026-09-06) | React now owns the primary master-volume and A/B presentation controls; PR #75 preview is verified, with production acceptance pending. |
 | [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; accepted in production at `20a55bb`. |
 | [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; accepted in production at `99ac653`. |
 | [React phase 3a](#react-phase-3a--player-header-and-loading-2026-09-06) | React now solely owns the shared player header, stable file input, loading/status UI, and cleaned drag overlay; transport groups remain legacy-owned pending later Phase 3 slices. |
@@ -101,7 +101,10 @@ Running log of what was built and what was learned building it.
   JavaScript bytes, +2,268 (+0.60%) from Phase 3c. Local exact-SHA root/nested, locale,
   real-song, genuine keyboard, focus, ownership, clean-console, desktop, and simulated
   narrow checks pass. Preview/production deployment and rollback-anchor documentation remain
-  pending, so Phase 3e has not begun and Phase 3 is not complete.
+  pending, so Phase 3e has not begun and Phase 3 is not complete. PR #75's first preview
+  displayed exact synthetic merge `15709e3` and passed the required nested routes, saved
+  locale, generated/real-song loading, genuine-keyboard volume/loop/focus, ownership,
+  unchanged adjacent controls, clean-console, and desktop/simulated-narrow boundary.
 
 ## React phase 3c — primary seek controls (2026-09-06)
 

@@ -2,7 +2,7 @@
 
 ## Phase 3d — React volume and A/B loop controls
 
-Status: implementation complete; PR preview and production acceptance pending.
+Status: PR preview verified; production acceptance pending.
 Evidence collected 2026-09-06 America/Los_Angeles. Branch
 `feat/react-phase-3d-volume-loop-controls`; starting source
 `61f72522e2e6b311ed0b6b9acf58f83e043e50fc`. Previous accepted boundary:
@@ -80,6 +80,39 @@ client and scroll widths. This is simulated responsive evidence, not a physical-
 | Visual | Desktop and simulated narrow local production layouts were reviewed without overflow or redesign. Exhaustive baseline image comparison remains omitted. |
 | Auditory | Genuine keyboard playback advanced the AudioContext-backed clock, but no listening, subjective gain/seam quality, note-tone alignment, or background-tab check is claimed. |
 | Real song | The local exact-source build loaded `examples/nov_you.zip` as `9 十二月的妳`, 4:23, six stems. This is real-song smoke only, not synthetic-matrix evidence. |
+
+### PR-preview deployment evidence
+
+[PR #75](https://github.com/SansWord/sans_bass/pull/75) `test` (38 seconds) and `deploy`
+(12 seconds) checks passed. GitHub's current merge ref was
+`15709e3a44c1214bfeff6a87350599c8e6007bed`; before any behavior assertion, the published
+preview at `https://sansword.github.io/sans_bass/pr-75/` displayed exact `15709e3`.
+
+Codex in-app Chromium verified the player root and `/pr-75/demos/` under the nested base; both
+displayed the same SHA, navigation stayed below `/pr-75/`, and the explicit Traditional
+Chinese choice persisted across the fresh route. A generated 0.4-second vocals/bass WAV/ZIP
+fixture loaded through the real single input as `Phase 3d preview`. The page retained one
+React shell, file input, volume owner, and loop owner, no React mode owner, two legacy lane
+volume controls, and the unchanged legacy mode/all-toggle state. Setting primary volume to
+42% updated the overview mirror. While that input was focused, genuine A did not set a loop;
+after focus returned to the page, genuine A/ArrowRight/B exposed a 0.4-second loop, genuine
+Space advanced the AudioContext-backed clock, and C cleared the loop.
+
+The committed `examples/nov_you.zip` then loaded as `9 十二月的妳`, 4:23, with six stems.
+Primary/overview volume mirrored at 55%; focused A was excluded; genuine Space advanced the
+clock; genuine A/ArrowRight/B presented a translated 1.5-second loop; and activating the
+React Clear button returned focus to `BODY` and hid the badge. The loaded page still had one
+React root/volume/loop owner, no React mode owner, six legacy lane-volume controls, and the
+unchanged `mix` selection. The first-party warning/error console was empty.
+
+Desktop and simulated 390-by-844 loaded-player layouts were visually reviewed; the narrow
+document had equal 390-pixel client and scroll widths. This is responsive-viewport evidence,
+not a physical-device claim. The hosted page exposes no shell-remount control; the required
+remount/state-preservation assertion passed in the same PR's exact production-entry Chromium
+gate (one owner/gain listener, current song/volume/loop retained across repeated unmount and
+remount), while the hosted locale render separately preserved song, volume, routing, and
+ownership. The complete synthetic/malformed/Worker matrix was not repeated against GitHub
+Pages, and the real-song load is deployment smoke rather than a substitute for it.
 
 ## Phase 3c — React seek controls
 

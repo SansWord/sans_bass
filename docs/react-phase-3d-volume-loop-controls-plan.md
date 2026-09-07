@@ -1,6 +1,6 @@
 # React migration Phase 3d — volume and A/B loop controls plan
 
-Status: implementation complete; PR preview and production acceptance pending. Planned from
+Status: PR preview verified; production acceptance pending. Planned from
 `61f72522e2e6b311ed0b6b9acf58f83e043e50fc` on 2026-09-06.
 Previous accepted rollback anchor: Phase 3c at
 `20a55bbf61984b7a49771f5e367bb33729c879ad`.

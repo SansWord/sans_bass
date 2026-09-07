@@ -23,10 +23,10 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/main-B4fMYxKo.js"></script>
+  <script type="module" crossorigin src="./assets/main-DgOyUEbV.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/SiteHeader-MtOhwA2m.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
-  <link rel="modulepreload" crossorigin href="./assets/sonify-Ck3IZfdu.js">
+  <link rel="modulepreload" crossorigin href="./assets/sonify-B5x0gw5S.js">
   <link rel="stylesheet" crossorigin href="./assets/SiteHeader-DXOZa5Vk.css">
 </head>
 <body>
@@ -88,36 +88,18 @@
          shared section below, hidden the same way until a real detection succeeds, since it
          is derived from drums and has never depended on which melodic stem is being read. See
          docs/superpowers/specs/2026-09-01-bass-notes-design.md and lib/notes-edits.js. -->
-    <section id="notes-detect" class="notes">
-      <div class="notes-row">
-        <button id="notes-go-all" class="btn" data-i18n="notes.find" disabled>Find notes</button>
-        <span id="notes-detect-spinner" class="notes-spinner" hidden></span>
-        <span id="notes-detect-status" class="notes-count"></span>
-      </div>
-    </section>
+    <!-- React-owned (Phase 5b): shared Find-notes button/spinner/busy-channel status. See
+         components/DetectionPanel.jsx's DetectionControls. -->
+    <div id="detection-ui-root" class="react-portal-host"></div>
 
     <section id="notes-vocals" class="notes" hidden>
       <div class="notes-row">
         <strong class="notes-panel-label" data-i18n="stem.vocals">Vocals</strong>
       </div>
-      <div id="notes-meta-vocals" class="notes-row" hidden>
-        <span id="notes-count-vocals" class="notes-count"></span>
-        <button id="notes-show-vocals" class="btn ghost" data-i18n="notes.hide" hidden>Hide notes</button>
-        <label class="notes-ctl">
-          <input id="notes-jianpu-vocals" type="checkbox">
-          <span data-i18n="notes.jianpu">簡譜</span>
-        </label>
-        <span class="notes-ctl notes-key">
-          <span data-i18n="notes.keyIs">1 =</span>
-          <select id="notes-key-tonic-vocals" disabled></select>
-          <select id="notes-key-mode-vocals" disabled>
-            <option value="major" data-i18n="notes.major">major</option>
-            <option value="minor" data-i18n="notes.minor">minor</option>
-          </select>
-          <button id="notes-key-rel-vocals" class="mini" type="button" disabled
-                  data-i18n-attr="title:notes.relativeTip">⇄</button>
-        </span>
-      </div>
+      <!-- React-owned (Phase 5b): count, Show/Hide, 簡譜, and key tonic/mode/relative-key.
+           See components/DetectionPanel.jsx's NotesChannelPanel. The tune/edits/list-io
+           siblings below stay legacy-owned (Phase 6). -->
+      <div id="notes-meta-vocals-root" class="react-portal-host"></div>
       <div id="notes-tune-vocals" class="notes-row" hidden>
         <label class="notes-ctl">
           <span data-i18n="notes.shortest">Shortest note</span>
@@ -169,24 +151,8 @@
       <div class="notes-row">
         <strong class="notes-panel-label" data-i18n="stem.bass">Bass</strong>
       </div>
-      <div id="notes-meta-bass" class="notes-row" hidden>
-        <span id="notes-count-bass" class="notes-count"></span>
-        <button id="notes-show-bass" class="btn ghost" data-i18n="notes.hide" hidden>Hide notes</button>
-        <label class="notes-ctl">
-          <input id="notes-jianpu-bass" type="checkbox">
-          <span data-i18n="notes.jianpu">簡譜</span>
-        </label>
-        <span class="notes-ctl notes-key">
-          <span data-i18n="notes.keyIs">1 =</span>
-          <select id="notes-key-tonic-bass" disabled></select>
-          <select id="notes-key-mode-bass" disabled>
-            <option value="major" data-i18n="notes.major">major</option>
-            <option value="minor" data-i18n="notes.minor">minor</option>
-          </select>
-          <button id="notes-key-rel-bass" class="mini" type="button" disabled
-                  data-i18n-attr="title:notes.relativeTip">⇄</button>
-        </span>
-      </div>
+      <!-- React-owned (Phase 5b): see the vocals section's equivalent comment above. -->
+      <div id="notes-meta-bass-root" class="react-portal-host"></div>
       <div id="notes-tune-bass" class="notes-row" hidden>
         <label class="notes-ctl">
           <span data-i18n="notes.shortest">Shortest note</span>

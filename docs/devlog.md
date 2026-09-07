@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; PR #77 preview verified, with production acceptance pending. |
+| [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; accepted at `41ff22c`, completing Phase 3. |
 | [React phase 3d](#react-phase-3d--volume-and-ab-loop-controls-2026-09-06) | React now owns the primary master-volume and A/B presentation controls; accepted in production at `4b14667`. |
 | [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; accepted in production at `20a55bb`. |
 | [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; accepted in production at `99ac653`. |
@@ -112,8 +112,17 @@ Running log of what was built and what was learned building it.
 - [test] PR #77's 16-second preview and 46-second test workflows passed. Hosted root and
   nested routes displayed exact synthetic merge `b83d821`; generated and real-song cases
   retained routing/focus/ownership, genuine 3/0/Space/A–B behavior, 55% volume mirroring,
-  saved locale, responsive 390px layout, and empty consoles. Production and the separate
-  rollback-anchor acceptance remain gated; Phase 3 is not complete.
+  saved locale, responsive 390px layout, and empty consoles.
+- [note] PR #77 squash-merged as `41ff22cdfad6221164ea7105273b24d338251c95`.
+  Its exact-SHA deploy (22 seconds) and test (43 seconds) workflows passed. Production root
+  and nested routes displayed `41ff22c`; the saved locale and 4:23 six-stem real song retained
+  Bass-only/all-on/Restore previous routing, 47% volume mirror, genuine playback/A–B keys,
+  one owner, six legacy lane-volume controls, and an empty console. A generated 2.4-second
+  two-stem fixture also kept its genuine 0–1.5-second loop active with another production tab
+  foregrounded, then reached source end and reset after genuine `c` cleared the loop; both
+  consoles stayed empty. This full SHA is the Phase 3e rollback anchor. With this separate
+  anchor record merged, no planned Phase 3 header/loading/transport/top-level control remains
+  legacy-owned, so Phase 3 is complete.
 
 ## React phase 3d — volume and A/B loop controls (2026-09-06)
 

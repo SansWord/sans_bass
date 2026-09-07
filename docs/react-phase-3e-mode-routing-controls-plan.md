@@ -1,7 +1,7 @@
 # React migration Phase 3e — mode and routing controls plan
 
-Status: [PR #77](https://github.com/SansWord/sans_bass/pull/77) preview verified;
-production acceptance pending. Implementation committed at
+Status: accepted in production through [PR #77](https://github.com/SansWord/sans_bass/pull/77)
+at rollback anchor `41ff22cdfad6221164ea7105273b24d338251c95`. Implementation committed at
 `385e8ab38e982988a4c19d14e5a5428d7c52200c`.
 Planned from `82b6ac3f5897e34204c3549dd7506b863f7dbe61` on 2026-09-06. Previous
 accepted implementation rollback anchor: Phase 3d at
@@ -70,7 +70,8 @@ genuine 0/1–6 and playback keys, selector/button focus, one React owner, actua
 behavior, accepted Phase 3a–3d controls, desktop/simulated-narrow layout, and a clean
 first-party console. Production receives the narrower exact-SHA canary after merge.
 
-Physical-handheld, subjective auditory, background-tab, and real-model checks remain
-omissions unless genuinely exercised. Phase 3 can be called complete only after Phase 3e is
-accepted in production, its separate rollback-anchor documentation PR merges, and no planned
-header/loading/transport/top-level control remains legacy-owned.
+Physical-handheld, subjective auditory, and real-model checks remain omissions. The accepted
+production evidence records the genuinely exercised background loop/end case. Phase 3 can be
+called complete only after Phase 3e is accepted in production, its separate rollback-anchor
+documentation PR merges, and no planned header/loading/transport/top-level control remains
+legacy-owned.

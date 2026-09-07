@@ -275,7 +275,7 @@ release integrity.
 | Analytics | `A6` | `ANALYTICS-001` | Events do not reach GoatCounter from localhost. | merge | — | `ANALYTICS-001` |
 | Analytics | `A7` | `ANALYTICS-001` | `separate-handheld-blocked` fires **once** per visitor shown the message, never once per poll. | merge | — | `ANALYTICS-001` |
 
-## React migration boundary coverage (phases 0–3d)
+## React migration boundary coverage (phases 0–3e)
 
 The historical inventory above remains unchanged. Phase 0's legacy-header jsdom test added
 LANG-001 and demo-listing evidence for button state, input identity, navigation, and demo
@@ -345,3 +345,15 @@ loop flags; and loop analytics buckets without duplicated listeners. Existing lo
 transport/rate, sonifier, malformed-input, storage, fake-Worker, and routing tests remain the
 authority for their unchanged layers. Deployed real-song, physical-handheld, subjective
 visual, background, and auditory evidence remains separate.
+
+The Phase 3e additions cover one React-authored top-level mode selector and all-toggle button
+through the production entry. Facade tests prove command delegation and invalid mode-type
+rejection. Generated ordinary, explicit-full-mix, six-stem, and unknown-lane archives prove
+stable translated option identity; every selector mode; actual gain ramps and mix/stem mutual
+exclusion; fresh, silent, partial, all-on, and restore-previous all-toggle states; legacy lane
+click publication; genuine 0 and 1–6 shortcuts; focused-control exclusion and blur; locale,
+shell remount, replacement reset, and one analytics/listener sequence. A narrow regression
+retains accepted master-volume, A/B loop, and per-lane-volume behavior. Existing pure routing,
+malformed-input, storage, fake-Worker, notes/editor, and transport tests remain authoritative
+for unchanged layers. Deployed real-song, physical-handheld, subjective visual, background,
+real-model, and auditory evidence remains separate.

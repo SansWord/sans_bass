@@ -48,11 +48,7 @@ init();
     </div>
 
     <div class="controls">
-      <label class="ctl">
-        <span data-i18n="ctl.play">Play</span>
-        <select id="mode"></select>
-      </label>
-      <button id="all-toggle" class="btn ghost" type="button" data-i18n="btn.unmuteAll">Unmute all</button>
+      <div id="mode-routing-ui-root" class="react-portal-host"></div>
       <div id="master-volume-ui-root" class="react-portal-host"></div>
       <div id="playback-speed-ui-root" class="react-portal-host"></div>
       <div id="loop-controls-ui-root" class="react-portal-host"></div>

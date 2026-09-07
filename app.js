@@ -148,9 +148,7 @@ let primarySeekCanvas = null; // React-owned DOM; app.js retains only imperative
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  player: $('player'), title: $('title'), mode: $('mode'),
-  lanes: $('lanes'),
-  allToggle: $('all-toggle'),
+  player: $('player'), title: $('title'), lanes: $('lanes'),
   buildSha: $('build-sha'),
 };
 
@@ -567,29 +565,9 @@ function mixPeaks() {
 
 // ---------------------------------------------------------------- UI
 
-/* The option VALUE is a stable key, never the label. Labels are translated, so keying on
- * them would break soloing the moment the language changed — and two unrecognised files
- * whose filename-derived labels happened to match were already indistinguishable. */
-function buildModeOptions() {
-  el.mode.innerHTML = '';
-  const opts = [['mix', tr('stem.mix')]];
-  tracks.forEach((t, i) => {
-    if (t.stem === 'mix') return;
-    opts.push([laneKey(t, i), tr('mode.only', { name: laneLabel(t) })]);
-  });
-  opts.push(['custom', tr('mode.custom')]);
-  for (const [value, text] of opts) {
-    const o = document.createElement('option');
-    o.value = value; o.textContent = text;
-    el.mode.appendChild(o);
-  }
-}
-
 function buildUI(title) {
   el.player.hidden = false;
   el.title.textContent = title;
-
-  buildModeOptions();
 
   // lanes
   /* The previous song's frames describe the previous song's audio; drawn against the new
@@ -2586,27 +2564,12 @@ function applyGains() {
   tracks.forEach(t => {
     let on = !t.muted;
     // Never let a full-mix file play on top of its own stems.
-    if (hasStems && t.stem === 'mix' && el.mode.value !== 'mix') on = false;
+    if (hasStems && t.stem === 'mix' && routingState.mode !== 'mix') on = false;
     const g = on ? t.volume : 0;
     t.gain.gain.setTargetAtTime(g, now, 0.012);
     t.laneEl?.classList.toggle('muted', !on);
   });
-  // Every mute path routes through here, so the button label can never drift out of sync.
-  renderAllToggle();
   syncZoomChips();
-}
-
-/* Three states, and the label is the only thing that says which one you are in:
- *   something muted            → "Unmute all"
- *   everything on, snapshot    → "Restore previous"
- *   everything on, no snapshot → "Mute all"   (the fresh-load state)
- * The button used to be disabled in that last case, which is what a beta tester read as
- * the 0 key being broken: on a separated song every lane starts on, so the very first
- * press was always the dead one. Split out of applyGains so retranslate() can re-render
- * the label without touching gain. */
-function renderAllToggle() {
-  el.allToggle.textContent = tr(`btn.${allToggleLabel(routingState)}`);
-  el.allToggle.disabled = false;
 }
 
 /**
@@ -2619,9 +2582,6 @@ function renderAllToggle() {
  */
 function retranslate() {
   if (tracks.length) {
-    const mode = el.mode.value;
-    buildModeOptions();
-    el.mode.value = mode;            // rebuilding the options resets the selection
     tracks.forEach((t) => {
       if (!t.nameEl) return;
       t.nameEl.title = tr('lane.tip');
@@ -2671,10 +2631,6 @@ function retranslate() {
   if (editIoExportBtnEl) editIoExportBtnEl.textContent = tr('notes.export');
   if (editIoImportBtnEl) editIoImportBtnEl.textContent = tr('notes.import');
   syncTempoRangeHint();
-  // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
-  // its text — clobbering "Restore previous". This runs after, and must keep doing so:
-  // setLocale applies the markup first and dispatches the event second, in that order.
-  renderAllToggle();
 }
 
 
@@ -2685,7 +2641,6 @@ function syncRoutingState(next) {
   tracks.forEach((track, index) => {
     track.muted = !!next.muted[laneKey(track, index)];
   });
-  el.mode.value = next.mode;
   applyGains();
 }
 
@@ -2707,13 +2662,15 @@ function syncRoutingState(next) {
  * deliberately NOT taken when every lane is already off: "restore previous" meaning
  * "silence again" is a worse answer than simply offering "Mute all" once more.
  */
-function toggleAllTracks() {
+function toggleAllTracks(publish = true) {
   gcOnce('unmute-all');
   syncRoutingState(route(routingState, { type: 'all' }));
+  if (publish) playerApplication.publish();
 }
 
-function setMode(mode) {
+function setMode(mode, publish = true) {
   syncRoutingState(route(routingState, { type: 'mode', mode }));
+  if (publish) playerApplication.publish();
 }
 
 function toggleTrack(t) {
@@ -2721,6 +2678,7 @@ function toggleTrack(t) {
   if (t.stem) gcOnce(`toggle-${t.stem}`);   // stem ids, never labels — never a filename
   const index = tracks.indexOf(t);
   syncRoutingState(route(routingState, { type: 'toggle', key: laneKey(t, index) }));
+  playerApplication.publish();
 }
 
 /** Apply one authoritative master-volume value without changing any routing state. */
@@ -3370,12 +3328,6 @@ function attachSeek(canvas, opts) {
   canvas.addEventListener('pointercancel', () => { tempoRangeDrag = null; rangeDrag = null; scrubbing = false; });
 }
 
-on(el.allToggle, 'click', toggleAllTracks);
-/* Hand focus back after a choice. The global keydown handler ignores events aimed at a
- * <select> — it has to, or ArrowLeft/Right would seek instead of moving the selection —
- * so a select that keeps focus after being used silently disables every hotkey until the
- * user happens to click elsewhere. Blurring on `change` is the whole fix. */
-on(el.mode, 'change', () => { setMode(el.mode.value); el.mode.blur(); });
 window.addEventListener('sansbass:langchange', retranslate);
 window.addEventListener('sansbass:editmode', (e) => {
   editMode = e.detail.on;
@@ -3504,12 +3456,14 @@ function applicationSnapshot() {
     duration,
     tracks: tracks.map((track, index) => ({
       id: laneKey(track, index), stem: track.stem || null, name: track.name,
+      label: track.label,
     })),
   } : null;
   return {
     song,
     loading,
     masterVolume,
+    routing: { mode: routingState.mode, allToggleLabel: allToggleLabel(routingState) },
     transport: applicationTransportSnapshot(),
     status: lastSay ? { key: lastSay.key, params: lastSay.params || null, error: !!lastSay.isErr } : null,
   };
@@ -3529,6 +3483,8 @@ playerApplication.initialize({
     setPlaybackRate: (rate) => setRate(rate * 100),
     setMasterVolume,
     clearLoop,
+    setMode: (mode) => setMode(mode, false),
+    toggleAllTracks: () => toggleAllTracks(false),
     replaceSong: loadSeparated,
     rejectLoad: (reason, details) => {
       if (reason === 'folder') {

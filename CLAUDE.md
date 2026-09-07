@@ -28,7 +28,9 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   seek canvas, accessible seek value, and master time/rate/BPM presentation while retaining
   `app.js` as its imperative waveform painter. Phase 3d adds the primary master-volume
   control and A/B badge/Clear presentation while `app.js` retains gain smoothing and loop
-  timing. Phase 2's DOM-independent
+  timing. Phase 3e adds the top-level mode selector and all-toggle presentation while
+  `app.js` retains routing transitions, gain smoothing, lane toggles, and 0/1–6 shortcuts.
+  Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -122,7 +124,8 @@ The player and demo list share `styles.css`, the translation dictionary, and
 `components/PlayerShell.jsx` additionally owns the one player file input, empty/loading
 affordance, status/error presentation, global drag overlay, primary play/pause button, and
 playback-speed, primary seek/time, master-volume, and A/B presentation controls through one
-root with explicit portal hosts.
+root with explicit portal hosts. It also owns the top-level translated mode selector and
+all-toggle button; stable routing identity and state come from the application projection.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -131,8 +134,9 @@ colocated when needed; these components reuse the established shared classes in 
 
 `app.js` remains authoritative for decoded tracks, song/transport/routing state, audio,
 master gain smoothing, loop timing, and all legacy player regions after loading. It publishes
-stable status keys, master volume, and a deduplicated transport-frame projection rather than
-writing the React-owned status, volume, loop, or transport presentation. It still paints
+stable status keys, master volume, a narrow routing projection, and a deduplicated
+transport-frame projection rather than writing the React-owned status, volume, loop,
+routing-control, or transport presentation. It still paints
 pixels and intrinsic dimensions on the React-owned
 primary canvas through an explicit lifecycle attachment. `sansbass:transport` remains a temporary exact-clock adapter for the
 two notes sonifiers. The lowercase `window.sansBass` bridge remains only for named

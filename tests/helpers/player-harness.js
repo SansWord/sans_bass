@@ -79,8 +79,11 @@ export async function loadZip(player, stems, options = {}) {
   const input = player.doc.getElementById('file-input');
   Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
   input.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+  const expectedLanes = Object.keys(stems).length
+    + (options.mix === undefined ? 0 : 1)
+    + Object.keys(options.unknown || {}).length;
   try {
-    await waitFor(() => player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === Object.keys(stems).length,
+    await waitFor(() => player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === expectedLanes,
       'decoded player lanes');
   } catch (error) {
     const status = player.doc.getElementById('status')?.textContent;

@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; PR #77 preview verified, with production acceptance pending. |
 | [React phase 3d](#react-phase-3d--volume-and-ab-loop-controls-2026-09-06) | React now owns the primary master-volume and A/B presentation controls; accepted in production at `4b14667`. |
 | [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; accepted in production at `20a55bb`. |
 | [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; accepted in production at `99ac653`. |
@@ -83,6 +84,36 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## React phase 3e — mode and routing controls (2026-09-06/07)
+
+- [new] React solely authors the top-level Play label/select and all-toggle button through the
+  existing player shell. Stable option IDs and a two-field routing projection cross the
+  application boundary; translated known stems and filename-derived unknown lanes remain
+  presentation, never identity.
+- [new] The facade adds only `setMode(mode)` and `toggleAllTracks()`. `app.js` keeps the
+  routing state machine, lane toggles, gain smoothing, 0/1–6 keyboard owner, analytics, and
+  all lane UI. Explicit-mix suppression now reads authoritative routing state rather than a
+  React-owned DOM value.
+- [test] Failing-first runs recorded one missing-command Node failure with 18 adjacent passes
+  and three missing-projection/owner Chromium failures with 28 adjacent passes. After
+  implementation, focused Node passed 19/19, focused production-entry Chromium passed 31/31,
+  and the full suite passed 31 files / 415 tests. Generated ordinary, explicit-mix, unknown,
+  and six-stem fixtures assert actual gain ramps across selector, all-toggle, lane, 0, and
+  1–6 entry points, plus locale/focus/remount/replacement/listener behavior and a Phase 3d
+  volume/loop regression.
+- [measurement] Exact commit `385e8ab` builds successfully with the existing intentional
+  worklet URL warning. Its player bundle is 113,165 bytes, +681 (+0.61%) from accepted main;
+  the 218,172-byte shared React chunk is unchanged (+0.21% across the pair).
+- [test] After the browser quota reset, the exact `385e8ab` built root/nested smoke passed
+  generated explicit-mix/unknown routing, the 4:23 six-stem real song, genuine routing,
+  playback and A/B keys, 47% volume mirroring, locale/focus/ownership, clean first-party
+  console, and simulated 390×844 layout without horizontal overflow.
+- [test] PR #77's 16-second preview and 46-second test workflows passed. Hosted root and
+  nested routes displayed exact synthetic merge `b83d821`; generated and real-song cases
+  retained routing/focus/ownership, genuine 3/0/Space/A–B behavior, 55% volume mirroring,
+  saved locale, responsive 390px layout, and empty consoles. Production and the separate
+  rollback-anchor acceptance remain gated; Phase 3 is not complete.
 
 ## React phase 3d — volume and A/B loop controls (2026-09-06)
 

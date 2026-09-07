@@ -1,5 +1,105 @@
 # React migration evidence
 
+## Phase 3e — React mode and routing controls
+
+Status: PR preview verified; production acceptance pending. Evidence
+collected 2026-09-06–07 America/Los_Angeles. Branch
+`feat/react-phase-3e-mode-routing-controls`; starting source
+`82b6ac3f5897e34204c3549dd7506b863f7dbe61`; implementation source
+`385e8ab38e982988a4c19d14e5a5428d7c52200c`. Previous accepted implementation rollback
+anchor: Phase 3d at `4b14667a935f1faef4af1f8ba8df8acb37d6ab5f`; its separate anchor
+documentation merged through PR #76 before Phase 3e began.
+
+### Ownership and command boundary
+
+React now solely authors the top-level Play label/select, translated mode options,
+accessibility, all-toggle presentation, focus restoration, and both direct listeners through
+one `mode-routing-ui-root` portal in the existing player shell. `playerApplication` adds only
+`setMode(mode)` and `toggleAllTracks()` and publishes `{ mode, allToggleLabel }`. Existing
+song-track projections add their source display label so React can translate known stems while
+unknown lanes keep filename-derived labels; option values remain stable IDs.
+
+`app.js` remains authoritative for `routingState`, pure transition invocation, routing
+snapshots, lane mute flags, gain smoothing, explicit-mix exclusion, lane classes, lane-name
+clicks, 0 and 1–6 shortcuts, and analytics. `applyGains()` now consults
+`routingState.mode` directly rather than reading a React-owned select. The parser-authored
+select/button, legacy option construction, eager captures, presentation writes, and direct
+listeners are removed. Lanes, lane volume, overview/zoom, separation, detection, notes,
+Workers, AudioWorklets, canvases other than the already accepted primary seek canvas, and DSP
+retain their previous owners.
+
+### Failing-first and automated evidence
+
+Before implementation, the focused Node run had 18 passing and one expected failing test:
+the two new facade commands did not exist. The focused production-entry Chromium run had 28
+passing and three expected failing tests: the routing projection and React owner did not
+exist. These were contract failures, while adjacent behavior remained green.
+
+After implementation:
+
+- focused Node routing/application run: 2 files, 19 tests passed;
+- focused production-entry Chromium run: 1 file, 31 tests passed;
+- full `npm test`: 31 files, 415 tests passed;
+- `npm run build`: passed with the existing intentional unresolved-at-build-time
+  `stretch-processor.js` URL warning;
+- `git diff --check`: passed, and a source search found no remaining non-test mode/all-toggle
+  DOM captures, reads, presentation writes, option builders, or direct listeners.
+
+Generated production-entry fixtures cover ordinary stems, a full mix plus stems, an unknown
+lane, and all six recognized stems. They exercise every selector value, fresh/all-off/partial/
+restorable all-toggle states, lane-name publication, genuine 0 and 1–6 keyboard events,
+focused select/button exclusion and blur, English/Traditional Chinese rerender, repeated shell
+remount, replacement reset, and one analytics/listener path. Assertions observe actual
+`AudioParam.setTargetAtTime` values, including explicit mix/stem mutual exclusion, rather than
+inferring audio state from CSS. The lifecycle case also retains a narrow 42% master-volume,
+A/B loop, and legacy per-lane-volume regression.
+
+The exact committed production build contains 113,165 bytes in the player bundle versus
+112,484 at accepted `main` (+681, +0.61%); the 218,172-byte shared React chunk is unchanged.
+Across those two JS bundles the increase is 0.21%.
+
+### Exact-build local smoke
+
+After the browser-control quota reset, the built application displayed exact implementation
+SHA `385e8ab` at root and `/demos/`. A generated 0.4-second archive containing vocals, bass,
+an explicit full mix, and an unknown `ambience` lane loaded through the one real input.
+Traditional Chinese and English options retained stable values; selecting vocals and the
+unknown lane, activating all-toggle, genuine 3 and 0 keys, and a legacy lane-name click each
+updated the React selector/button and mutually exclusive lane state. Both React controls
+returned focus to `BODY`. One shell, mode owner, select, all-toggle, volume owner, and loop
+owner remained.
+
+The primary and overview master-volume controls mirrored at 47%. The committed
+`examples/nov_you.zip` then loaded as `9 十二月的妳`, 4:23, with all six recognized stems,
+reset Full mix routing, and preserved volume. Genuine Space advanced the AudioContext-backed
+clock; genuine 3 changed routing; and genuine A/Right/B produced a 1.5-second loop whose Clear
+button returned focus to the page. At a simulated 390×844 viewport, the loaded controls
+wrapped without horizontal overflow and remained legible. The only warning/error console
+entries were GoatCounter's expected localhost refusal; the first-party console was clean.
+
+### PR checks and exact synthetic-merge preview
+
+PR #77's [preview workflow](https://github.com/SansWord/sans_bass/actions/runs/34098235862)
+passed in 16 seconds and its
+[test workflow](https://github.com/SansWord/sans_bass/actions/runs/34098235894) passed in 46
+seconds. Preview behavior began only after the root displayed exact synthetic merge
+`b83d82150b67b1fb00b18a816d7e1f69d12541a6`; `/pr-77/demos/` displayed the same short SHA.
+
+The hosted boundary repeated generated explicit-mix/stem/unknown loading, stable bilingual
+options, selector/all-toggle focus, lane publication, genuine 3/0 routing, unique ownership,
+and 55% primary/overview volume mirroring. An English choice survived reload at the same SHA.
+The committed real song loaded as 4:23 with six stems; Bass only, all-on/Restore previous,
+genuine Space playback, and genuine A/Right/B loop behavior remained intact. A separately
+loaded generated fixture at 390×844 had `scrollWidth === innerWidth === 390` and kept the
+mode selector and button on one readable row. Both preview consoles were empty.
+
+Actual gain authority, repeated shell remount, and analytics-listener uniqueness are supplied
+by the exact-source Chromium gate rather than a hosted debug hook. The full synthetic
+malformed-input, storage-fault, fake-Worker, notes/editor, and transport matrices were not
+manually repeated against GitHub Pages. Physical handheld, subjective auditory,
+background-tab, and real-model checks are not claimed. Merge, exact-SHA production canary,
+and the separate rollback-anchor documentation PR remain pending; Phase 3 is not complete.
+
 ## Phase 3d — React volume and A/B loop controls
 
 Status: accepted in production at rollback anchor

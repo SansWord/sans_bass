@@ -57,14 +57,11 @@ let zoomNotesStem = null;  // which channel's notes the zoomed pane currently sh
 let zoomNotesChipEls = {}; // stem -> { chip, select, spk } for the zoomed pane's "Notes: <lane>" chip pair
                             // — chip is the wrapping element, hidden until that stem has notes;
                             // see syncNotesChipsVisibility.
-let editToggleEl = null;   // the one global Edit-notes checkbox, beside the two Notes chips
-let editToggleLabelEl = null; // its wrapping <label> — hidden until any channel has notes,
-                               // same gate as the Notes chips above (syncNotesChipsVisibility)
-let editIoGroupEl = null;  // wrapping element for the shared Export/Import-edits buttons,
-                            // beside the Edit-notes toggle — same visibility gate as it
-let editIoImportFileEl = null; // its hidden <input type=file>, click-proxied by the Import button
-let editIoExportBtnEl = null;  // the two buttons' text is re-set on language change — see retranslate()
-let editIoImportBtnEl = null;
+/* The Edit-notes toggle and shared Export/Import-edits buttons are React-owned since Phase 6e
+ * (components/PlayerShell.jsx's EditModeToggle/EditIoControls) — no module-level DOM
+ * references remain here. Their visibility/enablement/checked state is published through
+ * applicationSnapshot()'s `notesEdit` field (see syncNotesChipsVisibility/syncEditToggle
+ * below); their actions are playerApplication.commands.setEditMode/exportEdits/importEdits. */
 let ribbonVolume = { vocals: 1, bass: 1 };
 let ribbonHeight = { vocals: readStoredNumber(`${RIBBON_H_KEY}.vocals`, RIBBON_H_DEFAULT, clampRibbonH),
                       bass: readStoredNumber(`${RIBBON_H_KEY}.bass`, RIBBON_H_DEFAULT, clampRibbonH) };
@@ -789,71 +786,33 @@ function buildUI(title) {
      * like clicking its row in the main list does. Nested in their own `zChipHost` (kept
      * `display: contents` in styles.css so it doesn't affect zLaneSel's flex layout) so a
      * later song's differing stem set can be rebuilt here alone via rebuildZoomChipHost(),
-     * without touching the permanent editLabel/ioGroup siblings appended after it below —
-     * see docs/react-phase-6d-zoomed-pane-mount-refactor-plan.md. */
+     * without touching the permanent `zEditHost` sibling appended after it below — see
+     * docs/react-phase-6d-zoomed-pane-mount-refactor-plan.md and, for that host itself,
+     * docs/react-phase-6e-edit-toggle-export-import-plan.md. */
     const zLaneSel = document.createElement('span');
     zLaneSel.className = 'zoom-lane-sel';
     const zChipHost = document.createElement('span');
     zChipHost.className = 'zoom-chip-host';
     zLaneSel.appendChild(zChipHost);
     rebuildZoomChipHost(zChipHost);
-
-    /* The one global Edit-notes toggle, beside the two Notes chips — editing is inherently
-     * single-target, so one control suffices regardless of how many note-capable stems exist.
-     * Hidden until any channel has notes, same reasoning as the chips above. */
-    const editLabel = document.createElement('label');
-    editLabel.className = 'notes-ctl zoom-edit-toggle';
-    editLabel.title = tr('notes.editTip');
-    editLabel.hidden = true;
-    editToggleLabelEl = editLabel;
-    editToggleEl = document.createElement('input');
-    editToggleEl.type = 'checkbox';
-    editToggleEl.id = 'notes-edit';
-    editToggleEl.disabled = true;
-    const editSpan = document.createElement('span');
-    editSpan.textContent = tr('notes.edit');
-    editLabel.append(editToggleEl, editSpan);
-    editToggleEl.addEventListener('change', () => {
-      window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: editToggleEl.checked, stem: zoomNotesStem } }));
-    });
-    zLaneSel.appendChild(editLabel);
-
-    /* Export/Import edits, beside the Edit-notes toggle — one shared pair combining every
-     * analysed channel's edits into a single file, replacing the old per-panel pair (see
-     * index.html's comment above #notes-detect). The actual state lives in notes.js, which
-     * has no reach into this module and vice versa, so these dispatch events the same way
-     * the edit toolbar below already dispatches 'sansbass:noteedit'/'editundo' for notes.js
-     * to act on. Hidden/disabled together with editLabel — same gate, see syncZoomChips. */
-    const ioGroup = document.createElement('span');
-    ioGroup.className = 'notes-ctl zoom-edit-io';
-    ioGroup.hidden = true;
-    editIoGroupEl = ioGroup;
-    const exportBtn = document.createElement('button');
-    exportBtn.type = 'button';
-    exportBtn.className = 'mini';
-    exportBtn.textContent = tr('notes.export');
-    editIoExportBtnEl = exportBtn;
-    exportBtn.addEventListener('click', () => {
-      window.dispatchEvent(new CustomEvent('sansbass:exportedits'));
-    });
-    const importBtn = document.createElement('button');
-    importBtn.type = 'button';
-    importBtn.className = 'mini';
-    importBtn.textContent = tr('notes.import');
-    editIoImportBtnEl = importBtn;
-    const importFile = document.createElement('input');
-    importFile.type = 'file';
-    importFile.accept = 'application/json,.json';
-    importFile.hidden = true;
-    editIoImportFileEl = importFile;
-    importBtn.addEventListener('click', () => importFile.click());
-    importFile.addEventListener('change', () => {
-      const file = importFile.files[0];
-      importFile.value = '';
-      if (file) window.dispatchEvent(new CustomEvent('sansbass:importedits', { detail: { file } }));
-    });
-    ioGroup.append(exportBtn, importBtn, importFile);
-    zLaneSel.appendChild(ioGroup);
+    /* The Edit-notes toggle and shared Export/Import-edits buttons that used to be built here
+     * (beside the stem/Notes chip host) are React-owned since Phase 6e — see
+     * components/PlayerShell.jsx's EditModeToggle/EditIoControls. Unlike every other
+     * React-owned region, there is no static index.html root to portal into: `zLaneSel` is
+     * itself legacy DOM built here, not static markup, so React has nothing to attach to at
+     * page-load time. Instead `app.js` creates one stable, `display: contents` host span,
+     * appends it into `zLaneSel` right after the chip host (preserving flex/gap layout exactly
+     * as if these were direct children), and hands it to React via
+     * `playerApplication.publishEditHost()` — the mirror image of `attachLaneCanvas`/
+     * `attachOverviewCanvas` (where REACT creates the node and hands it to app.js), needed
+     * because here the PARENT the node must live in is legacy-owned, not the node's own
+     * content. Created once, alongside the rest of this first-time-construction branch, and
+     * persists across song loads exactly like `zChipHost` (Phase 6d) — never recreated on
+     * reuse, only torn down (see the `else if (zoomEl)` teardown branch below). */
+    const zEditHost = document.createElement('span');
+    zEditHost.className = 'zoom-edit-host';
+    zLaneSel.appendChild(zEditHost);
+    playerApplication.publishEditHost(zEditHost);
 
     const chordGroup = document.createElement('div');
     chordGroup.className = 'zoom-chord-row';
@@ -1133,12 +1092,7 @@ function buildUI(title) {
     quarterBeatBtn = null;
     zoomChipEls = [];
     zoomNotesChipEls = {};
-    editToggleEl = null;
-    editToggleLabelEl = null;
-    editIoGroupEl = null;
-    editIoImportFileEl = null;
-    editIoExportBtnEl = null;
-    editIoImportBtnEl = null;
+    playerApplication.publishEditHost(null);
   }
 
   /* Forces the zoomed pane's detection-gated controls (Notes chips, Edit-notes toggle,
@@ -2587,32 +2541,46 @@ function applyRibbonVisibility(stem) {
  * they're useful as plain-waveform tools before "Find notes" has ever run. Only the per-stem
  * Notes chip and the one global Edit toggle wait for detection: each chip appears once its
  * own channel is both visible and populated, and Edit appears once AT LEAST ONE is — showing
- * a control for pitch data that doesn't exist yet would be a lie. */
+ * a control for pitch data that doesn't exist yet would be a lie. The Edit-notes toggle and
+ * shared Export/Import buttons' own `hidden` state is React-owned since Phase 6e, read from
+ * applicationSnapshot()'s `notesEdit.visible` field — this function's job for them is now
+ * just to republish, not to write DOM. */
 function syncNotesChipsVisibility() {
-  let anyReady = false;
   for (const stem of NOTE_STEMS) {
     const ready = !!(noteLanes[stem] && ribbonVisible[stem] && noteLanes[stem].ribbon);
     const entry = zoomNotesChipEls[stem];
     if (entry) entry.chip.hidden = !ready;
-    if (ready) anyReady = true;
   }
-  if (editToggleLabelEl) editToggleLabelEl.hidden = !anyReady;
-  if (editIoGroupEl) editIoGroupEl.hidden = !anyReady;
+  playerApplication.publish();
+}
+
+/** Whether any channel is both visible and populated with notes — the shared gate for the
+ *  Edit-notes toggle's and Export/Import buttons' visibility (Phase 6e: applicationSnapshot()'s
+ *  `notesEdit.visible`) — and whether the CURRENTLY SELECTED zoomed-pane channel specifically
+ *  has notes (`notesEdit.enabled`). Editing nothing makes no sense, so enablement is narrower
+ *  than visibility: a channel can make the toggle visible while a different, note-less channel
+ *  is selected, leaving it visible but disabled. */
+function notesEditState() {
+  let anyReady = false;
+  for (const stem of NOTE_STEMS) {
+    if (noteLanes[stem] && ribbonVisible[stem] && noteLanes[stem].ribbon) { anyReady = true; break; }
+  }
+  const lane = zoomNotesStem && noteLanes[zoomNotesStem];
+  return { visible: anyReady, enabled: !!(lane && lane.ribbon), on: editMode };
 }
 
 /* The one global Edit-notes toggle is enabled only once the currently-selected chip's
  * channel actually has notes — editing nothing makes no sense. If the selection changes out
  * from under an active edit session (e.g. the user picks a chip with no notes yet), turn
- * editing off rather than leaving it stuck pointed at nothing. */
+ * editing off rather than leaving it stuck pointed at nothing. Its `disabled`/`checked`
+ * presentation is React-owned since Phase 6e (applicationSnapshot()'s `notesEdit` field);
+ * this function's job is computing `canEdit` for that field and, when forcing editing off,
+ * dispatching the same `sansbass:editmode` event the toggle's own `onChange` would have. */
 function syncEditToggle() {
-  if (!editToggleEl) return;
-  const lane = zoomNotesStem && noteLanes[zoomNotesStem];
-  const canEdit = !!(lane && lane.ribbon);
-  editToggleEl.disabled = !canEdit;
-  if (!canEdit && editToggleEl.checked) {
-    editToggleEl.checked = false;
+  if (!notesEditState().enabled && editMode) {
     window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false, stem: zoomNotesStem } }));
   }
+  playerApplication.publish();
 }
 
 /* The full-song range-select band only makes sense on the lane currently selected for
@@ -2710,12 +2678,8 @@ function retranslate() {
     chip.select.title = tr('notes.zoomNotesChipForTip', { lane: label });
     chip.spk.title = tr('notes.zoomNotesMuteTipFor', { lane: label });
   }
-  if (editToggleEl) {
-    editToggleEl.nextSibling.textContent = tr('notes.edit');
-    editToggleEl.parentElement.title = tr('notes.editTip');
-  }
-  if (editIoExportBtnEl) editIoExportBtnEl.textContent = tr('notes.export');
-  if (editIoImportBtnEl) editIoImportBtnEl.textContent = tr('notes.import');
+  // The Edit-notes toggle's and Export/Import buttons' labels retranslate through React's own
+  // useLocale() since Phase 6e — no legacy DOM write needed here.
   syncTempoRangeHint();
 }
 
@@ -3435,7 +3399,6 @@ function attachSeek(canvas, opts) {
 window.addEventListener('sansbass:langchange', retranslate);
 window.addEventListener('sansbass:editmode', (e) => {
   editMode = e.detail.on;
-  if (editToggleEl) editToggleEl.checked = editMode;
   selectedNote = null;
   noteDrag = null;
   addArmed = false;
@@ -3446,6 +3409,10 @@ window.addEventListener('sansbass:editmode', (e) => {
   if (zoomRangeHint) zoomRangeHint.hidden = !editMode;
   syncRangeHints();
   if (zoomEl) { zoomEl.canvas.classList.toggle('editing', editMode); draw(); }
+  // The Edit-notes toggle's `checked` presentation is React-owned since Phase 6e, read from
+  // applicationSnapshot()'s `notesEdit.on` field — publish so it (and every other snapshot
+  // consumer) picks up the new editMode value.
+  playerApplication.publish();
 });
 window.addEventListener('sansbass:temporangemode', (e) => {
   tempoRangeArmed = e.detail.on;
@@ -3570,6 +3537,7 @@ function applicationSnapshot() {
     routing: { mode: routingState.mode, allToggleLabel: allToggleLabel(routingState) },
     transport: applicationTransportSnapshot(),
     status: lastSay ? { key: lastSay.key, params: lastSay.params || null, error: !!lastSay.isErr } : null,
+    notesEdit: notesEditState(),
   };
 }
 
@@ -3606,6 +3574,11 @@ playerApplication.initialize({
         say('status.notSongOrZip', null, true);
       }
     },
+    setEditMode: (on) => {
+      window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on, stem: zoomNotesStem } }));
+    },
+    exportEdits: () => window.dispatchEvent(new CustomEvent('sansbass:exportedits')),
+    importEdits: (file) => window.dispatchEvent(new CustomEvent('sansbass:importedits', { detail: { file } })),
   },
   reportCommandError: (error) => {
     loading = false;

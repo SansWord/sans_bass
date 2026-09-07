@@ -1516,6 +1516,111 @@ describe('production player integration', () => {
     expect(secsLabel.textContent).toBe(render(singleTick));
   });
 
+  it('gives the Edit-notes toggle one React owner that becomes visible/enabled once the selected channel has notes', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const toggle = player.doc.getElementById('notes-edit');
+    expect(toggle.parentElement.hidden).toBe(true);
+    expect(toggle.disabled).toBe(true);
+
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+
+    await waitFor(() => !toggle.parentElement.hidden, 'toggle becomes visible once a channel has notes');
+    expect(toggle.disabled).toBe(false);
+
+    toggle.click();
+    await waitFor(() => toggle.checked, 'checking the real checkbox turns editing on');
+    const events = [];
+    player.win.addEventListener('sansbass:editmode', (e) => events.push(e.detail));
+    toggle.click();
+    await waitFor(() => !toggle.checked, 'unchecking turns editing off');
+    // zoomNotesStem auto-claimed 'vocals' once its channel's notes arrived (setNotes()'s
+    // auto-select), so the toggle's own dispatch names that stem, not null.
+    expect(events).toEqual([{ on: false, stem: 'vocals' }]);
+  });
+
+  it('turns the Edit-notes toggle off when a song replacement clears the selected channel', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 }, { folder: 'First' });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+
+    const toggle = player.doc.getElementById('notes-edit');
+    await waitFor(() => !toggle.disabled, 'toggle enabled once vocals has notes');
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:editmode', { detail: { on: true, stem: 'vocals' } }));
+    await waitFor(() => toggle.checked, 'toggle reflects externally-dispatched editmode');
+
+    const events = [];
+    player.win.addEventListener('sansbass:editmode', (e) => events.push(e.detail));
+    // The new song has not run detection yet, so zoomNotesStem resets to null with nothing
+    // eligible — syncEditToggle()'s end-of-buildUI() call must force editing off exactly once.
+    await loadZip(player, { vocals: 220, guitar: 440 }, { folder: 'Second' });
+    await waitFor(() => player.doc.getElementById('title').textContent === 'Second', 'second song title');
+    await waitFor(() => !toggle.checked, 'toggle forced off by the song replacement');
+    expect(events.filter((d) => d.on === false)).toHaveLength(1);
+  });
+
+  it('dispatches export/import events from the shared React-owned buttons and resets the import file input', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+
+    const ioGroup = await waitFor(() => {
+      const group = player.doc.querySelector('.zoom-edit-io');
+      return !group.hidden ? group : null;
+    }, 'export/import group visible');
+    const [exportBtn, importBtn] = ioGroup.querySelectorAll('button');
+    const importFile = ioGroup.querySelector('input[type=file]');
+
+    const exportEvents = [];
+    player.win.addEventListener('sansbass:exportedits', () => exportEvents.push(true));
+    exportBtn.click();
+    expect(exportEvents).toHaveLength(1);
+
+    const importEvents = [];
+    player.win.addEventListener('sansbass:importedits', (e) => importEvents.push(e.detail.file));
+    const file = new player.win.File(['{}'], 'edits.json', { type: 'application/json' });
+    const transfer = new player.win.DataTransfer();
+    transfer.items.add(file);
+    Object.defineProperty(importFile, 'files', { configurable: true, value: transfer.files });
+    importFile.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    expect(importEvents).toEqual([file]);
+    expect(importFile.value).toBe('');
+
+    importBtn.click();   // proxies to the (visually hidden) file input's own click() — smoke only
+  });
+
+  it('retranslates the Edit-notes toggle and Export/Import buttons on a language switch', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+    const toggle = await waitFor(() => {
+      const el = player.doc.getElementById('notes-edit');
+      return !el.parentElement.hidden ? el : null;
+    }, 'toggle visible');
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => toggle.nextSibling.textContent === '編輯音符', 'edit-toggle label retranslated');
+    const [exportBtn, importBtn] = player.doc.querySelector('.zoom-edit-io').querySelectorAll('button');
+    expect(exportBtn.textContent).toBe('匯出編輯');
+    expect(importBtn.textContent).toBe('匯入編輯');
+  });
+
   it('loads generated stems through the one real file input', async () => {
     player = await openPlayer();
     const input = await loadZip(player, { bass: 110, vocals: 440 }, {

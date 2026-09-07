@@ -14,7 +14,8 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 5a](#react-phase-5a--separation-panel-controls-2026-09-07) | React now owns the separation panel's presentation (gating, start/progress/cancel/save); `separate.js` keeps the Worker/model and exposes its state through a new `separation` export instead of writing DOM. Detection controls (5b) are next. Accepted in production at `ffe5ed5`. |
+| [React phase 5b](#react-phase-5b--detection-controls-2026-09-07) | React now owns the shared Find-notes button/spinner/busy-channel status and each melodic stem's count/Show-Hide/簡譜/key controls, completing Phase 5; `notes.js` keeps the Worker/tempo/chord/editor state and exposes detection through a new `detection` export instead of writing DOM. Accepted in production at `3e241da`. |
+| [React phase 5a](#react-phase-5a--separation-panel-controls-2026-09-07) | React now owns the separation panel's presentation (gating, start/progress/cancel/save); `separate.js` keeps the Worker/model and exposes its state through a new `separation` export instead of writing DOM. Accepted in production at `ffe5ed5`. |
 | [React phase 4b](#react-phase-4b--shared-overview-integration-2026-09-07) | React now owns the shared Overview lane's label, master-volume-mirroring slider, and canvas host, completing Phase 4; ribbon/zoomed-pane lanes stay legacy. Accepted in production at `d961db7`. |
 | [React phase 4a](#react-phase-4a--standard-stem-lane-components-2026-09-07) | React now owns each standard stem lane's label, keyboard-operable mute, per-lane volume, and canvas host; ribbon/zoom/overview lanes stay legacy, positioned purely by CSS `order`. Accepted in production at `fcf2770`. |
 | [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; accepted at `41ff22c`, completing Phase 3. |
@@ -87,6 +88,72 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## React phase 5b — detection controls (2026-09-07)
+
+- [new] React (`components/DetectionPanel.jsx`) solely authors the shared `#notes-detect`
+  Find-notes button/spinner/busy-channel status through a new `#detection-ui-root` portal,
+  and each melodic stem's meta row (count, Show/Hide, 簡譜 checkbox, and the key
+  tonic/mode/relative-key span) through `#notes-meta-vocals-root`/`#notes-meta-bass-root`
+  portals nested inside their still-legacy `<section id="notes-{stem}">` — the tune/Advanced
+  row, edit list, list-export, tempo grid, chord detection/editing, and the zoomed pane stay
+  legacy-owned, deferred to Phase 6. This completes Phase 5.
+- [note] The relative-key (⇄) button moves with the two key selects as one DOM/ownership
+  unit even though the task only named "key tonic/mode selectors" — it shares their disabled
+  condition verbatim and calling out a three-element flex row across two owners would have
+  no upside. Recorded as an explicit scope decision in the plan doc rather than assumed.
+- [new] `notes.js` gains a `detection` export (`subscribe`/`getSnapshot`/`commands: {
+  findNotes, toggleShow, setJianpuOn, setKey, useRelativeKey }`) — the same shape
+  `separate.js`'s `separation` export established in Phase 5a, scoped to detection's own
+  state, which CLAUDE.md already documented as having no owner other than `notes.js` before
+  this phase existed. `lib/detection-state.js`'s existing `detectionView()` needed no
+  changes — reused unchanged, the fourth phase in a row to reuse an existing pure derivation
+  rather than duplicate its logic.
+- [gotcha] Making `notes.js` an import target of `DetectionPanel.jsx` (reached from
+  `app.js`'s own static import graph via `PlayerShell.jsx`) means `notes.js`'s top-level
+  code — including its very first `refreshAll()` call — now runs while resolving that graph,
+  **before** `app.js`'s body sets `window.sansBass`. Two unguarded reads
+  (`syncTempoControls()`'s drums-stem check, a pre-existing legacy line untouched by this
+  phase otherwise, and the new `view()`'s ribbon-visible read) crashed the whole module graph
+  on first load — but only in a **local production build** (`npm run build` + `preview`);
+  Vitest's browser suite runs against the **dev** server, where the three modules are still
+  three separate deferred `<script type="module">` tags in document order, so the hazard
+  never surfaced there until the fixture zip's own lone-file quirk (see the note below) forced
+  a build-level check. `separate.js` already guarded every `window.sansBass` read this same
+  way in Phase 5a; `notes.js`'s own `hasStem()` already had the guard too — the fix was
+  applying it to the two call sites that didn't. Not caught by the plan's audit; recorded
+  here as an unplanned finding instead.
+- [note] A single-stem test zip (`{ vocals: 440 }`) silently becomes a `'mix'` track via
+  `assignStems`'s documented lone-file rule, not `'vocals'` — an existing CLAUDE.md gotcha
+  that bit two of this phase's own new tests (`detect.disabled` never left `true`, since
+  `hasStem('vocals')` was false the whole time). Fixed by adding a second, non-melodic stem
+  to the fixture, matching the pre-existing test's own `{ vocals: 440, guitar: 220 }` pattern.
+- [test] Four new/extended Chromium cases in `tests/player.test.js`, three passing against
+  the **legacy** DOM-writing owner unmodified (they validate already-correct behavior, not a
+  regression — same acknowledgment Phase 5a made for its own new cases) and the extended
+  stale-results case needing the lone-file-rule fix above before it could even load. After
+  implementation: focused Chromium 41/41 (38 baseline + 3 new), full suite 31 files / 432
+  tests, `npm run build` with only the existing intentional worklet warning, `git diff
+  --check` clean.
+- [measurement] Exact commit `75d65ac` player bundle is 117,657 bytes, +1,344 (+1.16%) from
+  accepted Phase 5a; the 218,172-byte shared React chunk and 13,274-byte CSS chunk are both
+  unchanged. `notes.js` folded into the main bundle the same way `separate.js` did in Phase
+  5a, now reachable from the main entry's own import graph.
+- [test] Exact-source local smoke (root, plus the same build served under a nested `pr-999/`
+  path) loaded a generated stems ZIP (vocals+bass, via the repository's own
+  `tests/helpers/audio-fixtures.js#stemsZip` run directly under Node) through the real file
+  input at both origins, with a fake `window.Worker` installed beforehand: Find-notes →
+  per-channel completion/count/key-selection/relative-key/Show-Hide → language-switch
+  retranslation at root; a worker-failure → usable-retry recovery path at the nested route.
+  Both consoles showed no first-party errors.
+- [note] PR #85's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `951cfad` before the affected-boundary check (Find-notes → per-channel completion →
+  簡譜/key/Show-Hide → hidden shared section, clean first-party console at `/pr-85/`). PR #85
+  squash-merged as `3e241da4a05831f49bff5d680b92474dddea28a9`; its exact-SHA deploy and test
+  workflows passed, production displayed `3e241da`, and the production canary repeated the
+  detect/complete/hide flow with an empty first-party console. This full SHA is the Phase 5b
+  rollback anchor, completing Phase 5. Full details in
+  [react-migration-evidence.md](react-migration-evidence.md).
 
 ## React phase 5a — separation panel controls (2026-09-07)
 

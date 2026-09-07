@@ -1,5 +1,208 @@
 # React migration evidence
 
+## Phase 5b — React detection controls
+
+Status: accepted in production at rollback anchor
+`3e241da4a05831f49bff5d680b92474dddea28a9`, completing Phase 5. Evidence collected
+2026-09-07 America/Los_Angeles. Branch `feat/react-phase-5b-detection-controls`; starting
+source `64ee010bcad0eab8ed4884cf48310350e5216790` (Phase 5a documentation-anchor merge,
+PR #84); plan and implementation committed together as
+`75d65ac0c1331ac77977d067a19221df4c297334` (squash-merged as the PR's single commit, the
+same one-pass practice Phase 5a used). Previous accepted implementation rollback anchor:
+Phase 5a at `ffe5ed511ffbceeb5871cc4c45bbec8570a50c51`, documented through
+[PR #84](https://github.com/SansWord/sans_bass/pull/84).
+
+The zoomed pane, tempo/chord controls, the ribbon/notes lanes, the interpretation row
+(shortest-note slider, Advanced fold/hmm/clip controls), and the entire note editor
+(select/add/delete/move/resize/repitch/snap, Export list, Export/Import edits JSON) are
+untouched — out of scope per `docs/react-migration.md`'s Phase 5 increment boundary and
+Phase 6's own "interpretation/key/display controls" bucket.
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-5b-detection-controls-plan.md](react-phase-5b-detection-controls-plan.md),
+including two scope decisions made explicit before implementation: the relative-key (⇄)
+button moves with the two key selects as one DOM/ownership unit (it shares their disabled
+condition verbatim and has no legacy-only behavior left once they move), and the shared
+Find-notes control and both per-stem panels ship as **one** PR-sized slice rather than being
+split further (the shared button's own view is a pure function of both channels' state
+together, so testing it meaningfully already requires both channels wired up).
+
+`components/DetectionPanel.jsx` exports `DetectionControls` (the entire `#notes-detect`
+subtree — Find-notes button, spinner, busy-channel status — through a new
+`#detection-ui-root` portal) and `NotesChannelPanel` (one channel's meta row — count,
+Show/Hide, 簡譜 checkbox, and the `.notes-key` span — through `#notes-meta-vocals-root`/
+`#notes-meta-bass-root` portals nested *inside* the still-legacy `<section
+id="notes-{stem}">`, which keeps its own `hidden` toggle and its tune/edits/list-io
+siblings). Both new hosts preserve the legacy markup's own ids inside them (`notes-detect`,
+`notes-meta-vocals`, `notes-meta-bass`, and every control id beneath), matching Phase 5a's
+`#separation-ui-root` → `<section id="sep">` pattern exactly, so `styles.css` and the
+pre-existing `notes-go-all`/`notes-vocals` Chromium assertions kept working unmodified.
+
+`notes.js` gains a `detection` export (`subscribe`/`getSnapshot`/`commands: { findNotes,
+toggleShow, setJianpuOn, setKey, useRelativeKey }`) — the same shape `separate.js`'s
+`separation` export already established in Phase 5a, scoped to detection's own state, which
+has no owner other than `notes.js` (CLAUDE.md already documented this reasoning before this
+phase existed). No `lib/player-application.js` commands or `applicationSnapshot()` fields
+were added. The published snapshot's `count` and `busyStems` stay raw (an integer, stem ids)
+and are translated at **render** time in the component, not resolved to strings at publish
+time — the same render-time-translation principle Phase 4b/5a established, so a language
+switch always retranslates correctly with no dedicated `sansbass:langchange` listener for
+these fields. `lib/detection-state.js`'s existing `detectionView()` needed no changes at all
+— reused unchanged, the same "an existing pure derivation only needs a new caller" pattern
+Phase 4a/4b/5a already established.
+
+`notes.js` loses: `syncGoAll()`'s three DOM writes, `syncShowLabel()` (folded into the
+published `showOn` boolean plus render-time `t()`), the per-channel tonic `<option>`-building
+loop (React renders its own options from a new `PITCH_CLASS_NAMES` export lifted out of
+`lib/pitch.js`'s existing private `NOTE_NAMES` array), two now-dead lines of `syncTips()`
+(the jianpu-label and ⇄-button `title` writes — the remaining four interpretation-tooltip
+lines stay), and three now-dead lines of `syncJianpuControls()` (renamed
+`syncExportAvailability()`, keeping only the `notes.length`-gated Export-list-button line,
+which was never actually about 簡譜).
+
+**Unplanned finding, fixed before merge:** making `notes.js` an import target of
+`components/DetectionPanel.jsx` (reached through `PlayerShell.jsx` from `app.js`'s own
+static import graph) means `notes.js`'s top-level code — including its very first
+`refreshAll()` call — now runs as part of resolving that graph, **before** `app.js`'s own
+body executes and sets `window.sansBass`. This is the exact hazard `separate.js` already
+guards against everywhere (`window.sansBass?.isSingleTrack?.()`), and `notes.js`'s own
+`hasStem()` already guarded the same way — but two other call sites didn't:
+`syncTempoControls()`'s `window.sansBass.stemBuffer('drums')` (legacy, pre-existing, tempo
+grid — out of scope but reachable from the same initial `refreshAll()` call) and the new
+`view()`'s `window.sansBass.ribbonVisible(stem)`. Both crashed the entire module graph on
+first page load in a **local production build** (`npm run build` + `npm run preview` —
+Vitest's browser suite runs against the **dev** server, where the three modules are still
+loaded as separate deferred `<script type="module">` tags in document order, so this hazard
+never surfaced there). Fixed with the same optional-chaining guard `hasStem()` already had;
+no behavior changed once `window.sansBass` exists (a moment later, unconditionally, on every
+real page load). Recorded here rather than in the plan doc because it was found *during*
+implementation, not anticipated by the audit — the same "explicit unresolved gap converted to
+a documented finding" practice `react-migration.md` asks for.
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+Four Chromium cases were added to `tests/player.test.js` before implementation and run
+against the **current legacy owner** first: a shared busy-status/count language-switch
+mid-run case, a 簡譜/key-selection/relative-key case, a Show/Hide-label case, and an extension
+of the pre-existing "ignores stale notes and separation Worker results after replacement or
+disposal" case. Only the last of these needed correction before it could run at all (a
+zip with a single `vocals` stem hits `assignStems`'s lone-file → `'mix'` rule — see
+CLAUDE.md's own documented gotcha — so the fixture needed a second, non-melodic stem
+alongside vocals, matching the pre-existing test's own `{ vocals: 440, guitar: 220 }`
+pattern). Once fixed, all four passed against the legacy DOM-writing owner unmodified —
+matching Phase 5a's own acknowledgment that a new case can validate already-correct legacy
+behavior rather than a genuine regression, since the underlying pure derivations
+(`detectionView()`, `relativeKey()`) were already established and verified. The one true
+failing-first result was the crash finding above: every Chromium case failed with "Timed out
+waiting for production player modules" against the half-implemented refactor until the
+optional-chaining fix landed — the harness's own production-entry `openPlayer()` fetches
+`/index.html` from the **dev** server for its test-page instance, which reproduced the same
+early-eval ordering the local **build** did, once `notes.js` was actually wired as an import
+target.
+
+After implementation:
+
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 41 tests passed (38
+  baseline + 3 genuinely new cases, the 4th being an extension of an existing case);
+- full `npm test`: 31 files, 432 tests passed;
+- `npm run build`: 58 modules transformed (57 in Phase 5a); existing intentional
+  unresolved-at-build-time `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+The exact-source local build emits **117,657 bytes** in the player entry
+(`dist/assets/main-*.js`) versus Phase 5a's 116,313: **+1,344 bytes (+1.16%)**. The shared
+React/header chunk is unchanged at exactly 218,172 bytes and the CSS chunk unchanged at
+13,274 bytes — no new dependency was added; `notes.js` folded into the main player bundle
+the same way `separate.js` did in Phase 5a, now that it is reachable from the main entry's
+own import graph rather than only via its own `<script type="module">` tag. (The
+`tests/notes.html` rollup entry — an unrelated multi-page test-harness page that happens to
+share the name "notes" as a Vite `input` key — independently produces its own similarly-named
+`notes-*.js` chunk; verified these are different files by grepping the built `main-*.js` for
+`notes-go-all`/`sep-status`, which each appear exactly once.)
+
+### Exact-source local smoke
+
+Local production build served via `npm run preview` (root) and a second static server with
+the same build copied under `pr-999/` (nested-route smoke). A generated stems ZIP (vocals +
+bass, via the repository's own `tests/helpers/audio-fixtures.js#stemsZip` run directly under
+Node — the real `lib/wav.js`/`lib/zip.js` encoders, since the built site does not serve
+`/tests/` or `/lib/` source paths) loaded through the real `#file-input` at both origins. A
+fake `window.Worker` (matching `tests/helpers/player-harness.js#installFakeWorker`'s shape)
+drove the detection flow — no real analysis pipeline was exercised.
+
+At root: `#build-sha` read `64ee010` (the exact pre-merge source under test). Clicking "Find
+notes" created two fake Worker instances and showed "Detecting: Vocals, Bass…" with the
+button disabled. Completing the vocals worker narrowed the status to "Detecting: Bass…",
+revealed the vocals meta row (count "0 notes", Show/Hide, 簡譜, key controls), and a language
+switch to 繁體中文 retranslated the status, Show/Hide label, count, and key-mode option text
+in place without losing the in-flight bass run. Toggling 簡譜, changing the key tonic/mode
+selects, and clicking the relative-key button (⇄) applied `relativeKey()`'s exact result
+(tonic 7 minor → tonic 10 major) and survived the language switch unchanged. Clicking
+Show/Hide toggled the live `ribbonVisible('vocals')` bridge value and its own label together.
+Completing the bass worker hid the shared section entirely. The nested route repeated the
+load and a worker-**failure** path instead: `onerror` on the vocals worker left its channel
+usably `'pending'` (status narrowed to name only the still-running bass channel, the vocals
+meta row stayed correctly hidden), and a second "Find notes" click after bass completed
+created a fresh third Worker for a vocals retry. No first-party console error appeared at
+either origin.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | A generated stems ZIP (vocals+bass) and a deterministic fake Worker cover start/progress/per-channel-completion/failure/retry/language-switch through the production-entry Chromium suite and a local exact-source smoke. |
+| Malformed input | Unchanged; no detection-ownership-affecting code path touched. |
+| Storage/locale | Both languages pass in Chromium and in exact-source local smoke; count, Show/Hide label, 簡譜/key labels, and the busy-channel status all retranslate correctly at render time. |
+| Handheld | Not re-verified with a real or emulated handheld device; detection has no handheld-specific gating (unlike separation) — this boundary is unaffected by this slice. |
+| Worker protocol | Fully covered by the deterministic fake-Worker cases above; the real `notes.worker.js` module and YIN/tempo pipeline are unchanged and not re-exercised, per `docs/testing.md`'s rule that a fake Worker proves UI protocol handling only. |
+| Visual | Exact-source local smoke reviewed panel layout, button/spinner/status visibility, and key-select enable/disable at desktop width; no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine command/state evidence was collected, not subjective listening. |
+| Real song / musical accuracy | Not run against `examples/nov_you.zip` or real detected notes in this evidence pass; the changed boundary (control presentation/ownership, no YIN/interpretation change) does not plausibly affect musical accuracy, matching Phase 4a/4b/5a's own scoping of unaffected boundaries. |
+
+### PR-preview deployment evidence
+
+[PR #85](https://github.com/SansWord/sans_bass/pull/85)'s `test` and `deploy` checks both
+passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-85/`
+displayed exact synthetic merge `951cfad2e4e79062a4908c31bbc2bd68719467ba` (`951cfad`),
+matching `gh api repos/SansWord/sans_bass/pulls/85 --jq '{merge_commit_sha}'`.
+
+A generated stems ZIP (vocals+bass) loaded through the real `#file-input`, with a fake
+`window.Worker` installed beforehand. Clicking "Find notes" created two fake Worker
+instances and showed "Detecting: Vocals, Bass…" with the button disabled; completing both
+workers revealed both meta rows and hid the shared section. Toggling 簡譜 and changing the
+vocals key tonic select worked and the value stuck through the exchange; clicking Show/Hide
+toggled the live ribbon-visibility bridge value. The first-party console carried no errors.
+
+### Production acceptance evidence
+
+PR #85 squash-merged as exact production source
+`3e241da4a05831f49bff5d680b92474dddea28a9`. Its exact-SHA
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34130505524) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34130505552) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/?phase5b=3e241da`
+displayed exact `3e241da`.
+
+The production delivery canary repeated the affected boundary: a generated stems ZIP loaded
+through the real file input, and a fake-Worker-driven detection run for both channels showed
+"Detecting: Vocals, Bass…", then revealed both meta rows and hid the shared section once both
+completed. The first-party console carried no errors.
+
+The complete synthetic, malformed-input, storage-fault, and narrow-viewport matrices were not
+repeated in production because the canary agreed with the exact-source and preview evidence
+above. No real-song (`examples/nov_you.zip`), musical-accuracy, physical-handheld, subjective
+auditory, or background-tab check is claimed for this increment, for the same reasons given
+in the omissions table above.
+
+Phase 5b is accepted at the full SHA above, completing Phase 5. The zoomed pane, tempo/chord
+controls, the interpretation row, the note editor, and the `window.sansBass` bridge's
+remaining members stay untouched and deferred to Phase 6. This separate documentation-only
+PR records the immutable rollback anchor.
+
 ## Phase 5a — React separation panel controls
 
 Status: accepted in production at rollback anchor

@@ -38,6 +38,8 @@ function adapter(overrides = {}) {
     attachPrimarySeekCanvas: vi.fn(() => vi.fn()),
     attachLaneCanvas: vi.fn(() => vi.fn()),
     attachLaneExtra: vi.fn(() => vi.fn()),
+    attachOverviewCanvas: vi.fn(() => vi.fn()),
+    attachOverviewExtra: vi.fn(() => vi.fn()),
     reportCommandError: vi.fn(),
     dispose: vi.fn(),
     ...overrides,
@@ -199,6 +201,36 @@ describe('player application command/subscription facade', () => {
 
     const detach = application.attachLaneExtra('drums', node);
     expect(owner.attachLaneExtra).toHaveBeenCalledWith('drums', node);
+    detach();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(owner.dispose).not.toHaveBeenCalled();
+    expect(application.getSnapshot().lifecycle).toBe('ready');
+  });
+
+  it('attaches and detaches the overview canvas renderer without disposing the application', () => {
+    const application = createPlayerApplication();
+    const cleanup = vi.fn();
+    const owner = adapter({ attachOverviewCanvas: vi.fn(() => cleanup) });
+    application.initialize(owner);
+    const canvas = {};
+
+    const detach = application.attachOverviewCanvas(canvas);
+    expect(owner.attachOverviewCanvas).toHaveBeenCalledWith(canvas);
+    detach();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(owner.dispose).not.toHaveBeenCalled();
+    expect(application.getSnapshot().lifecycle).toBe('ready');
+  });
+
+  it('attaches and detaches the overview extra-content host without disposing the application', () => {
+    const application = createPlayerApplication();
+    const cleanup = vi.fn();
+    const owner = adapter({ attachOverviewExtra: vi.fn(() => cleanup) });
+    application.initialize(owner);
+    const node = {};
+
+    const detach = application.attachOverviewExtra(node);
+    expect(owner.attachOverviewExtra).toHaveBeenCalledWith(node);
     detach();
     expect(cleanup).toHaveBeenCalledOnce();
     expect(owner.dispose).not.toHaveBeenCalled();

@@ -34,10 +34,15 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   keyboard-operable mute button, per-lane volume, and the waveform canvas host — through a
   `#standard-lanes-root` portal, plus an explicit extra-content host for the drums lane's
   tempo-range hint, while `app.js` retains peak generation, painting, resize, lane-canvas
-  seek, and the drums-hint content itself. `app.js`'s own `#note-lanes-root` (ribbon/zoom/
-  overview, still legacy — Phase 6/4b) sits alongside it inside `#lanes`; both are
-  `display: contents` so `order` alone recovers the original interleaved visual order with no
-  cross-owner DOM references. Phase 2's DOM-independent
+  seek, and the drums-hint content itself. Phase 4b adds the shared Overview lane's label,
+  master-volume-mirroring slider, and waveform canvas host through its own
+  `#overview-lane-root` portal (separate from `#standard-lanes-root`, since the Overview lane
+  isn't one of `song.tracks[]`), plus an extra-content host for its Phase-6-deferred
+  range-select caption, while `app.js` retains `overviewStems()`, peak combination, and
+  painting. `app.js`'s own `#note-lanes-root` (ribbon/zoomed pane, still legacy — Phase 6)
+  sits alongside both inside `#lanes`; all three are `display: contents` so `order` alone
+  recovers the original interleaved visual order with no cross-owner DOM references. Phase
+  2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -135,7 +140,11 @@ root with explicit portal hosts. It also owns the top-level translated mode sele
 all-toggle button; stable routing identity and state come from the application projection.
 It also owns one lane component per standard track (label, keyboard-operable mute, per-lane
 volume, waveform canvas host, and — for the drums lane only — an extra-content host for the
-legacy tempo-range hint) through a `#standard-lanes-root` portal inside `#lanes`.
+legacy tempo-range hint) through a `#standard-lanes-root` portal inside `#lanes`. It also owns
+the shared Overview lane (label, master-volume-mirroring slider, waveform canvas host, and an
+extra-content host for its legacy range-select caption) through a separate `#overview-lane-root`
+portal, kept apart from `#standard-lanes-root` so that root's children stay exactly
+`song.tracks[]`'s standard lanes.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -151,10 +160,16 @@ paints
 pixels and intrinsic dimensions on the React-owned
 primary and per-lane canvases through explicit lifecycle attachments (`attachPrimarySeekCanvas`,
 `attachLaneCanvas`), and populates the drums lane's React-owned extra-content host
-(`attachLaneExtra`) with its legacy tempo-range hint. Its own `#note-lanes-root` (ribbon/zoom/
-overview lanes, still legacy — Phase 6/4b) sits beside `#standard-lanes-root` inside `#lanes`;
-both are `display: contents`, so `order` alone — computed independently on each side from the
-same track order — recovers the original interleaved visual order with no cross-owner DOM
+(`attachLaneExtra`) with its legacy tempo-range hint. It paints the React-owned Overview
+canvas (`attachOverviewCanvas`) with `overviewStems()`'s combined peaks and populates its
+extra-content host (`attachOverviewExtra`) with its legacy range-select caption — unlike a
+per-track lane, this single unkeyed lane is never remounted by React across a song
+replacement that keeps a vocals/bass stem, so its host references are owned entirely by
+these attach/detach hooks rather than reset on every song load. Its own `#note-lanes-root`
+(ribbon/zoomed pane, still legacy — Phase 6) sits beside `#standard-lanes-root` and
+`#overview-lane-root` inside `#lanes`; all three are `display: contents`, so `order` alone —
+computed independently on each side from the same track order — recovers the original
+interleaved visual order with no cross-owner DOM
 references. `sansbass:transport` remains a temporary exact-clock adapter for the
 two notes sonifiers. The lowercase `window.sansBass` bridge remains only for named
 notes/separation service operations and browser-harness application/shell

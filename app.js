@@ -70,10 +70,16 @@ let ribbonHeight = { vocals: readStoredNumber(`${RIBBON_H_KEY}.vocals`, RIBBON_H
                       bass: readStoredNumber(`${RIBBON_H_KEY}.bass`, RIBBON_H_DEFAULT, clampRibbonH) };
 let zoomSeconds = readZoomSeconds();
 let zoomEl = null;         // { lane, canvas, out }
-let overviewEl = null;     // { lane, canvas } — the full-song "Overview" lane docked above the
-                            // zoomed pane; see renderOverview and overviewStems below
-let overviewVolEl = null;  // legacy overview slider mirrors the React primary control through
-                            // the authoritative application command in both directions
+/* The React-owned Overview lane's canvas and Phase-6 range-hint hosts, populated by
+ * attachOverviewCanvas/attachOverviewExtra below. Unlike per-track lanes (fresh objects each
+ * song, repopulated because React mounts a fresh keyed <Lane> whenever a track's stem-derived
+ * id is new), the Overview lane is a single unkeyed component: whenever a reloaded song keeps
+ * a vocals/bass stem, React has no reason to unmount/remount it, so its canvas/host nodes
+ * persist across song loads. Resetting this to null on every buildUI() call (as the legacy
+ * DOM-rebuilding code safely did) would go stale after the very first song, since nothing
+ * would ever call the attach hooks again to repopulate it — so buildUI() must never touch
+ * this; only the attach/detach hooks below do, tied to the host's real mount/unmount. */
+let overviewEl = { canvas: null, rangeHint: null };
 let zoomPeaksByStem = {};  // stem id -> hi-res envelope, computed lazily, once per song
 let zoomCenter = 0;        // seconds; follows the playhead while playing
 let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
@@ -614,8 +620,8 @@ function buildUI(title) {
    * pane would show plain waveforms only, silently missing the pitch overlay N56a promises. */
   zoomNotesStem = null;
   zoomEl = null;
-  overviewEl = null;
-  overviewVolEl = null;
+  // overviewEl is deliberately NOT reset here — see its own declaration comment. React owns
+  // the Overview lane's mount/unmount lifecycle now, not this per-song rebuild.
   zoomChipEls = [];
   zoomNotesChipEls = {};
   chordEditor = null;
@@ -1134,55 +1140,11 @@ function buildUI(title) {
     attachZoom(zCanvas);
     zoomEl = { lane: zLane, canvas: zCanvas, out: zOut, time: zTime };
 
-    /* The overview lane: a full-song (never windowed) waveform combining whichever stems
-     * are currently selected in the zoomed pane below — zoomLaneSel's chips plus
-     * zoomNotesStem if a Notes chip is picked, always as a plain waveform (see
-     * overviewStems/renderOverview). Docked above the zoomed pane so the whole "notes"
-     * panel reads top-to-bottom as: where in the song → a close-up window → the per-channel
-     * detail lanes. Click/drag to seek exactly like any other lane. Shares the exact lane
-     * grid (label / wave / vol) so its canvas is the same width as every other lane's —
-     * the playhead lands at the same x on every row, not just this one. */
-    const oLane = document.createElement('div');
-    oLane.className = 'lane overview';
-    const oName = document.createElement('div');
-    oName.className = 'lane-name';
-    const oTxt = document.createElement('span');
-    oTxt.className = 'txt';
-    oTxt.textContent = tr('notes.overview');
-    const oTime = document.createElement('span');
-    oTime.className = 'time-code';
-    oName.append(oTxt, oTime);
-    const oCanvas = document.createElement('canvas');
-    oCanvas.className = 'wave';
-    oCanvas.title = tr('notes.overviewTip');
-
-    /* No per-stem gain to control here — it's a combination, not one channel — so this
-     * slider mirrors the master volume instead, the one thing that actually applies to the
-     * whole lane. It uses the same application command as the React primary control. */
-    const oVol = document.createElement('div');
-    oVol.className = 'lane-vol';
-    const oSlider = document.createElement('input');
-    Object.assign(oSlider, { type: 'range', min: 0, max: 1.5, step: 0.01, value: masterVolume });
-    oSlider.title = tr('ctl.volume');
-    oSlider.addEventListener('input', () => {
-      ignoreReportedCommandError(playerApplication.commands.setMasterVolume(parseFloat(oSlider.value)));
-    });
-    oVol.appendChild(oSlider);
-    overviewVolEl = oSlider;
-
-    /* Same caption as each stem's own lane (see rHint above) — shown whenever an edit
-     * target is selected, since the Overview lane isn't tied to one particular stem. */
-    const oRangeHint = document.createElement('div');
-    oRangeHint.className = 'note-range-hint';
-    oRangeHint.textContent = tr('notes.rangeTip');
-    oRangeHint.hidden = true;
-
-    oLane.append(oName, oCanvas, oRangeHint, oVol);
-    // Pinned above the zoomed pane, same as before (Phase 4b moves this lane's ownership).
-    oLane.style.order = '-2';
-    el.noteLanesRoot.appendChild(oLane);
-    attachSeek(oCanvas, { rangeBand: true, overview: true });
-    overviewEl = { lane: oLane, canvas: oCanvas, time: oTime, rangeHint: oRangeHint };
+    // The overview lane (React-owned since Phase 4b: label, master-volume-mirroring slider,
+    // canvas host) is rendered by PlayerShell.jsx into #overview-lane-root whenever a
+    // vocals/bass stem exists, pinned above the zoomed pane via the same order: -2 convention
+    // this block used to set directly. Its canvas and range-hint host are populated by
+    // attachOverviewCanvas/attachOverviewExtra below, not here — see overviewEl's own comment.
   }
 
   syncRangeHints();
@@ -1338,6 +1300,43 @@ function attachLaneExtra(trackId, node) {
   };
 }
 
+/** React owns the shared Overview lane's DOM (label/time-code/canvas/volume host) since
+ *  Phase 4b; this is the explicit imperative-renderer attachment for its canvas, mirroring
+ *  attachLaneCanvas — but unlike a per-track lane, the Overview lane isn't keyed to any one
+ *  `song.tracks[]` entry, so it never remounts across a song replacement that keeps a
+ *  vocals/bass stem. That is exactly why overviewEl is not reset in buildUI(): this function
+ *  (and attachOverviewExtra below) are the only things that ever populate or clear it. Peak
+ *  combination (overviewStems), painting, resize, and seek/scrub (attachSeek) remain
+ *  entirely app.js's. */
+function attachOverviewCanvas(canvas) {
+  overviewEl.canvas = canvas;
+  attachSeek(canvas, { rangeBand: true, overview: true });
+  if (tracks.length) {
+    renderOverview();
+    paint(canvas, duration ? Math.min(1, currentTime() / duration) : 0);
+  }
+  return () => {
+    if (overviewEl.canvas === canvas) overviewEl.canvas = null;
+  };
+}
+
+/** The Overview lane's full-song range-select caption is notes/edit feature UI, not lane
+ *  presentation — explicitly deferred, same as the rest of notes/tempo (Phase 6) — but its
+ *  host div is only ever rendered by React (see PlayerShell.jsx), so it is populated the
+ *  same explicit-attach way as attachLaneExtra rather than being built inside buildUI() the
+ *  way it used to be. Content and visibility stay exactly as syncRangeHints() computes them;
+ *  only the DOM host moved. Its own translation-refresh gap (never retranslated on language
+ *  switch) is unchanged and stays deferred along with the rest of the zoomed pane. */
+function attachOverviewExtra(node) {
+  if (!node) return () => {};
+  node.textContent = tr('notes.rangeTip');
+  overviewEl.rangeHint = node;
+  syncRangeHints();
+  return () => {
+    if (overviewEl.rangeHint === node) overviewEl.rangeHint = null;
+  };
+}
+
 /**
  * Lanes are normalised to their own loudest moment, otherwise a naturally quiet
  * stem (bass, room mics) draws as an unreadable flat line. Capped so a nearly
@@ -1399,7 +1398,7 @@ function overviewStems() {
  *  (mirroring renderZoom's own multi-stem overlay) rather than one peaks set in one colour.
  *  Less than fully opaque so two overlapping stems blend instead of one hiding the other. */
 function renderOverview() {
-  if (!overviewEl) return;
+  if (!overviewEl.canvas) return;
   const canvas = overviewEl.canvas;
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(1, Math.round(canvas.clientWidth || 600));
@@ -1949,7 +1948,10 @@ function draw() {
     ? `${(tempoInfo.bpmValue * ratePercent / 100).toFixed(1)}/${tempoInfo.bpmValue.toFixed(1)} BPM`
     : '';
   const timeCode = `${fmtCs(t)}/${fmt(duration)} · ${speedTag}` + (haveBpm ? ` · ${bpmText}` : '');
-  if (overviewEl) { paint(overviewEl.canvas, frac); overviewEl.time.textContent = timeCode; }
+  // The Overview lane's own time-code text is React-owned since Phase 4b, computed from the
+  // published transport snapshot the same way PrimarySeekControls already does — only its
+  // canvas painting stays here.
+  if (overviewEl.canvas) paint(overviewEl.canvas, frac);
   if (zoomEl) {
     // Follow while playing; when stopped the window is wherever it was dragged to.
     if (playing) zoomCenter = t;
@@ -2103,7 +2105,7 @@ function paint(canvas, frac) {
   paintLoopRegion(c, canvas, dpr, canvas === primarySeekCanvas);
   const selLane = zoomNotesStem && noteLanes[zoomNotesStem];
   if (selLane && canvas === selLane.el.canvas) paintRangeBand(c, canvas, dpr);
-  if (overviewEl && canvas === overviewEl.canvas) paintRangeBand(c, canvas, dpr);
+  if (overviewEl.canvas && canvas === overviewEl.canvas) paintRangeBand(c, canvas, dpr);
   if (tempoDrumsCanvas && canvas === tempoDrumsCanvas) paintTempoRangeBand(c, canvas, dpr);
 
   c.fillStyle = 'rgba(255,255,255,.85)';
@@ -2555,7 +2557,7 @@ function syncRangeHints() {
     const lane = noteLanes[stem];
     if (lane) lane.rangeHint.hidden = !(editMode && stem === zoomNotesStem);
   }
-  if (overviewEl) overviewEl.rangeHint.hidden = !(editMode && zoomNotesStem);
+  if (overviewEl.rangeHint) overviewEl.rangeHint.hidden = !(editMode && zoomNotesStem);
 }
 
 function toggleRibbon(stem) {
@@ -2722,7 +2724,6 @@ function setMasterVolume(value) {
   masterVolume = Math.max(0, Math.min(1.5, value));
   ensureAudio();
   master.gain.setTargetAtTime(masterVolume, audio.currentTime, 0.01);
-  if (overviewVolEl) overviewVolEl.value = String(masterVolume);
 }
 
 // ---------------------------------------------------------------- input
@@ -3511,6 +3512,8 @@ playerApplication.initialize({
   attachPrimarySeekCanvas,
   attachLaneCanvas,
   attachLaneExtra,
+  attachOverviewCanvas,
+  attachOverviewExtra,
   commands: {
     load: loadAny,
     play,

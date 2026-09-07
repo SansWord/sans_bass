@@ -354,14 +354,16 @@ window.addEventListener('sansbass:songload', resetTempo);
 
 // ---------------------------------------------------------------- per-channel factory
 
-function createNotesChannel(stem, els) {
+function createNotesChannel(stem, panelEl) {
   const timbre = STEM_TIMBRE[stem];
   const range = STEM_RANGE[stem];
 
   /* The key tonic/mode selects, the 簡譜 checkbox, count, Show/Hide, the relative-key button
-   * (Phase 5b), and the shortest-note/Advanced interpretation controls (Phase 6a) are all
-   * React-owned — see components/DetectionPanel.jsx and components/InterpretationPanel.jsx.
-   * This factory keeps only the underlying state. */
+   * (Phase 5b), the shortest-note/Advanced interpretation controls (Phase 6a), and the edit
+   * list/list-export row (Phase 6c) are all React-owned — see components/DetectionPanel.jsx,
+   * components/InterpretationPanel.jsx, and components/EditorPanel.jsx. This factory keeps
+   * only the underlying state and `panelEl`, the one legacy DOM reference that remains
+   * (`<section id="notes-{stem}">` itself stays legacy-owned). */
 
   let worker = null;
   let frames = null;           // the immutable analysis result
@@ -396,6 +398,9 @@ function createNotesChannel(stem, els) {
     };
   }
 
+  /** Returns an i18n KEY (not translated text) — see groupLabel() below, whose own doc
+   *  comment explains why: components/EditorPanel.jsx (Phase 6c) resolves it at render time
+   *  via t(), so a language switch always retranslates correctly. */
   function editTypeLabel(edit) {
     const KEYS = {
       octave: edit.dir > 0 ? 'notes.editOctaveUp' : 'notes.editOctaveDown',
@@ -405,16 +410,20 @@ function createNotesChannel(stem, els) {
       add: 'notes.editAddLabel',
       rangeDelete: 'notes.editRangeDeleteLabel',
     };
-    return tr(KEYS[edit.type]);
+    return KEYS[edit.type];
   }
 
   /** `group.label`, when set, is an i18n KEY (not pre-translated text) supplied by the
    *  dispatcher — e.g. the Snap-range/Whole-song button labels its batch 'notes.editSnapLabel'
    *  so the row reads "Snap to grid" instead of falling through to the generic multi-edit
-   *  "Split" label below. exportEntry()/importEntry() carry it through re-import too. */
+   *  "Split" label below. exportEntry()/importEntry() carry it through re-import too. Returns
+   *  a plain i18n KEY (Phase 6c) — none of these keys take interpolation params, so the
+   *  published view carries just the key string; components/EditorPanel.jsx resolves it via
+   *  t() at render time, the same render-time-translation convention every phase since 4b
+   *  has used. */
   function groupLabel(group) {
-    if (group.label) return tr(group.label);
-    return group.edits.length > 1 ? tr('notes.editSplitLabel') : editTypeLabel(group.edits[0]);
+    if (group.label) return group.label;
+    return group.edits.length > 1 ? 'notes.editSplitLabel' : editTypeLabel(group.edits[0]);
   }
 
   /** `group.timeLabel`, when set, overrides the per-edit time shown — the Snap-range/Whole-
@@ -428,44 +437,29 @@ function createNotesChannel(stem, els) {
     return `${e.at.toFixed(2)}s`;
   }
 
-  function renderEditList() {
-    els.editsRow.hidden = editGroups.length === 0;
-    els.editsSummary.textContent = tr('notes.editsSummary', { n: editGroups.length });
-    els.editUndo.disabled = editGroups.length === 0;
-    els.editRows.replaceChildren(...editGroups.map((g) => {
-      const li = document.createElement('li');
-      li.className = 'edit-row';
-      if (g.edits.some((e) => orphaned.includes(e))) {
-        const warn = document.createElement('span');
-        warn.className = 'edit-warn';
-        warn.textContent = '⚠';
-        warn.title = tr('notes.editOrphanTip');
-        li.appendChild(warn);
-      }
-      const label = document.createElement('span');
-      label.textContent = `${groupLabel(g)} · ${groupTimeLabel(g)}`;
-      li.appendChild(label);
-      const rm = document.createElement('button');
-      rm.className = 'mini edit-remove';
-      rm.type = 'button';
-      rm.textContent = '✕';
-      rm.title = tr('notes.editRemoveTip');
-      rm.addEventListener('click', () => {
-        editGroups = editGroups.filter((x) => x.id !== g.id);
-        reinterpret();
-      });
-      li.appendChild(rm);
-      return li;
+  /** This channel's edit groups as plain descriptors for components/EditorPanel.jsx's
+   *  `EditListPanel` (Phase 6c) — replaces renderEditList()'s DOM writes. `labelKey` is an
+   *  i18n KEY, resolved via t() at render time; `timeLabel` is already-formatted plain text
+   *  (no translation needed, matching how BPM/phase values are formatted elsewhere). */
+  function editGroupViews() {
+    return editGroups.map((g) => ({
+      id: g.id,
+      orphaned: g.edits.some((e) => orphaned.includes(e)),
+      labelKey: groupLabel(g),
+      timeLabel: groupTimeLabel(g),
     }));
   }
 
-  /** The one remaining legacy-owned effect of a note-count change: the Export-list button
-   *  (Phase 6, the note editor) is disabled until this channel has notes. Renamed from
-   *  syncJianpuControls() (Phase 5b) once that function's other three lines — the key
-   *  tonic/mode select values and their shared disabled state — moved to React's own
-   *  render of `view()`'s published `jianpuOn`/`tonic`/`mode` fields. */
-  function syncExportAvailability() {
-    els.listExport.disabled = !notes.length;
+  /** Undo command: removes the most recent edit batch and re-derives notes. */
+  function undoLastEdit() {
+    editGroups = undoBatch(editGroups);
+    reinterpret();
+  }
+
+  /** Per-row remove command: removes exactly one batch by id and re-derives notes. */
+  function removeEditGroup(id) {
+    editGroups = editGroups.filter((x) => x.id !== id);
+    reinterpret();
   }
 
   /** Re-derive notes from the existing frames. No worker, no re-analysis. */
@@ -481,14 +475,12 @@ function createNotesChannel(stem, els) {
       jianpu.tonic = k.tonic;
       jianpu.mode = k.mode;
     }
-    syncExportAvailability();
     window.sansBass.setNotes(stem, {
       notes, frames, params: p, clip: interp.clip,
       jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
       tempo: { on: tempo.on, bpmValue: tempo.bpmValue, phaseMs: tempo.phaseMs, beatsPerBar: tempo.beatsPerBar },
     });
     resync();
-    renderEditList();
     scheduleChordDetection();
     publish();
   }
@@ -522,8 +514,6 @@ function createNotesChannel(stem, els) {
      * the channel that ISN'T currently selected would blank editmode out from under whichever
      * channel actually is (every 'on:false' clears editable everywhere, stem match or not). */
     if (editable) window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false, stem: null } }));
-    renderEditList();
-    syncExportAvailability();
     // Belt-and-braces alongside the 'sansbass:songload' listener above: harmless to call
     // twice (once per channel) since resetTempo() is idempotent.
     resetTempo();
@@ -595,7 +585,7 @@ function createNotesChannel(stem, els) {
   function refresh() {
     const stemAudio = window.sansBass?.stemBuffer?.(stem);
     if (frames && (!stemAudio || stemAudio.buffer !== analysedBuffer)) reset();
-    els.panel.hidden = !frames;
+    panelEl.hidden = !frames;
   }
 
   /* Read by the shared #notes-go-all button (module-level, below) to decide whether this
@@ -641,6 +631,8 @@ function createNotesChannel(stem, els) {
       foldTol: interp.foldTol,
       foldedCount: fold.folded,
       mutedCount: fold.muted,
+      // Edit list (Phase 6c) — see editGroupViews()'s own doc comment.
+      editGroups: editGroupViews(),
     };
   }
 
@@ -725,21 +717,18 @@ function createNotesChannel(stem, els) {
     });
     reinterpret();
   });
-  els.editUndo.addEventListener('click', () => {
-    editGroups = undoBatch(editGroups);
-    reinterpret();
-  });
   window.addEventListener('sansbass:editundo', () => {
     if (!editable) return;
     editGroups = undoBatch(editGroups);
     reinterpret();
   });
-  document.addEventListener('pointerdown', (e) => {
-    if (els.editsRow.open && !els.editsRow.contains(e.target)) els.editsRow.open = false;
-  });
 
-  els.listExport.addEventListener('click', () => {
-    const barsPerLine = Number(els.listBars.value) || 4;
+  /** Export-list command (components/EditorPanel.jsx's `ListExportPanel`, Phase 6c) — takes
+   *  the bars-per-line value as a parameter instead of reading `els.listBars.value`, applying
+   *  the same `Number(...) || 4` coercion the legacy click handler already applied at read
+   *  time. */
+  function exportList(barsPerLine) {
+    const barsPerLineNum = Number(barsPerLine) || 4;
     const mix = window.sansBass.currentMix ? window.sansBass.currentMix() : null;
     const refOct = SansJianpu.referenceOctave(notes, jianpu.tonic);
 
@@ -777,7 +766,7 @@ function createNotesChannel(stem, els) {
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
     const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASS_NAMES[jianpu.tonic]} ${modeWord}`;
 
-    const blob = new Blob([jianpuHtml({ title, bars, barsPerLine, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar, chords, tonic: jianpu.tonic, capo })],
+    const blob = new Blob([jianpuHtml({ title, bars, barsPerLine: barsPerLineNum, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar, chords, tonic: jianpu.tonic, capo })],
       { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -785,9 +774,7 @@ function createNotesChannel(stem, els) {
     a.download = jianpuExportFilename(mix?.name, stem);
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
-  });
-
-  syncExportAvailability();  // the export-list button starts disabled — no notes yet
+  }
 
   /** Whether this channel has run analysis — the gate the shared Export/Import buttons (in
    * app.js's zoomed pane) use to decide whether this stem belongs in a combined edits file,
@@ -855,33 +842,17 @@ function createNotesChannel(stem, els) {
     hasFrames, exportEntry, importEntry, chordSource, keySource, dispose,
     view, toggleShow, setJianpuOn, setKey, useRelativeKey,
     setMinDurationMs, setClip, setHmm, setFold, setFoldTol,
+    undoLastEdit, removeEditGroup, exportList,
   };
 }
 
 // ---------------------------------------------------------------- two instances
 
 // count, show/hide, 簡譜, key tonic/mode/relative-key (Phase 5b), shortest-note, and the
-// Advanced/fold controls (Phase 6a) are all React-owned — no longer read via
-// document.getElementById here.
-channels.push(createNotesChannel('vocals', {
-  panel: document.getElementById('notes-vocals'),
-  editsRow: document.getElementById('notes-edits-vocals'),
-  editsSummary: document.getElementById('notes-edits-summary-vocals'),
-  editUndo: document.getElementById('notes-edit-undo-vocals'),
-  editRows: document.getElementById('notes-edit-rows-vocals'),
-  listBars: document.getElementById('notes-list-bars-vocals'),
-  listExport: document.getElementById('notes-list-export-vocals'),
-}));
-
-channels.push(createNotesChannel('bass', {
-  panel: document.getElementById('notes-bass'),
-  editsRow: document.getElementById('notes-edits-bass'),
-  editsSummary: document.getElementById('notes-edits-summary-bass'),
-  editUndo: document.getElementById('notes-edit-undo-bass'),
-  editRows: document.getElementById('notes-edit-rows-bass'),
-  listBars: document.getElementById('notes-list-bars-bass'),
-  listExport: document.getElementById('notes-list-export-bass'),
-}));
+// Advanced/fold controls (Phase 6a), and the edit list/list-export row (Phase 6c) are all
+// React-owned — no longer read via document.getElementById here.
+channels.push(createNotesChannel('vocals', document.getElementById('notes-vocals')));
+channels.push(createNotesChannel('bass', document.getElementById('notes-bass')));
 
 // ---------------------------------------------------------------- shared: detection store
 //
@@ -944,6 +915,10 @@ export const detection = {
     setHmm: (stem, on) => channels.find((c) => c.stem === stem)?.setHmm(on),
     setFold: (stem, on) => channels.find((c) => c.stem === stem)?.setFold(on),
     setFoldTol: (stem, semitones) => channels.find((c) => c.stem === stem)?.setFoldTol(semitones),
+    // Edit list / list-export (Phase 6c) — see components/EditorPanel.jsx.
+    undoEdit: (stem) => channels.find((c) => c.stem === stem)?.undoLastEdit(),
+    removeEditGroup: (stem, id) => channels.find((c) => c.stem === stem)?.removeEditGroup(id),
+    exportList: (stem, barsPerLine) => channels.find((c) => c.stem === stem)?.exportList(barsPerLine),
   },
 };
 

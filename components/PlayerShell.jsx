@@ -6,6 +6,7 @@ import { t } from '../lib/i18n.js';
 import { isHandheld } from '../lib/platform.js';
 import { formatClockTime, formatClockTimeCentiseconds } from '../lib/time.js';
 import { DetectionControls, NotesChannelPanel } from './DetectionPanel.jsx';
+import { EditListPanel, ListExportPanel } from './EditorPanel.jsx';
 import { InterpretationPanel } from './InterpretationPanel.jsx';
 import { SeparationPanel } from './SeparationPanel.jsx';
 import { SiteHeaderContent } from './SiteHeader.jsx';
@@ -404,6 +405,10 @@ function PlayerShell({ application, hosts }) {
     {createPortal(<NotesChannelPanel stem="bass" />, hosts.notesMetaBass)}
     {createPortal(<InterpretationPanel stem="vocals" />, hosts.notesTuneVocals)}
     {createPortal(<InterpretationPanel stem="bass" />, hosts.notesTuneBass)}
+    {createPortal(<EditListPanel stem="vocals" />, hosts.notesEditsVocals)}
+    {createPortal(<EditListPanel stem="bass" />, hosts.notesEditsBass)}
+    {createPortal(<ListExportPanel stem="vocals" />, hosts.notesListIoVocals)}
+    {createPortal(<ListExportPanel stem="bass" />, hosts.notesListIoBass)}
     {createPortal(<TempoPanel />, hosts.tempo)}
     {snapshot.song && <StemLanes application={application}
       tracks={snapshot.song.tracks} hosts={hosts} />}
@@ -435,6 +440,10 @@ export function mountPlayerShell(application, doc = document) {
     notesMetaBass: doc.getElementById('notes-meta-bass-root'),
     notesTuneVocals: doc.getElementById('notes-tune-vocals-root'),
     notesTuneBass: doc.getElementById('notes-tune-bass-root'),
+    notesEditsVocals: doc.getElementById('notes-edits-vocals-root'),
+    notesEditsBass: doc.getElementById('notes-edits-bass-root'),
+    notesListIoVocals: doc.getElementById('notes-list-io-vocals-root'),
+    notesListIoBass: doc.getElementById('notes-list-io-bass-root'),
     tempo: doc.getElementById('tempo-ui-root'),
   };
   if (Object.values(hosts).some((host) => !host)) {

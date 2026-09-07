@@ -356,11 +356,14 @@ input[type=range] { width: 110px; }
 /* ---------- lanes ---------- */
 
 .lanes { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-/* React owns #standard-lanes-root (see .react-portal-host); app.js owns #note-lanes-root
-   (ribbon/overview/zoom, still legacy — deferred to Phase 6/4b). Both stay `display: contents`
-   so their children — not these wrappers — are the actual flex items of .lanes, positioned
-   purely with the `order` each owner sets independently from the shared track order. Neither
-   owner ever inserts into the other's DOM subtree. */
+/* React owns #standard-lanes-root and #overview-lane-root (see .react-portal-host); app.js
+   owns #note-lanes-root (ribbon/zoom, still legacy — deferred to Phase 6). All three stay
+   `display: contents` so their children — not these wrappers — are the actual flex items of
+   .lanes, positioned purely with the `order` each owner sets independently from the shared
+   track order. #overview-lane-root is separate from #standard-lanes-root (rather than
+   sharing it) so `#standard-lanes-root > .lane` keeps meaning exactly "one per song.tracks[]
+   entry" — the Overview lane isn't one of those. No owner ever inserts into another's DOM
+   subtree. */
 #note-lanes-root { display: contents; }
 
 .lane {

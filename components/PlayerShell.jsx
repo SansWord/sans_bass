@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { AUDIO_RE } from '../lib/stems.js';
 import { t } from '../lib/i18n.js';
 import { isHandheld } from '../lib/platform.js';
-import { formatClockTime } from '../lib/time.js';
+import { formatClockTime, formatClockTimeCentiseconds } from '../lib/time.js';
 import { SiteHeaderContent } from './SiteHeader.jsx';
 import { useLocale } from './useLocale.js';
 
@@ -197,6 +197,50 @@ function StemLanes({ application, tracks, hosts }) {
   </>, hosts.standardLanes);
 }
 
+/** The shared full-song Overview lane: React owns its label, master-volume-mirroring slider,
+ *  and canvas host (Phase 4b), the same three ownership categories Phase 4a transferred for
+ *  standard lanes. `app.js` keeps overviewStems() (which stems it combines), peak combination,
+ *  and painting — see attachOverviewCanvas's own doc comment for why this component is never
+ *  given a `key`: staying mounted (not remounting) across a song replacement that keeps a
+ *  vocals/bass stem is exactly what keeps its canvas host stable for app.js to keep painting. */
+function OverviewLane({ application, masterVolume, hosts }) {
+  const transport = useSyncExternalStore(
+    application.subscribeTransport,
+    application.getTransportSnapshot,
+    application.getTransportSnapshot,
+  );
+  const canvasRef = useRef(null);
+  const rangeHintRef = useRef(null);
+  useLayoutEffect(() => application.attachOverviewCanvas(canvasRef.current), [application]);
+  useLayoutEffect(() => application.attachOverviewExtra(rangeHintRef.current), [application]);
+
+  const onVolumeInput = (event) => {
+    ignoreReportedError(application.commands.setMasterVolume(Number(event.currentTarget.value)));
+  };
+
+  const duration = Math.max(0, transport.duration || 0);
+  const position = Math.max(0, Math.min(duration, transport.position || 0));
+  const percent = Math.round(transport.playbackRate * 100);
+  const bpmText = transport.tempoBpm
+    ? `${(transport.tempoBpm * transport.playbackRate).toFixed(1)}/${transport.tempoBpm.toFixed(1)} BPM`
+    : '';
+  const timeCode = `${formatClockTimeCentiseconds(position)}/${formatClockTime(duration)} · ${percent}%`
+    + (bpmText ? ` · ${bpmText}` : '');
+
+  return createPortal(<div className="lane overview" style={{ order: -2 }}>
+    <div className="lane-name">
+      <span className="txt">{t('notes.overview')}</span>
+      <span className="time-code">{timeCode}</span>
+    </div>
+    <canvas className="wave" title={t('notes.overviewTip')} ref={canvasRef} />
+    <div className="note-range-hint" ref={rangeHintRef} hidden />
+    <div className="lane-vol">
+      <input type="range" min="0" max="1.5" step="0.01" value={masterVolume}
+        title={t('ctl.volume')} onChange={onVolumeInput} />
+    </div>
+  </div>, hosts.overviewLane);
+}
+
 function PrimarySeekControls({ application, hosts }) {
   const transport = useSyncExternalStore(
     application.subscribeTransport,
@@ -352,6 +396,8 @@ function PlayerShell({ application, hosts }) {
     <PrimarySeekControls application={application} hosts={hosts} />
     {snapshot.song && <StemLanes application={application}
       tracks={snapshot.song.tracks} hosts={hosts} />}
+    {snapshot.song && snapshot.song.tracks.some((track) => track.stem === 'vocals' || track.stem === 'bass')
+      && <OverviewLane application={application} masterVolume={snapshot.masterVolume} hosts={hosts} />}
   </>;
 }
 
@@ -371,6 +417,7 @@ export function mountPlayerShell(application, doc = document) {
     primarySeek: doc.getElementById('primary-seek-ui-root'),
     primaryTime: doc.getElementById('primary-time-ui-root'),
     standardLanes: doc.getElementById('standard-lanes-root'),
+    overviewLane: doc.getElementById('overview-lane-root'),
   };
   if (Object.values(hosts).some((host) => !host)) {
     console.warn('sans_bass: player React shell host missing — skipped');

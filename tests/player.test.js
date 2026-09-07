@@ -138,6 +138,7 @@ describe('production player integration', () => {
     const application = player.win.sansBass.application;
     const song = application.getSnapshot().song;
     const standardCanvasCount = player.doc.querySelectorAll('#standard-lanes-root canvas').length;
+    const overviewCanvasCount = player.doc.querySelectorAll('#overview-lane-root canvas').length;
     const noteCanvases = [...player.doc.querySelectorAll('#note-lanes-root canvas')];
     player.doc.dispatchEvent(new player.win.DragEvent('dragenter', { bubbles: true, cancelable: true }));
     await waitFor(() => player.win.getComputedStyle(player.doc.getElementById('drag-overlay')).display === 'flex',
@@ -145,10 +146,11 @@ describe('production player integration', () => {
 
     player.win.sansBass.playerShell.unmount();
     expect(application.getSnapshot().song).toEqual(song);
-    // Standard lanes are React-owned (Phase 4a), so unmounting the shell clears their portal
-    // just like every other React-owned region — the ribbon/zoom/overview canvases in
-    // #note-lanes-root are legacy DOM and stay untouched.
+    // Standard lanes and the shared overview lane are both React-owned (Phase 4a/4b), so
+    // unmounting the shell clears both portals just like every other React-owned region —
+    // the ribbon/zoom canvases in #note-lanes-root are legacy DOM and stay untouched.
     expect(player.doc.querySelectorAll('#standard-lanes-root canvas')).toHaveLength(0);
+    expect(player.doc.querySelectorAll('#overview-lane-root canvas')).toHaveLength(0);
     expect([...player.doc.querySelectorAll('#note-lanes-root canvas')]).toEqual(noteCanvases);
     expect(player.doc.getElementById('drag-overlay')).toBeNull();
     player.win.sansBass.playerShell.remount();
@@ -157,8 +159,10 @@ describe('production player integration', () => {
     expect(player.doc.querySelectorAll('[data-react-player-shell]')).toHaveLength(1);
     expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
     expect(player.doc.querySelectorAll('#lang-toggle')).toHaveLength(1);
-    // Fresh lane canvases, one per track, repainted from the unchanged song/peak data.
+    // Fresh lane canvases, one per track (plus the overview), repainted from the unchanged
+    // song/peak data.
     expect(player.doc.querySelectorAll('#standard-lanes-root canvas')).toHaveLength(standardCanvasCount);
+    expect(player.doc.querySelectorAll('#overview-lane-root canvas')).toHaveLength(overviewCanvasCount);
     expect(application.getSnapshot().song).toEqual(song);
     expect(player.win.getComputedStyle(player.doc.getElementById('drag-overlay')).display).toBe('none');
 
@@ -422,6 +426,54 @@ describe('production player integration', () => {
       .toEqual(['人聲', '貝斯', 'ambience']);
   });
 
+  it('gives the shared overview lane one React owner with a retranslating label, mirrored volume, and a canvas that survives locale change and song replacement', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: sine(440, 1), bass: sine(110, 1) }, { folder: 'Overview lane' });
+    const application = player.win.sansBass.application;
+
+    const overview = player.doc.querySelector('#overview-lane-root > .lane.overview');
+    expect(overview).toBeTruthy();
+    expect(overview.querySelector('.lane-name .txt').textContent).toBe('Overview');
+    const canvas = overview.querySelector('canvas');
+    expect(canvas.title).toBe('Click to jump to a point in the song');
+    const volumeInput = overview.querySelector('.lane-vol input');
+    expect(volumeInput.title).toBe('Volume');
+    expect(volumeInput.value).toBe('1');
+    const rangeHint = overview.querySelector('.note-range-hint');
+    expect(rangeHint).toBeTruthy();
+    expect(rangeHint.hidden).toBe(true);
+
+    // Both master-volume sliders stay on one smoothed gain value in both directions, same as
+    // the primary React control (Phase 3d) — no new command, this is the existing one.
+    const audio = instrumentAudio(player.win);
+    setRangeValue(player, volumeInput, 0.42);
+    await waitFor(() => application.getSnapshot().masterVolume === 0.42, 'overview-driven master volume');
+    await waitFor(() => player.doc.getElementById('master-vol').value === '0.42', 'primary mirrors overview');
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0.42]);
+
+    // The label and both tooltips retranslate on language switch — a pre-existing legacy
+    // defect (recorded in the Phase 4a evidence log) fixed as a side effect of moving label
+    // ownership to React, matching how every other React-owned label already behaves.
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => player.doc.documentElement.lang === 'zh-TW', 'translated overview label');
+    expect(overview.querySelector('.lane-name .txt').textContent).toBe('總覽');
+    expect(canvas.title).toBe('點擊以跳轉至歌曲中的位置');
+    expect(volumeInput.title).toBe('音量');
+    player.doc.querySelector('#lang-toggle [data-lang="en"]').click();
+    await waitFor(() => player.doc.documentElement.lang === 'en', 'back to English');
+
+    // Canvas identity and repainting survive a song replacement that keeps a vocals/bass
+    // stem: the Overview lane is unkeyed, so React never remounts it, and overviewEl must
+    // stay populated across buildUI() rather than reset — otherwise painting silently stops
+    // after the first song (see app.js's own comment on overviewEl).
+    await waitFor(() => !!canvas.__layers, 'initial overview paint');
+    const layersBefore = canvas.__layers;
+    await loadZip(player, { vocals: sine(220, 1), bass: sine(55, 1) }, { folder: 'Overview replacement' });
+    expect(player.doc.querySelector('#overview-lane-root > .lane.overview canvas')).toBe(canvas);
+    await waitFor(() => canvas.__layers && canvas.__layers !== layersBefore,
+      'overview repaints with the new song after replacement');
+  });
+
   it('keeps lane mute keyboard-operable with focus restoration and per-lane volume independent of mute', async () => {
     player = await openPlayer();
     const audio = instrumentAudio(player.win);
@@ -461,8 +513,8 @@ describe('production player integration', () => {
     const order = (el) => Number(player.win.getComputedStyle(el).order);
     const [vocals, guitar, bass, drums] = [...player.doc.querySelectorAll('#standard-lanes-root > .lane')];
     const vocalsRibbon = player.doc.querySelector('#note-lanes-root .lane.ribbon');
-    const overview = player.doc.querySelector('.lane.overview');
-    const zoom = player.doc.querySelector('.lane.ribbon-zoom');
+    const overview = player.doc.querySelector('#overview-lane-root > .lane.overview');
+    const zoom = player.doc.querySelector('#note-lanes-root .lane.ribbon-zoom');
     expect(drums.querySelector('.tempo-range-hint')).toBeTruthy();
     expect([overview, zoom].every((el) => order(el) < order(vocals))).toBe(true);
     expect(order(vocals)).toBeLessThan(order(vocalsRibbon));

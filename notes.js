@@ -16,7 +16,7 @@
  * so its state and DOM wiring stay shared, module-level code below the channel factory.
  * See docs/superpowers/specs/2026-09-01-bass-notes-design.md. */
 
-import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, BASS_RANGE }
+import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, BASS_RANGE, PITCH_CLASS_NAMES }
   from './lib/pitch.js';
 import { scheduleNotes } from './lib/sonify.js';
 import * as SansI18n from './lib/i18n.js';
@@ -31,16 +31,8 @@ import { playerApplication } from './lib/player-application.js';
 
 const tr = (key, params) => SansI18n.t(key, params);
 
-/* Note names are never translated in this app — a saved zip is `vocals.wav` in every
- * language, and C# is C# in every language too. */
-const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
 const STEM_TIMBRE = { vocals: 'piano', bass: 'bass' };
 const STEM_RANGE = { vocals: undefined, bass: BASS_RANGE };   // undefined -> the worker keeps YIN_DEFAULTS
-
-/* English-only, like the major/minor word below — this file is read outside the app, where
- * the current UI language doesn't apply. Not routed through tr(); a dictionary key would
- * imply it is meant to be translated, which it deliberately never is. */
 
 // ---------------------------------------------------------------- shared: tempo grid
 //
@@ -219,7 +211,12 @@ function applyTempoResult(result) {
 /* Every control but the panel-level checkbox is meaningless without a drums stem, so they go
  * visibly inert rather than silently doing nothing. */
 function syncTempoControls() {
-  const hasDrums = !!window.sansBass.stemBuffer('drums');
+  // Optional chaining (Phase 5b): this module is now also reachable from
+  // components/DetectionPanel.jsx's import (via PlayerShell.jsx), which app.js's own import
+  // graph resolves BEFORE app.js's body runs and sets window.sansBass — see view()'s comment
+  // above for the same hazard. The very first refreshAll() call at the bottom of this file
+  // reaches here before window.sansBass exists; every later call (post-load) has it.
+  const hasDrums = !!window.sansBass?.stemBuffer?.('drums');
   for (const c of [tempoEl.bpm, tempoEl.half, tempoEl.double, tempoEl.phase,
                     tempoEl.phaseBack, tempoEl.phaseFwd, tempoEl.beats,
                     tempoEl.rangeToggle, tempoEl.redetect]) c.disabled = !hasDrums;
@@ -333,23 +330,15 @@ function createNotesChannel(stem, els) {
   const timbre = STEM_TIMBRE[stem];
   const range = STEM_RANGE[stem];
 
-  /* Populated per channel — each has its own <select>. */
-  for (let i = 0; i < 12; i++) {
-    const o = document.createElement('option');
-    o.value = String(i);
-    o.textContent = PITCH_CLASSES[i];
-    els.keyTonic.appendChild(o);
-  }
-
-  /* On the label, not the input: the checkbox itself is a 13 px target and the sentence
-   * beside it is what the pointer actually rests on. */
+  /* The key tonic/mode selects, the 簡譜 checkbox, count, Show/Hide, and the relative-key
+   * button are React-owned (Phase 5b, components/DetectionPanel.jsx) — this factory keeps
+   * only the state (`jianpu`) and the tooltips for the interpretation controls that remain
+   * legacy-owned. */
   const syncTips = () => {
     els.hmm.parentElement.title = tr('notes.hmmTip');
     els.clip.parentElement.title = tr('notes.clipTip');
     els.fold.parentElement.title = tr('notes.foldTip');
     els.foldTol.parentElement.title = tr('notes.foldTolTip');
-    els.jianpu.parentElement.title = tr('notes.jianpuTip');
-    els.keyRel.title = tr('notes.relativeTip');
   };
   syncTips();
 
@@ -470,10 +459,12 @@ function createNotesChannel(stem, els) {
     }));
   }
 
-  function syncJianpuControls() {
-    els.keyTonic.value = String(jianpu.tonic);
-    els.keyMode.value = jianpu.mode;
-    for (const c of [els.keyTonic, els.keyMode, els.keyRel]) c.disabled = !jianpu.on;
+  /** The one remaining legacy-owned effect of a note-count change: the Export-list button
+   *  (Phase 6, the note editor) is disabled until this channel has notes. Renamed from
+   *  syncJianpuControls() (Phase 5b) once that function's other three lines — the key
+   *  tonic/mode select values and their shared disabled state — moved to React's own
+   *  render of `view()`'s published `jianpuOn`/`tonic`/`mode` fields. */
+  function syncExportAvailability() {
     els.listExport.disabled = !notes.length;
   }
 
@@ -485,7 +476,6 @@ function createNotesChannel(stem, els) {
     const applied = applyEdits(notes, editGroups.flatMap((g) => g.edits));
     notes = applied.notes;
     orphaned = applied.orphaned;
-    els.count.textContent = tr('notes.count', { n: notes.length });
     els.minOut.textContent = `${els.min.value} ms`;
     syncFoldControls();
     if (jianpu.auto && notes.length) {
@@ -493,7 +483,7 @@ function createNotesChannel(stem, els) {
       jianpu.tonic = k.tonic;
       jianpu.mode = k.mode;
     }
-    syncJianpuControls();
+    syncExportAvailability();
     window.sansBass.setNotes(stem, {
       notes, frames, params: p, clip: els.clip.checked,
       jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
@@ -502,6 +492,7 @@ function createNotesChannel(stem, els) {
     resync();
     renderEditList();
     scheduleChordDetection();
+    publish();
   }
 
   /* Start (or restart) the synth against the transport's OWN t0 and offset. */
@@ -517,23 +508,16 @@ function createNotesChannel(stem, els) {
     });
   }
 
-  function syncShowLabel() {
-    els.show.textContent = tr(window.sansBass.ribbonVisible(stem) ? 'notes.hide' : 'notes.show');
-  }
-
   function reset() {
     if (sonifier) { sonifier.stop(); sonifier = null; }
     if (worker) { worker.terminate(); worker = null; }
-    els.show.hidden = true;
     frames = null;
     notes = [];
     analysedBuffer = null;
-    // Count, show/hide toggle, 簡譜 and key controls are all meaningless before this channel
-    // has notes — hidden as one row rather than each looking individually inert, same
-    // principle as els.tune below.
-    els.meta.hidden = true;
+    // The tune row is meaningless before this channel has notes — hidden as a whole rather
+    // than looking individually inert. The meta row (count/show/簡譜/key), now React-owned,
+    // gets the same treatment from its own published `visible` field (see view() below).
     els.tune.hidden = true;
-    els.count.textContent = '';
     jianpu.auto = true;
     editGroups = [];
     orphaned = [];
@@ -542,10 +526,11 @@ function createNotesChannel(stem, els) {
      * channel actually is (every 'on:false' clears editable everywhere, stem match or not). */
     if (editable) window.dispatchEvent(new CustomEvent('sansbass:editmode', { detail: { on: false, stem: null } }));
     renderEditList();
-    syncJianpuControls();
+    syncExportAvailability();
     // Belt-and-braces alongside the 'sansbass:songload' listener above: harmless to call
     // twice (once per channel) since resetTempo() is idempotent.
     resetTempo();
+    publish();
   }
 
   function analyse() {
@@ -582,10 +567,7 @@ function createNotesChannel(stem, els) {
       // (tempo.auto === false) — otherwise running analysis on the second channel silently
       // discards a manual BPM/phase tweak made between the two runs.
       if (m.tempo && tempo.auto) { applyTempoResult(m.tempo); syncTempoControls(); }
-      els.meta.hidden = false;
       els.tune.hidden = false;
-      els.show.hidden = false;
-      syncShowLabel();
       // Not just reinterpret(): a tempo result above belongs to BOTH channels, so the other
       // channel (if it already has frames) must also pick up the fresh grid.
       reinterpretAll();
@@ -632,43 +614,64 @@ function createNotesChannel(stem, els) {
     return frames ? 'complete' : 'pending';
   }
 
+  /** This channel's slice of the `detection` store's published snapshot (Phase 5b) — read by
+   *  components/DetectionPanel.jsx's `NotesChannelPanel`. Count and the Show/Hide label are
+   *  published as raw values (an integer, a boolean) and translated at render time, not
+   *  resolved to strings here, so a language switch always retranslates correctly without a
+   *  dedicated langchange listener — the same render-time-translation principle Phase 4b/5a
+   *  established for the Overview label and the separation status line. */
+  function view() {
+    return {
+      visible: !!frames,
+      count: notes.length,
+      // Optional chaining: this module is reachable from components/DetectionPanel.jsx's
+      // import (via PlayerShell.jsx), which app.js's own import graph resolves BEFORE app.js's
+      // body runs and sets window.sansBass — the same hazard hasStem() above already guards
+      // against. The very first refreshAll() call at the bottom of this file publishes a view
+      // before window.sansBass exists; every later publish (post-load) has it.
+      showOn: !!window.sansBass?.ribbonVisible?.(stem),
+      jianpuOn: jianpu.on,
+      tonic: jianpu.tonic,
+      mode: jianpu.mode,
+    };
+  }
+
+  /** Show/Hide command — identical toggle semantics to the old `els.show` click handler. */
+  function toggleShow() {
+    window.sansBass.setRibbonVisible(stem, !window.sansBass.ribbonVisible(stem));
+    publish();
+  }
+
+  /** 簡譜 checkbox command. */
+  function setJianpuOn(on) {
+    jianpu.on = !!on;
+    reinterpret();
+  }
+
+  /** Key tonic+mode select command — both selects are always applied together, matching the
+   *  old code's `els.keyTonic.value`/`els.keyMode.value` pair-read on either select's change. */
+  function setKey(tonic, mode) {
+    jianpu.auto = false;
+    jianpu.tonic = tonic;
+    jianpu.mode = mode;
+    reinterpret();
+  }
+
+  /** Relative-key (⇄) button command. */
+  function useRelativeKey() {
+    const r = relativeKey(jianpu.tonic, jianpu.mode);
+    jianpu.auto = false;
+    jianpu.tonic = r.tonic;
+    jianpu.mode = r.mode;
+    reinterpret();
+  }
+
   els.min.addEventListener('input', reinterpret);
   els.clip.addEventListener('change', reinterpret);
   els.hmm.addEventListener('change', reinterpret);
   els.fold.addEventListener('change', reinterpret);
   els.foldTol.addEventListener('input', reinterpret);
-  els.jianpu.addEventListener('change', () => {
-    jianpu.on = els.jianpu.checked;
-    syncJianpuControls();
-    reinterpret();
-  });
-  els.show.addEventListener('click', () => {
-    window.sansBass.setRibbonVisible(stem, !window.sansBass.ribbonVisible(stem));
-    syncShowLabel();
-  });
-  for (const c of [els.keyTonic, els.keyMode]) {
-    c.addEventListener('change', () => {
-      jianpu.auto = false;
-      jianpu.tonic = Number(els.keyTonic.value);
-      jianpu.mode = els.keyMode.value;
-      reinterpret();
-    });
-  }
-  els.keyRel.addEventListener('click', () => {
-    const r = relativeKey(jianpu.tonic, jianpu.mode);
-    jianpu.auto = false;
-    jianpu.tonic = r.tonic;
-    jianpu.mode = r.mode;
-    syncJianpuControls();
-    reinterpret();
-  });
-  window.addEventListener('sansbass:langchange', () => {
-    if (frames) {
-      els.count.textContent = tr('notes.count', { n: notes.length });
-      syncShowLabel();
-    }
-    syncTips();
-  });
+  window.addEventListener('sansbass:langchange', syncTips);
   /* Temporary exact-clock transport adapter; phase 2 records this notes.js consumer. */
   window.addEventListener('sansbass:transport', (e) => {
     if (!e.detail.playing) {
@@ -740,7 +743,7 @@ function createNotesChannel(stem, els) {
     }) : undefined;
 
     const modeWord = jianpu.mode === 'minor' ? 'minor' : 'major';
-    const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASSES[jianpu.tonic]} ${modeWord}`;
+    const title = `${mix ? mix.name + ' — ' : ''}${STEM_WORD[stem]} — 1=${PITCH_CLASS_NAMES[jianpu.tonic]} ${modeWord}`;
 
     const blob = new Blob([jianpuHtml({ title, bars, barsPerLine, bpm: tempo.bpmValue, beatsPerBar: tempo.beatsPerBar, chords, tonic: jianpu.tonic, capo })],
       { type: 'text/html' });
@@ -752,7 +755,7 @@ function createNotesChannel(stem, els) {
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   });
 
-  syncJianpuControls();      // the selectors are inert until 簡譜 is ticked, from the first paint
+  syncExportAvailability();  // the export-list button starts disabled — no notes yet
 
   /** Whether this channel has run analysis — the gate the shared Export/Import buttons (in
    * app.js's zoomed pane) use to decide whether this stem belongs in a combined edits file,
@@ -791,12 +794,13 @@ function createNotesChannel(stem, els) {
       jianpu.auto = false;
       jianpu.tonic = entry.jianpu.tonic ?? 0;
       jianpu.mode = entry.jianpu.mode || 'major';
-      els.jianpu.checked = jianpu.on;
     }
     editGroups = (entry.edits || []).map((g) => (
       { id: nextEditId++, edits: g.edits, label: g.label, timeLabel: g.timeLabel }
     ));
-    syncJianpuControls();
+    // The caller (the shared import listener, below) calls reinterpretAll() right after
+    // applying every affected channel's entry, which republishes this channel's view —
+    // no separate sync call is needed here.
   }
 
   /** This channel's notes for slash-chord fusion in another export, or null when unanalysed. */
@@ -817,15 +821,16 @@ function createNotesChannel(stem, els) {
   return {
     refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, state, stem,
     hasFrames, exportEntry, importEntry, chordSource, keySource, dispose,
+    view, toggleShow, setJianpuOn, setKey, useRelativeKey,
   };
 }
 
 // ---------------------------------------------------------------- two instances
 
+// count, show/hide, 簡譜, and key tonic/mode/relative-key are React-owned as of Phase 5b
+// (components/DetectionPanel.jsx) — no longer read via document.getElementById here.
 channels.push(createNotesChannel('vocals', {
   panel: document.getElementById('notes-vocals'),
-  meta: document.getElementById('notes-meta-vocals'),
-  count: document.getElementById('notes-count-vocals'),
   tune: document.getElementById('notes-tune-vocals'),
   min: document.getElementById('notes-min-vocals'),
   minOut: document.getElementById('notes-min-out-vocals'),
@@ -835,23 +840,16 @@ channels.push(createNotesChannel('vocals', {
   foldTol: document.getElementById('notes-fold-tol-vocals'),
   foldTolOut: document.getElementById('notes-fold-tol-out-vocals'),
   foldStats: document.getElementById('notes-fold-stats-vocals'),
-  show: document.getElementById('notes-show-vocals'),
   editsRow: document.getElementById('notes-edits-vocals'),
   editsSummary: document.getElementById('notes-edits-summary-vocals'),
   editUndo: document.getElementById('notes-edit-undo-vocals'),
   editRows: document.getElementById('notes-edit-rows-vocals'),
   listBars: document.getElementById('notes-list-bars-vocals'),
   listExport: document.getElementById('notes-list-export-vocals'),
-  jianpu: document.getElementById('notes-jianpu-vocals'),
-  keyTonic: document.getElementById('notes-key-tonic-vocals'),
-  keyMode: document.getElementById('notes-key-mode-vocals'),
-  keyRel: document.getElementById('notes-key-rel-vocals'),
 }));
 
 channels.push(createNotesChannel('bass', {
   panel: document.getElementById('notes-bass'),
-  meta: document.getElementById('notes-meta-bass'),
-  count: document.getElementById('notes-count-bass'),
   tune: document.getElementById('notes-tune-bass'),
   min: document.getElementById('notes-min-bass'),
   minOut: document.getElementById('notes-min-out-bass'),
@@ -861,51 +859,72 @@ channels.push(createNotesChannel('bass', {
   foldTol: document.getElementById('notes-fold-tol-bass'),
   foldTolOut: document.getElementById('notes-fold-tol-out-bass'),
   foldStats: document.getElementById('notes-fold-stats-bass'),
-  show: document.getElementById('notes-show-bass'),
   editsRow: document.getElementById('notes-edits-bass'),
   editsSummary: document.getElementById('notes-edits-summary-bass'),
   editUndo: document.getElementById('notes-edit-undo-bass'),
   editRows: document.getElementById('notes-edit-rows-bass'),
   listBars: document.getElementById('notes-list-bars-bass'),
   listExport: document.getElementById('notes-list-export-bass'),
-  jianpu: document.getElementById('notes-jianpu-bass'),
-  keyTonic: document.getElementById('notes-key-tonic-bass'),
-  keyMode: document.getElementById('notes-key-mode-bass'),
-  keyRel: document.getElementById('notes-key-rel-bass'),
 }));
 
-// ---------------------------------------------------------------- shared: detect button
+// ---------------------------------------------------------------- shared: detection store
 //
-// One button for both channels, since detection is the only step that's genuinely
-// per-channel-independent yet always wanted together. Its enabled state is recomputed on
-// the same poll as everything else below, not on a dedicated listener — there is no event
-// for "a stem just became available" any more than there is for the panels themselves.
+// Presentation for the shared Find-notes button (#notes-detect) and each channel's meta row
+// (count/Show-Hide/簡譜/key) moved to components/DetectionPanel.jsx as of Phase 5b — see
+// docs/react-phase-5b-detection-controls-plan.md. This module keeps the Worker lifecycle, the
+// per-channel state machine, and now a small subscribe/getSnapshot/commands surface of its
+// own — the same shape `separate.js`'s `separation` export already established (Phase 5a),
+// scoped to detection's own state, which has no owner other than this module (the same
+// reasoning CLAUDE.md already documents for separation's own state).
 
-const goAllSection = document.getElementById('notes-detect');
-const goAllBtn = document.getElementById('notes-go-all');
-const goAllSpinner = document.getElementById('notes-detect-spinner');
-const goAllStatus = document.getElementById('notes-detect-status');
+const detectionListeners = new Set();
+let lastDetectionView = null;
 
-goAllBtn.addEventListener('click', () => {
-  for (const c of channels) if (c.needsAnalyse() && !c.busy()) c.analyse();
-});
-
-/* Two illusions this closes: (1) a bare "disabled" button gives no clue that vocals finished
- * while bass is still grinding away — busyChannels names exactly which stem(s) are still in
- * flight, updating as each one lands, so the wait never silently looks finished partway
- * through. (2) the section disappears entirely once every melodic stem present has been
- * analysed — there is nothing left this button could ever do for this song, so leaving it
- * sitting there disabled would itself be a stale-looking leftover. It stays visible+disabled
- * only for the genuinely permanent case: no melodic stem was ever loaded at all. */
-function syncGoAll() {
-  const view = detectionView(channels.map((channel) => ({ stem: channel.stem, state: channel.state() })));
-  goAllSection.hidden = !view.sectionVisible;
-  goAllBtn.disabled = view.buttonDisabled;
-  goAllSpinner.hidden = !view.spinnerVisible;
-  goAllStatus.textContent = view.busyStems.length
-    ? tr('notes.detecting', { stems: view.busyStems.map((stem) => tr('stem.' + stem)).join(', ') })
-    : '';
+/** Recompute the published view from every channel's current state and notify subscribers. */
+function publish() {
+  lastDetectionView = Object.freeze({
+    detect: detectionView(channels.map((channel) => ({ stem: channel.stem, state: channel.state() }))),
+    channels: Object.freeze(Object.fromEntries(channels.map((channel) => [channel.stem, channel.view()]))),
+  });
+  for (const listener of [...detectionListeners]) {
+    try { listener(lastDetectionView); } catch (error) {
+      console.error('sans_bass: detection subscriber failed', error);
+    }
+  }
+  return lastDetectionView;
 }
+
+/** Shared Find-notes button command: analyse whichever channel(s) still need it. */
+function findNotes() {
+  for (const c of channels) if (c.needsAnalyse() && !c.busy()) c.analyse();
+}
+
+/** Peer service consumed directly by components/DetectionPanel.jsx (Phase 5b) — the same
+ * subscribe/getSnapshot/commands shape `separate.js`'s `separation` export already
+ * established, scoped to detection's own state. */
+export const detection = {
+  subscribe(listener) {
+    if (typeof listener !== 'function') throw new TypeError('subscriber must be a function');
+    detectionListeners.add(listener);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      detectionListeners.delete(listener);
+    };
+  },
+  getSnapshot() {
+    if (!lastDetectionView) return publish();
+    return lastDetectionView;
+  },
+  commands: {
+    findNotes,
+    toggleShow: (stem) => channels.find((c) => c.stem === stem)?.toggleShow(),
+    setJianpuOn: (stem, on) => channels.find((c) => c.stem === stem)?.setJianpuOn(on),
+    setKey: (stem, tonic, mode) => channels.find((c) => c.stem === stem)?.setKey(tonic, mode),
+    useRelativeKey: (stem) => channels.find((c) => c.stem === stem)?.useRelativeKey(),
+  },
+};
 
 // ---------------------------------------------------------------- shared: export/import edits
 //
@@ -998,7 +1017,7 @@ window.addEventListener('sansbass:importedits', async (e) => {
 function refreshAll() {
   refreshTempo();
   for (const c of channels) c.refresh();
-  syncGoAll();
+  publish();
 }
 const refreshTimer = setInterval(refreshAll, 400);
 playerApplication.registerCleanup(() => {

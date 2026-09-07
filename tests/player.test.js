@@ -950,6 +950,9 @@ describe('production player integration', () => {
     await loadSong(player, { filename: 'replacement.wav' });
     workers[0].emit({ type: 'result', frames: [] });
     expect(player.win.getComputedStyle(player.doc.getElementById('notes-vocals')).display).toBe('none');
+    // The row itself stays hidden (the discarded result never set frames), which is what
+    // actually matters — the count text underneath a hidden row is not asserted further.
+    expect(player.win.getComputedStyle(player.doc.getElementById('notes-meta-vocals')).display).toBe('none');
     expect(player.win.sansBass.application.getSnapshot().song.title).toBe('replacement');
 
     player.doc.getElementById('sep-go').click();
@@ -961,6 +964,93 @@ describe('production player integration', () => {
     ) });
     expect(player.win.sansBass.application.getSnapshot().lifecycle).toBe('disposed');
     expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
+  });
+
+  it('retranslates the shared detection status and per-channel count after a language switch mid-run', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, bass: 110 });
+    const detect = player.doc.getElementById('notes-go-all');
+    const status = player.doc.getElementById('notes-detect-status');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    expect(workers).toHaveLength(2);
+    await waitFor(() => status.textContent === 'Detecting: Vocals, Bass…', 'English busy-channel status');
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => status.textContent === '偵測中：人聲, 貝斯…', 'retranslated busy-channel status');
+
+    // vocals finishes first: the status narrows to name only the still-running channel, in the
+    // language already active — proving the panel reads the live locale, not one captured when
+    // detection started (the same property Phase 5a proved for the separation status line).
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+    await waitFor(() => status.textContent === '偵測中：貝斯…', 'narrowed status naming only bass');
+    await waitFor(() => player.doc.getElementById('notes-count-vocals').textContent === '0 個音符',
+      'vocals count translated in the active language');
+
+    workers[1].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+    await waitFor(() => status.textContent === '', 'status clears once both channels complete');
+    expect(player.win.getComputedStyle(detect.closest('#notes-detect')).display).toBe('none');
+  });
+
+  it('drives per-channel 簡譜, key selection, and the relative-key button from the detection store', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+
+    const jianpu = await waitFor(() => player.doc.getElementById('notes-jianpu-vocals'), 'jianpu checkbox');
+    const tonic = player.doc.getElementById('notes-key-tonic-vocals');
+    const mode = player.doc.getElementById('notes-key-mode-vocals');
+    const rel = player.doc.getElementById('notes-key-rel-vocals');
+    expect(tonic.disabled).toBe(true);
+    expect(mode.disabled).toBe(true);
+    expect(rel.disabled).toBe(true);
+
+    jianpu.click();
+    await waitFor(() => !tonic.disabled, 'key selects enabled once 簡譜 is on');
+    expect(mode.disabled).toBe(false);
+    expect(rel.disabled).toBe(false);
+
+    tonic.value = '7';
+    tonic.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    mode.value = 'minor';
+    mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    await waitFor(() => tonic.value === '7' && mode.value === 'minor', 'key selection applied');
+
+    // Selection survives a language switch — only the major/minor option text retranslates.
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => mode.selectedOptions[0].textContent === '小調', 'retranslated mode option');
+    expect(tonic.value).toBe('7');
+    expect(mode.value).toBe('minor');
+
+    rel.click();
+    await waitFor(() => tonic.value === '10' && mode.value === 'major', 'relative key applied');
+  });
+
+  it('keeps the Show/Hide label in sync with live ribbon visibility across a click', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+
+    const show = await waitFor(() => player.doc.getElementById('notes-show-vocals'), 'show/hide control');
+    const initiallyOn = player.win.sansBass.ribbonVisible('vocals');
+    expect(show.textContent).toBe(initiallyOn ? 'Hide notes' : 'Show notes');
+
+    show.click();
+    await waitFor(() => player.win.sansBass.ribbonVisible('vocals') === !initiallyOn, 'ribbon visibility toggled');
+    expect(show.textContent).toBe(initiallyOn ? 'Show notes' : 'Hide notes');
+
+    show.click();
+    await waitFor(() => player.win.sansBass.ribbonVisible('vocals') === initiallyOn, 'ribbon visibility restored');
+    expect(show.textContent).toBe(initiallyOn ? 'Hide notes' : 'Show notes');
   });
 
   it('changes exported capo and chords in empty bars without altering notes', async () => {

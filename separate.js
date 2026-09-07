@@ -1,5 +1,12 @@
-/* Separation panel: owns the worker's lifecycle and the UI around it.
- * Loaded as a plain module script: file:// support was dropped in v1.5.0. */
+/* Separation service: owns the worker's lifecycle and the separation feature's state.
+ * Loaded as a plain module script: file:// support was dropped in v1.5.0. Also imported
+ * directly by components/SeparationPanel.jsx for its `separation` store — the same "both a
+ * script-tag entry and an import target" pattern app.js and every lib/*.js file already use
+ * (see CLAUDE.md's ESM-modules rule); a single module instance either way, so there is
+ * exactly one Worker lifecycle regardless of which path reached this file first.
+ *
+ * Presentation (the #sep panel) is owned by components/SeparationPanel.jsx as of Phase 5a.
+ * This module owns only the Worker, the state machine, and the commands that drive it. */
 
 import { encodeWav } from './lib/wav.js';
 import { buildZip } from './lib/zip.js';
@@ -8,17 +15,6 @@ import * as SansPlatform from './lib/platform.js';
 import * as SansAnalytics from './lib/analytics.js';
 import { separationView } from './lib/separation-state.js';
 import { playerApplication } from './lib/player-application.js';
-
-const el = {
-  panel:  document.getElementById('sep'),
-  go:     document.getElementById('sep-go'),
-  save:   document.getElementById('sep-save'),
-  cancel: document.getElementById('sep-cancel'),
-  status: document.getElementById('sep-status'),
-  bar:    document.getElementById('sep-bar'),
-  fill:   document.getElementById('sep-fill'),
-  handheld: document.getElementById('sep-handheld'),
-};
 
 /* Separation cannot run on a phone or tablet — the first session.run() kills the tab. See
  * lib/platform.js for the evidence. Read once: the answer cannot change within a page
@@ -31,21 +27,12 @@ let lastStems = null;
 let lastName = 'song';
 let phase = 'idle';
 let runToken = null;
-
-function renderControls(singleTrack = window.sansBass?.isSingleTrack?.()) {
-  const view = separationView({ state: phase, singleTrack, handheld: HANDHELD });
-  el.panel.hidden = !view.panel;
-  el.go.hidden = !view.go;
-  el.cancel.hidden = !view.cancel;
-  el.save.hidden = !view.save;
-  el.go.disabled = view.goDisabled;
-  el.save.disabled = view.saveDisabled;
-}
-
-function setProgress(frac) {
-  el.bar.hidden = frac === null;
-  if (frac !== null) el.fill.style.width = `${Math.round(frac * 100)}%`;
-}
+let progress = null;         // 0..1, or null while the bar is hidden
+let lastStatus = null;       // { key, params } or null — params may contain thunks; see
+                              // lib/separation-state.js#resolveStatusParams
+let saving = false;          // true only while save() is encoding/downloading — independent
+                              // of `phase`, which stays 'success' throughout a save so the
+                              // button itself stays visible while temporarily disabled
 
 const tr = (key, params) => SansI18n.t(key, params);
 
@@ -54,33 +41,39 @@ const tr = (key, params) => SansI18n.t(key, params);
 const gcTrack = (n) => { try { SansAnalytics?.track(n); } catch (e) { /* never */ } };
 const gcOnce  = (n) => { try { SansAnalytics?.once(n);  } catch (e) { /* never */ } };
 
-/* Same shape as app.js's say(): remember the key, not the rendered text, so a language
- * switch mid-separation re-renders the progress line instead of freezing it. */
-let lastStatus = null;
+const listeners = new Set();
+let lastView = null;
 
-/* A param whose value is ITSELF translated must be passed as a thunk and resolved at
- * render time. Resolving at call time stores the old locale's string, and the re-render
- * below then mixes the two — "worker failed: 記憶體不足？ — try a shorter track". */
-function resolve(params) {
-  if (!params) return params;
-  const out = {};
-  for (const [k, v] of Object.entries(params)) out[k] = typeof v === 'function' ? v() : v;
-  return out;
+/**
+ * Recompute the published view from current phase/progress/status and notify subscribers.
+ * `singleTrack` defaults to the current bridge read so most call sites don't need to pass it;
+ * a few call sites override it explicitly around the success/replacement transition, matching
+ * the exact sequencing the legacy DOM-writing code used.
+ */
+function publish(singleTrack = window.sansBass?.isSingleTrack?.() ?? false) {
+  const view = separationView({ state: phase, singleTrack, handheld: HANDHELD });
+  lastView = Object.freeze({
+    ...view,
+    saveDisabled: view.saveDisabled || saving,
+    handheld: HANDHELD,
+    progress,
+    status: lastStatus,
+  });
+  for (const listener of [...listeners]) {
+    try { listener(lastView); } catch (error) {
+      console.error('sans_bass: separation subscriber failed', error);
+    }
+  }
+  return lastView;
 }
 
-function status(key, params) {
-  lastStatus = key ? { key, params } : null;
-  el.status.textContent = key ? tr(key, resolve(params)) : '';
-}
+function setProgress(frac) { progress = frac; publish(); }
 
-const retranslateStatus = () => {
-  if (lastStatus) el.status.textContent = tr(lastStatus.key, resolve(lastStatus.params));
-};
-window.addEventListener('sansbass:langchange', retranslateStatus);
+function setStatus(key, params) { lastStatus = key ? { key, params } : null; publish(); }
 
 function busy(on) {
   phase = on ? 'running' : 'idle';
-  renderControls();
+  publish();
 }
 
 function getWorker() {
@@ -100,8 +93,9 @@ function refresh(snapshot = playerApplication.getSnapshot()) {
     runToken = null;
     lastStems = null;
     phase = 'idle';
-    setProgress(null);
-    status('');
+    progress = null;
+    lastStatus = null;
+    saving = false;
   }
   if (runToken !== null && !playerApplication.isCurrentSongToken(runToken)) {
     worker?.terminate();
@@ -109,14 +103,15 @@ function refresh(snapshot = playerApplication.getSnapshot()) {
     runToken = null;
     lastStems = null;
     phase = 'idle';
-    setProgress(null);
-    status('');
+    progress = null;
+    lastStatus = null;
+    saving = false;
   }
   if (HANDHELD) {
     // Same visibility rule as below — the panel belongs to a single unseparated song —
     // but its contents are the explanation, and the controls never come back.
     const single = window.sansBass?.isSingleTrack?.();
-    renderControls(single);
+    publish(single);
     // once(), not track(): refresh() runs on a 400 ms interval and track() would fire all
     // session. This counts visitors who were shown the message, exactly once each.
     if (single) gcOnce('separate-handheld-blocked');
@@ -126,14 +121,14 @@ function refresh(snapshot = playerApplication.getSnapshot()) {
   const single = window.sansBass?.isSingleTrack?.();
   if (single) {
     if (phase !== 'running' && phase !== 'success') phase = 'idle';
-    renderControls(true);
+    publish(true);
     if (phase !== 'success') lastStems = null;
   } else if (!lastStems) {
-    renderControls(false);            // a stems folder was loaded directly
+    publish(false);            // a stems folder was loaded directly
   }
 }
 
-el.go.addEventListener('click', () => {
+function start() {
   const mix = window.sansBass.currentMix();
   if (!mix) return;
 
@@ -154,7 +149,7 @@ el.go.addEventListener('click', () => {
   const w = getWorker();
   runToken = playerApplication.currentSongToken();
   busy(true);
-  status('sep.loadingModel');
+  setStatus('sep.loadingModel');
   setProgress(0);
 
   // A worker killed by the OOM reaper never posts anything. Without this the UI
@@ -163,9 +158,8 @@ el.go.addEventListener('click', () => {
     if (w !== worker || !playerApplication.isCurrentSongToken(runToken)) return;
     gcTrack('separate-fail');
     phase = 'error';
-    renderControls();
     setProgress(null);
-    status('sep.workerFailed', { msg: err.message || (() => tr('sep.oom')) });
+    setStatus('sep.workerFailed', { msg: err.message || (() => tr('sep.oom')) });
     worker = null;
   };
 
@@ -173,7 +167,7 @@ el.go.addEventListener('click', () => {
     if (w !== worker || !playerApplication.isCurrentSongToken(runToken)) return;
     const m = e.data;
     if (m.type === 'download') {
-      status('sep.downloading', {
+      setStatus('sep.downloading', {
         loaded: (m.loaded / MB).toFixed(0), total: (m.total / MB).toFixed(0) });
       setProgress(m.total ? m.loaded / m.total : 0);
     } else if (m.type === 'ready') {
@@ -181,10 +175,10 @@ el.go.addEventListener('click', () => {
       // Explicit === true / === false: a null (model supplied directly) fires neither.
       if (m.cached === true) gcTrack('model-cached');
       else if (m.cached === false) gcTrack('model-download');
-      status(m.backend === 'webgpu' ? 'sep.gpu' : 'sep.cpu');
+      setStatus(m.backend === 'webgpu' ? 'sep.gpu' : 'sep.cpu');
       setProgress(0);
     } else if (m.type === 'progress') {
-      status('sep.progress', { segment: m.segment, total: m.total, eta: Math.ceil(m.etaSec) });
+      setStatus('sep.progress', { segment: m.segment, total: m.total, eta: Math.ceil(m.etaSec) });
       setProgress(m.segment / m.total);
     } else if (m.type === 'log') {
       console.log('[separate]', m.message);
@@ -192,36 +186,35 @@ el.go.addEventListener('click', () => {
       gcTrack('separate-done');
       lastStems = m.stems;
       phase = 'success';
-      renderControls(false);
+      publish(false);
       setProgress(null);
-      status('');                      // the six lanes appearing is the confirmation
+      setStatus(null);                 // the six lanes appearing is the confirmation
       runToken = null;                 // the result is complete before replacement advances identity
       playerApplication.commands.replaceSong({ name: lastName, buffer: mix.buffer }, m.stems);
-      renderControls(false);           // keep the panel up so Save stays reachable
+      publish(false);                  // keep the panel up so Save stays reachable
     } else if (m.type === 'error') {
       gcTrack(m.message === 'cancelled' ? 'separate-cancel' : 'separate-fail');
       phase = m.message === 'cancelled' ? 'cancel' : 'error';
-      renderControls();
       setProgress(null);
-      status(m.message === 'cancelled' ? 'sep.cancelled' : 'sep.failed', { msg: m.message });
+      setStatus(m.message === 'cancelled' ? 'sep.cancelled' : 'sep.failed', { msg: m.message });
     }
   };
 
   w.postMessage({ type: 'separate', left, right }, [left.buffer, right.buffer]);
-});
+}
 
-el.cancel.addEventListener('click', () => {
+function cancel() {
   worker?.postMessage({ type: 'cancel' });
-  status('sep.cancelling');
-});
+  setStatus('sep.cancelling');
+}
 
-el.save.addEventListener('click', async () => {
+async function save() {
   if (!lastStems) return;
   const saveToken = playerApplication.currentSongToken();
   const stems = lastStems;
   const name = lastName;
-  el.save.disabled = true;
-  status('sep.encoding');
+  saving = true;
+  setStatus('sep.encoding');
   try {
     // Encode one stem at a time and hand each straight to the ZIP builder, so the WAV
     // bytes are never all live at once on top of the stems themselves.
@@ -238,29 +231,43 @@ el.save.addEventListener('click', async () => {
     a.download = `${name}-stems.zip`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    status('sep.saved', { mb: (blob.size / MB).toFixed(0) });
+    setStatus('sep.saved', { mb: (blob.size / MB).toFixed(0) });
     gcTrack('stems-save');
   } catch (e) {
     if (!playerApplication.isCurrentSongToken(saveToken)) return;
-    status('sep.saveFailed', { msg: e.message });
+    setStatus('sep.saveFailed', { msg: e.message });
   } finally {
-    if (playerApplication.isCurrentSongToken(saveToken)) el.save.disabled = false;
+    if (playerApplication.isCurrentSongToken(saveToken)) {
+      saving = false;
+      publish();
+    }
   }
-});
-
-// Song/loading changes arrive through the Phase 2 application subscription below.
-if (HANDHELD) {
-  el.handheld.hidden = false;
-  // #sep-go is the only control the markup leaves visible; save, cancel and the progress
-  // bar already start hidden. styles.css carries the global
-  // [hidden] { display: none !important } that this depends on.
-  renderControls();
 }
+
+/** Peer service consumed directly by components/SeparationPanel.jsx (Phase 5a) — the same
+ * subscribe/getSnapshot/commands shape lib/player-application.js established, scoped to
+ * separation's own state, which is not player/song/transport state and has no other owner. */
+export const separation = {
+  subscribe(listener) {
+    if (typeof listener !== 'function') throw new TypeError('subscriber must be a function');
+    listeners.add(listener);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      listeners.delete(listener);
+    };
+  },
+  getSnapshot() {
+    if (!lastView) return publish();
+    return lastView;
+  },
+  commands: { start, cancel, save },
+};
 
 const unsubscribePlayer = playerApplication.subscribe(refresh);
 playerApplication.registerCleanup(() => {
   unsubscribePlayer();
-  window.removeEventListener('sansbass:langchange', retranslateStatus);
   worker?.terminate();
   worker = null;
   runToken = null;

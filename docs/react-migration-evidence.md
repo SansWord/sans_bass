@@ -2,7 +2,8 @@
 
 ## Phase 3d — React volume and A/B loop controls
 
-Status: PR preview verified; production acceptance pending.
+Status: accepted in production at rollback anchor
+`4b14667a935f1faef4af1f8ba8df8acb37d6ab5f`.
 Evidence collected 2026-09-06 America/Los_Angeles. Branch
 `feat/react-phase-3d-volume-loop-controls`; starting source
 `61f72522e2e6b311ed0b6b9acf58f83e043e50fc`. Previous accepted boundary:
@@ -30,8 +31,8 @@ their eager captures, direct presentation writes, and direct listeners are remov
 
 Mode/all-toggle routing, per-lane controls, lanes, overview/zoom DOM and canvases, separation,
 detection, notes, Workers, AudioWorklets, and DSP retain their previous owners. A/B/C/Escape
-remain with the shared document shortcut owner. Phase 3 is not complete and Phase 3e must not
-begin until this implementation is accepted in production and its rollback-anchor PR merges.
+remain with the shared document shortcut owner. Phase 3 is not complete; Phase 3e may begin
+only after this rollback-anchor documentation PR merges.
 
 ### Failing-first, exact-source automated, build, and local evidence
 
@@ -113,6 +114,31 @@ gate (one owner/gain listener, current song/volume/loop retained across repeated
 remount), while the hosted locale render separately preserved song, volume, routing, and
 ownership. The complete synthetic/malformed/Worker matrix was not repeated against GitHub
 Pages, and the real-song load is deployment smoke rather than a substitute for it.
+
+### Production acceptance evidence
+
+PR #75 was squash-merged as exact production source
+`4b14667a935f1faef4af1f8ba8df8acb37d6ab5f`. Its exact-SHA
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34081751364)
+passed (9-second deploy job) and its
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34081751366) passed in 53
+seconds. Before any production behavior assertion,
+`https://sansword.github.io/sans_bass/?phase3d=4b14667` displayed exact `4b14667`.
+
+The required production canary covered root and `/demos/`, both at the same displayed SHA,
+with the saved Traditional Chinese locale. The committed `examples/nov_you.zip` loaded as
+`9 十二月的妳`, 4:23, with six stems. Primary and overview volume mirrored at 47%; focused A
+was excluded; genuine Space advanced the AudioContext-backed clock; genuine A/ArrowRight/B
+presented the translated 1.5-second loop; and activating Clear returned focus to `BODY` and
+hid the badge. The page retained one React root/input/volume/loop owner, no React mode owner,
+the unchanged `mix` selection, and six legacy lane-volume controls. The first-party
+warning/error console was empty.
+
+The complete synthetic, malformed-input, storage-fault, Worker, and remount matrices were not
+repeated in production because the production canary agreed with exact-source and preview
+evidence. No physical-handheld, subjective auditory, background-tab, or real-model check is
+claimed. Phase 3d is accepted at the full SHA above; Phase 3e remains gated on the merge of
+this separate documentation-only rollback-anchor PR.
 
 ## Phase 3c — React seek controls
 

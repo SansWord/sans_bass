@@ -1,6 +1,7 @@
 # React migration Phase 3d — volume and A/B loop controls plan
 
-Status: PR preview verified; production acceptance pending. Planned from
+Status: accepted in production through [PR #75](https://github.com/SansWord/sans_bass/pull/75)
+at rollback anchor `4b14667a935f1faef4af1f8ba8df8acb37d6ab5f`. Planned from
 `61f72522e2e6b311ed0b6b9acf58f83e043e50fc` on 2026-09-06.
 Previous accepted rollback anchor: Phase 3c at
 `20a55bbf61984b7a49771f5e367bb33729c879ad`.

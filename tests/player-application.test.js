@@ -12,6 +12,7 @@ function adapter(overrides = {}) {
       tempoBpm: null,
     },
     status: null,
+    notesEdit: { visible: false, enabled: false, on: false },
   };
   return {
     state,
@@ -32,6 +33,9 @@ function adapter(overrides = {}) {
       toggleTrack: vi.fn(),
       setTrackVolume: vi.fn(),
       replaceSong: vi.fn(),
+      setEditMode: vi.fn(),
+      exportEdits: vi.fn(),
+      importEdits: vi.fn(),
       ...overrides.commands,
     },
     getTransportSnapshot: () => state.transport,
@@ -111,6 +115,10 @@ describe('player application command/subscription facade', () => {
     application.commands.toggleTrack('bass');
     application.commands.setTrackVolume('bass', 0.6);
     application.commands.replaceSong({ name: 'song.wav' }, { vocals: {} });
+    application.commands.setEditMode(true);
+    application.commands.exportEdits();
+    const editsFile = { name: 'edits.json' };
+    application.commands.importEdits(editsFile);
 
     expect(owner.commands.load).toHaveBeenCalledWith(file, 1);
     expect(owner.commands.rejectLoad).toHaveBeenCalledWith('multiple', { count: 2 });
@@ -129,6 +137,9 @@ describe('player application command/subscription facade', () => {
     expect(owner.commands.replaceSong).toHaveBeenCalledWith(
       { name: 'song.wav' }, { vocals: {} }, 2,
     );
+    expect(owner.commands.setEditMode).toHaveBeenCalledWith(true);
+    expect(owner.commands.exportEdits).toHaveBeenCalledOnce();
+    expect(owner.commands.importEdits).toHaveBeenCalledWith(editsFile);
     expect(application.currentSongToken()).toBe(2);
     expect(() => application.commands.rejectLoad('mystery')).toThrow(PlayerCommandError);
     expect(() => application.commands.setMasterVolume(Number.NaN)).toThrow(PlayerCommandError);
@@ -138,6 +149,7 @@ describe('player application command/subscription facade', () => {
     expect(() => application.commands.toggleTrack(3)).toThrow(PlayerCommandError);
     expect(() => application.commands.setTrackVolume('bass', Number.NaN)).toThrow(PlayerCommandError);
     expect(() => application.commands.setTrackVolume('', 0.5)).toThrow(PlayerCommandError);
+    expect(() => application.commands.importEdits(null)).toThrow(PlayerCommandError);
   });
 
   it('publishes a deduplicated transport clock and cleans its subscription independently', () => {
@@ -160,6 +172,28 @@ describe('player application command/subscription facade', () => {
     owner.state.transport = { ...owner.state.transport, position: 2.5 };
     application.publishTransport();
     expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('hands the Edit-notes toggle/Export-Import host to React, deduplicated by node identity', () => {
+    const application = createPlayerApplication();
+    application.initialize(adapter());
+    expect(application.getEditHost()).toBeNull();
+    const listener = vi.fn();
+    const unsubscribe = application.subscribeEditHost(listener);
+
+    const host = {};
+    application.publishEditHost(host);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalledWith(host);
+    expect(application.getEditHost()).toBe(host);
+
+    application.publishEditHost(host);   // same reference — no redundant notification
+    expect(listener).toHaveBeenCalledOnce();
+
+    unsubscribe();
+    application.publishEditHost(null);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(application.getEditHost()).toBeNull();
   });
 
   it('attaches and detaches the primary seek renderer without disposing the application', () => {

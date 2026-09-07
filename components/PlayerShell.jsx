@@ -154,6 +154,63 @@ function ModeRoutingControls({ application, routing, song }) {
   </>;
 }
 
+/** React ownership of the zoomed pane's Edit-notes toggle and shared Export/Import edits JSON
+ * buttons (Phase 6e). `app.js` keeps the `editMode` flag, the Worker-free event dispatch these
+ * controls trigger (`sansbass:editmode`/`sansbass:exportedits`/`sansbass:importedits`, both
+ * sides unchanged), and — the one genuinely novel piece of plumbing this slice adds — the DOM
+ * host these components portal into: `zLaneSel` (their actual parent) is legacy DOM, not a
+ * static `index.html` root, so `lib/player-application.js`'s `publishEditHost`/
+ * `subscribeEditHost`/`getEditHost` hand a stable, app.js-created host node to React instead of
+ * the usual direction (React creates a node and hands it to app.js via `attachLaneCanvas`-style
+ * methods) — see docs/react-phase-6e-edit-toggle-export-import-plan.md. The capo control and
+ * the chord editor, sharing the same `chordGroup` container and its own per-frame-recomputed
+ * hidden state, are out of scope this slice (Phase 6f). */
+function EditModeToggle({ application, notesEdit }) {
+  const onChange = (event) => {
+    ignoreReportedError(application.commands.setEditMode(event.currentTarget.checked));
+  };
+  return <label className="notes-ctl zoom-edit-toggle" title={t('notes.editTip')}
+    hidden={!notesEdit.visible}>
+    <input id="notes-edit" type="checkbox" checked={notesEdit.on} disabled={!notesEdit.enabled}
+      onChange={onChange} />
+    <span>{t('notes.edit')}</span>
+  </label>;
+}
+
+function EditIoControls({ application, notesEdit }) {
+  const importFileRef = useRef(null);
+  const onImportChange = (event) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) ignoreReportedError(application.commands.importEdits(file));
+  };
+  return <span className="notes-ctl zoom-edit-io" hidden={!notesEdit.visible}>
+    <button type="button" className="mini"
+      onClick={() => ignoreReportedError(application.commands.exportEdits())}>
+      {t('notes.export')}
+    </button>
+    <button type="button" className="mini" onClick={() => importFileRef.current.click()}>
+      {t('notes.import')}
+    </button>
+    <input type="file" accept="application/json,.json" hidden ref={importFileRef}
+      onChange={onImportChange} />
+  </span>;
+}
+
+/** Portals `EditModeToggle`/`EditIoControls` into the legacy-created host once it exists
+ * (there is none before the first song with a vocals/bass stem loads — see the plan doc). */
+function EditModeControls({ application, notesEdit }) {
+  const host = useSyncExternalStore(
+    application.subscribeEditHost, application.getEditHost, application.getEditHost,
+  );
+  if (!host) return null;
+  return createPortal(<>
+    <EditModeToggle application={application} notesEdit={notesEdit} />
+    <EditIoControls application={application} notesEdit={notesEdit} />
+  </>, host);
+}
+
 const laneLabel = (track) => (track.stem ? t(`stem.${track.stem}`) : track.label);
 
 function Lane({ application, track, index }) {
@@ -410,6 +467,7 @@ function PlayerShell({ application, hosts }) {
     {createPortal(<ListExportPanel stem="vocals" />, hosts.notesListIoVocals)}
     {createPortal(<ListExportPanel stem="bass" />, hosts.notesListIoBass)}
     {createPortal(<TempoPanel />, hosts.tempo)}
+    <EditModeControls application={application} notesEdit={snapshot.notesEdit} />
     {snapshot.song && <StemLanes application={application}
       tracks={snapshot.song.tracks} hosts={hosts} />}
     {snapshot.song && snapshot.song.tracks.some((track) => track.stem === 'vocals' || track.stem === 'bass')

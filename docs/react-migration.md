@@ -1,8 +1,8 @@
 # Incremental React migration
 
 Status: phase 3a player header/loading, phase 3b play/pause/speed, phase 3c primary seek/time,
-and phase 3d volume/loop ownership are accepted in production. Mode/routing remains
-legacy-owned for Phase 3e.
+and phase 3d volume/loop ownership are accepted in production. Phase 3e mode/routing
+implementation is in progress; Phase 3 is not complete.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -311,7 +311,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 0 | Baseline recorded | [Evidence and omissions](react-migration-evidence.md) | Manual/deployed omissions retained for later acceptance |
 | 1 | Accepted in production at `5de58b6` | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Complete; Phase 2 may begin |
 | 2 | Accepted in production at `6657528` | [Plan](react-phase-2-plan.md) · [Evidence](react-migration-evidence.md#phase-2--player-command-and-subscription-boundary) · [PR #67](https://github.com/SansWord/sans_bass/pull/67) | Complete; Phase 3 may begin |
-| 3 | Header/loading accepted at `467f91b`; play/pause and speed at `99ac653`; seek/time at `20a55bb`; volume/loop at `4b14667` | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Phase 3c plan](react-phase-3c-seek-controls-plan.md) · [Phase 3d plan](react-phase-3d-volume-loop-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) · [PR #73](https://github.com/SansWord/sans_bass/pull/73) · [PR #75](https://github.com/SansWord/sans_bass/pull/75) | Migrate top-level mode/routing in Phase 3e, then evaluate the Phase 3 exit gate |
+| 3 | Header/loading accepted at `467f91b`; play/pause and speed at `99ac653`; seek/time at `20a55bb`; volume/loop at `4b14667`; mode/routing implementation in progress | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Phase 3c plan](react-phase-3c-seek-controls-plan.md) · [Phase 3d plan](react-phase-3d-volume-loop-controls-plan.md) · [Phase 3e plan](react-phase-3e-mode-routing-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) · [PR #73](https://github.com/SansWord/sans_bass/pull/73) · [PR #75](https://github.com/SansWord/sans_bass/pull/75) | Accept Phase 3e in production, merge its rollback anchor, then evaluate the Phase 3 exit gate |
 | 4 | Not started | — | Lanes and waveform hosts |
 | 5 | Not started | — | Separation/detection controls |
 | 6 | Not started | — | Notes/editor controls |

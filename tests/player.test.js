@@ -463,48 +463,68 @@ describe('production player integration', () => {
       .toEqual(['loop', 'loop-2', 'loop-4', 'loop-8']);
   });
 
-  it('preserves loop locale/remount/replacement behavior and leaves mode, all-toggle, and lane volume legacy-owned', async () => {
+  it('preserves accepted volume/loop state while React routing translates, remounts once, and resets on replacement', async () => {
     player = await openPlayer();
+    const events = [];
+    player.win.goatcounter = { count: (event) => events.push(event) };
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const audio = instrumentAudio(player.win);
     await loadZip(player, { vocals: sine(440, 2), guitar: sine(220, 2), bass: sine(110, 2) },
-      { folder: 'Adjacent controls' });
+      { folder: 'Routing lifecycle' });
     const application = player.win.sansBass.application;
+    application.commands.setMasterVolume(0.42);
     application.commands.seek(0.4);
     player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
     application.commands.seek(0.8);
     player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
     const loop = { loopA: 0.4, loopB: 0.8 };
+    const mode = player.doc.getElementById('mode');
+    mode.value = 'bass';
+    mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    expect(application.getSnapshot().routing).toEqual({
+      mode: 'bass', allToggleLabel: 'unmuteAll',
+    });
 
     player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
     await waitFor(() => player.doc.getElementById('loop-text').textContent.includes('秒'),
       'translated active loop');
+    await waitFor(() => player.doc.getElementById('all-toggle').textContent === '全部取消靜音',
+      'translated routing controls');
     expect(application.getSnapshot().transport).toMatchObject(loop);
+    expect(application.getSnapshot().masterVolume).toBe(0.42);
+    expect(player.doc.getElementById('mode').value).toBe('bass');
     player.win.sansBass.playerShell.unmount();
     expect(player.doc.getElementById('loop-badge')).toBeNull();
+    expect(player.doc.getElementById('mode')).toBeNull();
+    expect(player.doc.getElementById('all-toggle')).toBeNull();
     expect(application.getSnapshot().transport).toMatchObject(loop);
     player.win.sansBass.playerShell.remount();
     player.win.sansBass.playerShell.remount();
     expect(player.doc.querySelectorAll('[data-react-loop-controls]')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('[data-react-mode-routing-controls]')).toHaveLength(1);
     expect(application.getSnapshot().transport).toMatchObject(loop);
-
-    expect(player.doc.querySelectorAll('[data-react-mode-routing-controls]')).toHaveLength(0);
-    const mode = player.doc.getElementById('mode');
     const all = player.doc.getElementById('all-toggle');
-    expect(mode.value).toBe('mix');
-    expect(all.textContent).toBe('全部靜音');
+    expect(player.doc.getElementById('mode').value).toBe('bass');
+    expect(all.textContent).toBe('全部取消靜音');
     audio.ramps.length = 0;
-    mode.value = 'bass';
-    mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
-    expect(mode.value).toBe('bass');
-    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 1]);
+    all.focus();
+    all.click();
+    expect(player.doc.activeElement).not.toBe(all);
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([1, 1, 1]);
+    await waitFor(() => all.textContent === '回復先前狀態',
+      'remounted all-toggle publication');
+    expect(events.filter((event) => event.path === 'unmute-all')).toHaveLength(1);
     const laneVolume = player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-vol input');
     audio.ramps.length = 0;
     setRangeValue(player, laneVolume, 0.33);
-    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 1]);
-    expect(application.getSnapshot().masterVolume).toBe(1);
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0.33, 1, 1]);
+    expect(application.getSnapshot().masterVolume).toBe(0.42);
 
     await loadZip(player, { drums: 120, piano: 330 }, { folder: 'Loop replacement' });
     expect(application.getSnapshot().transport).toMatchObject({ loopA: null, loopB: null });
+    expect(application.getSnapshot().routing).toEqual({ mode: 'mix', allToggleLabel: 'muteAll' });
+    expect(player.doc.getElementById('mode').value).toBe('mix');
+    expect(player.doc.getElementById('master-vol').value).toBe('0.42');
     expect(player.win.getComputedStyle(player.doc.getElementById('loop-badge')).display).toBe('none');
   });
 
@@ -878,17 +898,145 @@ describe('production player integration', () => {
       .toEqual(['Vocals', 'Bass']);
   });
 
-  it('applies routing state to lane classes, mode, labels, and gain ramps', async () => {
+  it('renders one accessible React routing owner and applies every ordinary mode and all-toggle state to gain', async () => {
     player = await openPlayer();
     const audio = instrumentAudio(player.win);
     await loadZip(player, { vocals: 440, guitar: 220, bass: 110 });
+    const application = player.win.sansBass.application;
+    const mode = player.doc.getElementById('mode');
+    const all = player.doc.getElementById('all-toggle');
+
+    expect(player.doc.querySelectorAll('[data-react-mode-routing-controls]')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#mode')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#all-toggle')).toHaveLength(1);
+    expect(mode.getAttribute('aria-label')).toBe('Play');
+    expect([...mode.options].map(({ value, textContent }) => [value, textContent])).toEqual([
+      ['mix', 'Full mix'], ['vocals', 'Vocals only'], ['guitar', 'Guitar only'],
+      ['bass', 'Bass only'], ['custom', 'Custom…'],
+    ]);
+    expect(application.getSnapshot().routing).toEqual({ mode: 'mix', allToggleLabel: 'muteAll' });
+    expect(all.textContent).toBe('Mute all');
+
+    for (const [value, gains] of [
+      ['vocals', [1, 0, 0]], ['guitar', [0, 1, 0]], ['bass', [0, 0, 1]],
+    ]) {
+      audio.ramps.length = 0;
+      mode.focus();
+      mode.value = value;
+      mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+      expect(player.doc.activeElement).not.toBe(mode);
+      expect(application.getSnapshot().routing.mode).toBe(value);
+      expect(audio.ramps.map((ramp) => ramp.value)).toEqual(gains);
+    }
+
+    audio.ramps.length = 0;
+    mode.value = 'custom';
+    mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    expect(application.getSnapshot().routing.mode).toBe('custom');
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 1]);
+
+    audio.ramps.length = 0;
+    mode.value = 'mix';
+    mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([1, 1, 1]);
+
+    audio.ramps.length = 0;
+    all.focus();
+    all.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+      key: '0', bubbles: true, cancelable: true,
+    }));
+    expect(application.getSnapshot().routing.mode).toBe('mix');
+    all.click();
+    expect(player.doc.activeElement).not.toBe(all);
+    expect(application.getSnapshot().routing).toEqual({ mode: 'custom', allToggleLabel: 'unmuteAll' });
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 0]);
+
+    audio.ramps.length = 0;
+    all.click();
+    expect(application.getSnapshot().routing).toEqual({ mode: 'mix', allToggleLabel: 'muteAll' });
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([1, 1, 1]);
+
+    mode.value = 'bass';
+    mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    audio.ramps.length = 0;
+    all.click();
+    expect(application.getSnapshot().routing).toEqual({ mode: 'mix', allToggleLabel: 'restorePrevious' });
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([1, 1, 1]);
+    audio.ramps.length = 0;
+    all.click();
+    expect(application.getSnapshot().routing).toEqual({ mode: 'custom', allToggleLabel: 'unmuteAll' });
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 1]);
+
     audio.ramps.length = 0;
     const lane = player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)');
     lane.querySelector('.lane-name').click();
-    expect(lane.classList.contains('muted')).toBe(true);
-    expect(player.doc.getElementById('mode').value).toBe('custom');
+    expect(lane.classList.contains('muted')).toBe(false);
+    expect(application.getSnapshot().routing.mode).toBe('custom');
     expect(player.doc.getElementById('all-toggle').textContent).toBe('Unmute all');
-    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 1, 1]);
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([1, 0, 1]);
+  });
+
+  it('keeps explicit mix and stems mutually exclusive for React, unknown lanes, and genuine 0/1–6 shortcuts', async () => {
+    player = await openPlayer();
+    const audio = instrumentAudio(player.win);
+    await loadZip(player, { vocals: 440, bass: 110 }, {
+      mix: 330, unknown: { ambience: 550 }, folder: 'Mix and stems',
+    });
+    const application = player.win.sansBass.application;
+    const mode = player.doc.getElementById('mode');
+    expect([...mode.options].map(({ value, textContent }) => [value, textContent])).toEqual([
+      ['mix', 'Full mix'], ['vocals', 'Vocals only'], ['bass', 'Bass only'],
+      ['lane:3', 'ambience only'], ['custom', 'Custom…'],
+    ]);
+
+    for (const [value, gains] of [
+      ['mix', [0, 0, 1, 0]], ['vocals', [1, 0, 0, 0]],
+      ['bass', [0, 1, 0, 0]], ['lane:3', [0, 0, 0, 1]],
+    ]) {
+      audio.ramps.length = 0;
+      mode.value = value;
+      mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+      expect(audio.ramps.map((ramp) => ramp.value)).toEqual(gains);
+      if (gains[2]) expect(gains.filter(Boolean)).toHaveLength(1);
+    }
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => player.doc.documentElement.lang === 'zh-TW', 'translated unknown option');
+    expect(player.doc.getElementById('mode').value).toBe('lane:3');
+    expect(player.doc.querySelector('option[value="lane:3"]').textContent).toContain('ambience');
+    expect(application.getSnapshot().routing.mode).toBe('lane:3');
+
+    audio.ramps.length = 0;
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: '3', bubbles: true }));
+    expect(application.getSnapshot().routing.mode).toBe('mix');
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 1, 0]);
+
+    audio.ramps.length = 0;
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: '0', bubbles: true }));
+    expect(application.getSnapshot().routing).toEqual({ mode: 'custom', allToggleLabel: 'muteAll' });
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([1, 1, 0, 1]);
+    audio.ramps.length = 0;
+    player.doc.getElementById('all-toggle').click();
+    expect(application.getSnapshot().routing).toEqual({ mode: 'custom', allToggleLabel: 'unmuteAll' });
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 0, 0]);
+
+    await loadZip(player, {
+      vocals: 440, guitar: 220, bass: 110, drums: 120, piano: 330, other: 550,
+    }, { folder: 'Six shortcut stems' });
+    const expected = [1, 1, 1, 1, 1, 1];
+    for (let digit = 1; digit <= 6; digit++) {
+      audio.ramps.length = 0;
+      player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+        key: String(digit), bubbles: true,
+      }));
+      expected[digit - 1] = 0;
+      expect(application.getSnapshot().routing.mode).toBe('custom');
+      expect(audio.ramps.map((ramp) => ramp.value)).toEqual(expected);
+    }
+    audio.ramps.length = 0;
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: '0', bubbles: true }));
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([1, 1, 1, 1, 1, 1]);
+    expect(application.getSnapshot().routing).toEqual({ mode: 'mix', allToggleLabel: 'muteAll' });
   });
 
   it('uses cancelable drag events and computed visibility for the global overlay', async () => {
@@ -931,6 +1079,8 @@ describe('production player integration', () => {
     const canvases = [...player.doc.querySelectorAll('.lane canvas')];
     const input = player.doc.getElementById('file-input');
     player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-name').click();
+    await waitFor(() => player.doc.getElementById('mode').value === 'custom',
+      'lane routing publication');
     const mode = player.doc.getElementById('mode').value;
     application.commands.seek(0.1);
     player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));

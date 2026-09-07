@@ -115,6 +115,40 @@ function LoopControls({ application, transport }) {
   </span>;
 }
 
+function ModeRoutingControls({ application, routing, song }) {
+  const options = (song?.tracks || [])
+    .filter((track) => track.stem !== 'mix')
+    .map((track) => ({
+      value: track.id,
+      label: t('mode.only', {
+        name: track.stem ? t(`stem.${track.stem}`) : track.label,
+      }),
+    }));
+  const onModeChange = (event) => {
+    ignoreReportedError(application.commands.setMode(event.currentTarget.value));
+    event.currentTarget.blur();
+  };
+  const onAllToggle = (event) => {
+    ignoreReportedError(application.commands.toggleAllTracks());
+    event.currentTarget.blur();
+  };
+  return <>
+    <label className="ctl" data-react-mode-routing-controls>
+      <span>{t('ctl.play')}</span>
+      <select id="mode" value={routing.mode} aria-label={t('ctl.play')}
+        onChange={onModeChange}>
+        <option value="mix">{t('stem.mix')}</option>
+        {options.map((option) => <option key={option.value} value={option.value}>
+          {option.label}
+        </option>)}
+        <option value="custom">{t('mode.custom')}</option>
+      </select>
+    </label>
+    <button id="all-toggle" className="btn ghost" type="button"
+      onClick={onAllToggle}>{t(`btn.${routing.allToggleLabel}`)}</button>
+  </>;
+}
+
 function PrimarySeekControls({ application, hosts }) {
   const transport = useSyncExternalStore(
     application.subscribeTransport,
@@ -265,6 +299,8 @@ function PlayerShell({ application, hosts }) {
       volume={snapshot.masterVolume} />, hosts.masterVolume)}
     {createPortal(<LoopControls application={application}
       transport={snapshot.transport} />, hosts.loopControls)}
+    {createPortal(<ModeRoutingControls application={application}
+      routing={snapshot.routing} song={snapshot.song} />, hosts.modeRouting)}
     <PrimarySeekControls application={application} hosts={hosts} />
   </>;
 }
@@ -281,6 +317,7 @@ export function mountPlayerShell(application, doc = document) {
     playbackSpeed: doc.getElementById('playback-speed-ui-root'),
     masterVolume: doc.getElementById('master-volume-ui-root'),
     loopControls: doc.getElementById('loop-controls-ui-root'),
+    modeRouting: doc.getElementById('mode-routing-ui-root'),
     primarySeek: doc.getElementById('primary-seek-ui-root'),
     primaryTime: doc.getElementById('primary-time-ui-root'),
   };

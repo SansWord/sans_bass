@@ -1143,6 +1143,117 @@ describe('production player integration', () => {
     expect(show.textContent).toBe(initiallyOn ? 'Hide notes' : 'Show notes');
   });
 
+  it('renders a dispatched edit in the edit list, enables Undo, and undoing removes it', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+
+    const editsRow = await waitFor(() => player.doc.getElementById('notes-edits-vocals'), 'edit list host rendered');
+    const undo = player.doc.getElementById('notes-edit-undo-vocals');
+    const summary = player.doc.getElementById('notes-edits-summary-vocals');
+    expect(player.win.getComputedStyle(editsRow).display).toBe('none');
+    expect(undo.disabled).toBe(true);
+
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:editmode', { detail: { on: true, stem: 'vocals' } }));
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:noteedit', {
+      detail: { edits: [{ type: 'rangeDelete', from: 0, to: 1 }] },
+    }));
+
+    await waitFor(() => player.win.getComputedStyle(editsRow).display !== 'none', 'edit list becomes visible');
+    expect(summary.textContent).toBe('Edit history (1)');
+    expect(undo.disabled).toBe(false);
+    const row = editsRow.querySelector('.edit-row');
+    expect(row.textContent).toContain('Range delete');
+    expect(row.textContent).toContain('0.00–1.00s');
+
+    undo.click();
+    await waitFor(() => player.win.getComputedStyle(editsRow).display === 'none', 'edit list hides once undone');
+    expect(summary.textContent).toBe('Edit history (0)');
+  });
+
+  it('removes an edit-list row via its own remove button, independent of Undo', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+
+    const editsRow = await waitFor(() => player.doc.getElementById('notes-edits-vocals'), 'edit list host rendered');
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:editmode', { detail: { on: true, stem: 'vocals' } }));
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:noteedit', {
+      detail: { edits: [{ type: 'rangeDelete', from: 0, to: 1 }] },
+    }));
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:noteedit', {
+      detail: { edits: [{ type: 'rangeDelete', from: 2, to: 3 }] },
+    }));
+    await waitFor(() => editsRow.querySelectorAll('.edit-row').length === 2, 'both edits rendered as rows');
+
+    editsRow.querySelector('.edit-row .edit-remove').click();
+    await waitFor(() => editsRow.querySelectorAll('.edit-row').length === 1, 'one row removed');
+    expect(editsRow.querySelector('.edit-row').textContent).toContain('2.00–3.00s');
+  });
+
+  it('retranslates the edit-list label on a language switch without losing the edit', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+
+    const editsRow = await waitFor(() => player.doc.getElementById('notes-edits-vocals'), 'edit list host rendered');
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:editmode', { detail: { on: true, stem: 'vocals' } }));
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:noteedit', {
+      detail: { edits: [{ type: 'rangeDelete', from: 0, to: 1 }] },
+    }));
+    await waitFor(() => editsRow.querySelector('.edit-row')?.textContent.includes('Range delete'), 'English label rendered');
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => editsRow.querySelector('.edit-row')?.textContent.includes('刪除範圍'), 'retranslated label');
+    expect(player.doc.getElementById('notes-edits-summary-vocals').textContent).toBe('編輯紀錄（1）');
+    expect(editsRow.querySelector('.edit-row').textContent).toContain('0.00–1.00s');
+  });
+
+  it('enables Export list once the channel has notes, and Bars per line survives a language switch and a song replacement', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 }, { folder: 'First song' });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+
+    const exportBtn = await waitFor(() => player.doc.getElementById('notes-list-export-vocals'), 'list-export button rendered');
+    const bars = player.doc.getElementById('notes-list-bars-vocals');
+    expect(exportBtn.disabled).toBe(true);
+    expect(bars.value).toBe('4');
+
+    setRangeValue(player, bars, 8);
+    await waitFor(() => bars.value === '8', 'bars-per-line value applied');
+
+    const frameSeconds = 128 / 11025;
+    const spec = [[6000, 40], [0, 5], [6400, 12], [0, 5], [6000, 40]];
+    const cents = [];
+    for (const [c, n] of spec) for (let i = 0; i < n; i++) cents.push(c);
+    const t = cents.map((_, i) => i * frameSeconds);
+    const conf = cents.map((c) => (c ? 0.9 : 0));
+    workers[0].emit({ type: 'result', frames: { t, f0: cents.map(() => 0), conf, cents, frameSeconds } });
+    await waitFor(() => !exportBtn.disabled, 'export enabled once notes exist');
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => bars.previousElementSibling.textContent === '每行小節數', 'label retranslated');
+    expect(bars.value).toBe('8');
+
+    await loadSong(player, { filename: 'replacement.wav' });
+    expect(player.doc.getElementById('notes-list-bars-vocals').value).toBe('8');
+  });
+
   it('shows the React-owned tempo panel only once a confident result arrives, and edits live-update it', async () => {
     player = await openPlayer();
     const workers = installFakeWorker(player.win);

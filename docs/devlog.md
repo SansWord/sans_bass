@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 5a](#react-phase-5a--separation-panel-controls-2026-09-07) | React now owns the separation panel's presentation (gating, start/progress/cancel/save); `separate.js` keeps the Worker/model and exposes its state through a new `separation` export instead of writing DOM. Detection controls (5b) are next. Accepted in production at `ffe5ed5`. |
 | [React phase 4b](#react-phase-4b--shared-overview-integration-2026-09-07) | React now owns the shared Overview lane's label, master-volume-mirroring slider, and canvas host, completing Phase 4; ribbon/zoomed-pane lanes stay legacy. Accepted in production at `d961db7`. |
 | [React phase 4a](#react-phase-4a--standard-stem-lane-components-2026-09-07) | React now owns each standard stem lane's label, keyboard-operable mute, per-lane volume, and canvas host; ribbon/zoom/overview lanes stay legacy, positioned purely by CSS `order`. Accepted in production at `fcf2770`. |
 | [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; accepted at `41ff22c`, completing Phase 3. |
@@ -86,6 +87,68 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## React phase 5a — separation panel controls (2026-09-07)
+
+- [new] React (`components/SeparationPanel.jsx`) solely authors the entire `#sep` subtree
+  through a new `#separation-ui-root` portal: the handheld explanation, Go button and status
+  line, progress bar, and Save/Cancel row — using the legacy markup's own element ids/classes
+  so `styles.css` and every pre-existing test kept working unmodified.
+  Detection controls (`notes.js`) are a separate slice (5b), per `react-migration.md`'s own
+  increment boundary.
+- [new] `separate.js` gains a small `separation` export (`subscribe`/`getSnapshot`/
+  `commands: {start, cancel, save}`) — the same shape `lib/player-application.js` already
+  established, but scoped to separation's own state, which has no owner other than
+  `separate.js` (same reasoning as `notes.js`'s detection state). No `lib/player-application.js`
+  commands or snapshot fields were added: nothing new was needed beyond the existing temporary
+  `window.sansBass` bridge (`currentMix()`/`isSingleTrack()`) `separate.js` already used.
+- [insight] `separate.js` is now both a `<script type="module">` entry *and* a
+  `SeparationPanel.jsx` import target — the same pattern `app.js`/`lib/*.js` files already use.
+  Verified no duplicate evaluation (exactly one fake-Worker instance per separation run, in
+  both a local exact-source smoke and the deployed preview); the production build also folded
+  `separate.js` fully into the main player bundle now that it's reachable from that entry's own
+  import graph, rather than staying its own discovered chunk (`notes.js`, not yet imported from
+  that graph, is unaffected and keeps its own chunk).
+- [note] Moving status-line translation from publish time to render time (a new
+  `resolveStatusParams()` in `lib/separation-state.js`, resolving function-valued params at
+  render time) let a language switch mid-run retranslate correctly, including the one status
+  whose param is itself a translated-string thunk (`w.onerror`'s OOM fallback) — the same
+  ownership-transfer side effect Phase 4b got for the Overview lane's label, now covering a
+  case the old code had already special-cased with an explicit `sansbass:langchange` listener;
+  that listener is deleted, since React's own locale-driven re-render already covers it.
+- [gotcha] The pre-existing `expect(go.disabled).toBe(true)` right after `go.click()` failed
+  once presentation moved to React — React's commit is no longer synchronous with a native
+  `.click()` the way the old direct DOM write was. Fixed with `await waitFor(...)`, matching
+  this suite's own established pattern elsewhere (the `all-toggle` remount case already awaits
+  its text). `application.getSnapshot()` and the fake Worker's own synchronous instantiation
+  were unaffected, same as every other React-owned control's click handler.
+- [test] The two pre-existing Chromium separation cases passed against the legacy owner
+  beforehand and kept their assertions (with the timing fix above) against the new one. Three
+  new Chromium cases added: mid-run locale retranslation (a second message proves the panel
+  reads the *live* locale, not one captured when the first message arrived), recovery after
+  cancellation, and recovery after a worker failure whose retry actually creates a fresh Worker
+  instance (unlike a `'cancelled'` result message, `onerror` is the one path that nulls the
+  cached Worker). After implementation: focused Node facade 9/9 (3 new `resolveStatusParams`
+  cases), focused production-entry Chromium 38/38, full suite 31 files / 429 tests, `npm run
+  build` with only the existing intentional worklet warning, `git diff --check` clean.
+- [measurement] Exact commit `66dd686` player bundle is 116,313 bytes, +770 (+0.67%) from
+  accepted Phase 4b; the 218,172-byte shared React chunk and 13,274-byte CSS chunk are both
+  unchanged.
+- [test] Exact-source local smoke (root, plus the same build served under a nested `pr-999/`
+  path) loaded a generated whole-song WAV fixture (built directly under Node with the real
+  `tests/helpers/audio-fixtures.js` encoder) through the real file input at both origins, with a
+  fake `window.Worker` installed beforehand: start → progress status/bar → language-switch
+  retranslation → six-lane replacement/Save at root; a worker failure → retranslated OOM-thunk
+  status → recovery at the nested route. Both consoles showed only the expected localhost
+  GoatCounter refusal (no first-party errors).
+- [note] PR #83's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `ac513d7` before the affected-boundary check (progress → six-lane replacement → Save,
+  one fake Worker instance, clean first-party console at `/pr-83/`). PR #83 squash-merged as
+  `ffe5ed511ffbceeb5871cc4c45bbec8570a50c51`; its exact-SHA deploy and test workflows passed,
+  production displayed `ffe5ed5`, and the production canary repeated the load/separate/replace
+  flow with an empty first-party console. This full SHA is the Phase 5a rollback anchor.
+  Detection controls (Phase 5b) remain legacy-owned. Full details in
+  [react-migration-evidence.md](react-migration-evidence.md).
 
 ## React phase 4b — shared overview integration (2026-09-07)
 

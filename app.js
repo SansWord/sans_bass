@@ -155,7 +155,7 @@ let primarySeekCanvas = null; // React-owned DOM; app.js retains only imperative
 const $ = (id) => document.getElementById(id);
 const el = {
   player: $('player'), title: $('title'), lanes: $('lanes'),
-  noteLanesRoot: $('note-lanes-root'), buildSha: $('build-sha'),
+  noteLanesRoot: $('note-lanes-root'), zoomLaneRoot: $('zoom-lane-root'), buildSha: $('build-sha'),
 };
 
 const BUILD_SHA = typeof __COMMIT_SHA__ === 'undefined' ? 'dev' : __COMMIT_SHA__;
@@ -619,18 +619,15 @@ function buildUI(title) {
    * guard would see a non-null (but now meaningless) value and skip the assignment — the
    * pane would show plain waveforms only, silently missing the pitch overlay N56a promises. */
   zoomNotesStem = null;
-  zoomEl = null;
   // overviewEl is deliberately NOT reset here — see its own declaration comment. React owns
-  // the Overview lane's mount/unmount lifecycle now, not this per-song rebuild.
-  zoomChipEls = [];
-  zoomNotesChipEls = {};
-  chordEditor = null;
-  editToggleEl = null;
-  editToggleLabelEl = null;
-  editIoGroupEl = null;
-  editIoImportFileEl = null;
-  editIoExportBtnEl = null;
-  editIoImportBtnEl = null;
+  // the Overview lane's mount/unmount lifecycle now, not this per-song rebuild. zoomEl,
+  // chordEditor, zoomToolbar, halfBeatBtn, quarterBeatBtn, zoomChipEls, and zoomNotesChipEls
+  // get the same treatment as of Phase 6d (see docs/react-phase-6d-zoomed-pane-mount-refactor-
+  // plan.md): they are NOT unconditionally reset here. The zoomed pane's own DOM (built into
+  // #zoom-lane-root, a root separate from #note-lanes-root precisely so this teardown above
+  // cannot reach it) survives a song replacement that keeps a vocals/bass stem, exactly like
+  // the Overview lane has since Phase 4b — see the `if (anchorTrack)` block below for the
+  // first-time/reuse/teardown branching that replaces the old unconditional null-and-rebuild.
   let anchorTrack = null;   // the first (vocals-priority) stem with a note lane — the zoomed
                              // pane's DOM anchor
   for (const stem of NOTE_STEMS) {
@@ -711,14 +708,21 @@ function buildUI(title) {
     applyRibbonGain(stem);
   }
 
-  if (anchorTrack) {
+  if (anchorTrack && !zoomEl) {
     /* The zoomed pane. It shares the lane grid so its canvas starts on the same pixel as
      * every waveform, but NOT the time mapping — it shows a window, which is the whole
      * point. One shared instance, docked above the first (vocals-priority) note lane that
      * exists — see docs/superpowers/specs/2026-09-01-bass-notes-design.md. Always visible
      * (as long as a vocals/bass stem exists at all) rather than gated on note detection, so
      * it's useful as a plain-waveform inspector before "Find notes" has ever run — only the
-     * Notes chips and Edit toggle inside it wait for detection (syncNotesChipsVisibility). */
+     * Notes chips and Edit toggle inside it wait for detection (syncNotesChipsVisibility).
+     *
+     * Built once and reused across a song replacement that keeps a vocals/bass stem — see
+     * the `else if (zoomEl)` reuse branch and the `else if (zoomEl)` teardown branch below,
+     * and docs/react-phase-6d-zoomed-pane-mount-refactor-plan.md for why: this mirrors the
+     * Overview lane's own persistence fix from Phase 4b, applied to the much larger zoomed
+     * pane so its capo/chord/Edit-toggle/Export-Import controls can eventually become a
+     * stable React host (Phase 6e) without losing their DOM identity on every song load. */
     const zLane = document.createElement('div');
     zLane.className = 'lane ribbon-zoom';
 
@@ -782,62 +786,17 @@ function buildUI(title) {
     /* Which stem(s) — as plain waveforms — the pane below draws, plus the two Notes chips
      * below. One chip per stem actually in this song: a coloured dot AND its stem name,
      * toggling it into the pane, plus a speaker glyph that mutes/unmutes the lane exactly
-     * like clicking its row in the main list does. */
+     * like clicking its row in the main list does. Nested in their own `zChipHost` (kept
+     * `display: contents` in styles.css so it doesn't affect zLaneSel's flex layout) so a
+     * later song's differing stem set can be rebuilt here alone via rebuildZoomChipHost(),
+     * without touching the permanent editLabel/ioGroup siblings appended after it below —
+     * see docs/react-phase-6d-zoomed-pane-mount-refactor-plan.md. */
     const zLaneSel = document.createElement('span');
     zLaneSel.className = 'zoom-lane-sel';
-    zoomChipEls = tracks.filter((t) => t.stem).map((t) => {
-      const chip = document.createElement('span');
-      chip.className = 'zoom-chip';
-      const select = document.createElement('button');
-      select.type = 'button';
-      select.className = 'zoom-chip-select';
-      select.style.setProperty('--chip-color', t.color);
-      select.title = tr('notes.zoomLaneShowTip', { lane: laneLabel(t) });
-      const dot2 = document.createElement('span');
-      dot2.className = 'zoom-chip-dot';
-      const label = document.createElement('span');
-      label.className = 'zoom-chip-label';
-      label.textContent = laneLabel(t);
-      select.append(dot2, label);
-      select.addEventListener('click', () => toggleZoomLane(t.stem));
-      const spk = document.createElement('button');
-      spk.type = 'button';
-      spk.className = 'zoom-chip-mute';
-      spk.textContent = '♪';
-      spk.title = tr('notes.zoomLaneMuteTip', { lane: laneLabel(t) });
-      spk.addEventListener('click', () => toggleTrack(t));
-      chip.append(select, spk);
-      zLaneSel.appendChild(chip);
-      return { stem: t.stem, select, label, spk };
-    });
-
-    /* One "Notes: <lane>" chip per stem that actually has a note lane this song — mutually
-     * exclusive on select (picking one clears the other, see toggleZoomNotes), independent
-     * on mute (each mutes only its own lane). Built the same way the stem chips above are.
-     * Hidden until that stem actually has notes — see syncNotesChipsVisibility — since the
-     * zoomed pane itself is now visible from song load, before "Find notes" has ever run. */
-    zoomNotesChipEls = {};
-    for (const stem of NOTE_STEMS) {
-      if (!noteLanes[stem]) continue;
-      const chip = document.createElement('span');
-      chip.className = 'zoom-chip';
-      chip.hidden = true;
-      const select = document.createElement('button');
-      select.type = 'button';
-      select.className = 'mini zoom-notes-chip';
-      select.textContent = tr('notes.zoomNotesChipFor', { lane: tr('stem.' + stem) });
-      select.title = tr('notes.zoomNotesChipForTip', { lane: tr('stem.' + stem) });
-      select.addEventListener('click', () => toggleZoomNotes(stem));
-      const spk = document.createElement('button');
-      spk.type = 'button';
-      spk.className = 'zoom-chip-mute';
-      spk.textContent = '♪';
-      spk.title = tr('notes.zoomNotesMuteTipFor', { lane: tr('stem.' + stem) });
-      spk.addEventListener('click', () => toggleRibbon(stem));
-      chip.append(select, spk);
-      zLaneSel.appendChild(chip);
-      zoomNotesChipEls[stem] = { chip, select, spk };
-    }
+    const zChipHost = document.createElement('span');
+    zChipHost.className = 'zoom-chip-host';
+    zLaneSel.appendChild(zChipHost);
+    rebuildZoomChipHost(zChipHost);
 
     /* The one global Edit-notes toggle, beside the two Notes chips — editing is inherently
      * single-target, so one control suffices regardless of how many note-capable stems exist.
@@ -1136,19 +1095,127 @@ function buildUI(title) {
     zLane.append(zName, zCanvas, zRangeHint, zToolbar, zFields, zSpacer, zGrip);
     // Always pinned above every standard/ribbon lane (order 0, 1, 2, … above), same as before.
     zLane.style.order = '-1';
-    el.noteLanesRoot.appendChild(zLane);
+    // Appended into its own #zoom-lane-root, not #note-lanes-root — see that root's comment
+    // in index.html and the module-level note above this block for why: this DOM must survive
+    // the per-song `el.noteLanesRoot.innerHTML = ''` teardown above, which only ever needs to
+    // reach the genuinely per-stem ribbon lanes.
+    el.zoomLaneRoot.appendChild(zLane);
+    // attachZoom(zCanvas) above and attachResize(zGrip, ...) earlier in this block are both
+    // registered exactly once, here at first construction — not on every reuse below. Both
+    // closures read module-level state dynamically at event time, so re-registering them on
+    // an already-listening, persisted zCanvas/zGrip would stack a second set of listeners and
+    // double-fire every wheel/drag gesture after the pane survives its first song replacement.
     attachZoom(zCanvas);
-    zoomEl = { lane: zLane, canvas: zCanvas, out: zOut, time: zTime };
+    zoomEl = { lane: zLane, canvas: zCanvas, out: zOut, time: zTime, chipHost: zChipHost };
 
     // The overview lane (React-owned since Phase 4b: label, master-volume-mirroring slider,
     // canvas host) is rendered by PlayerShell.jsx into #overview-lane-root whenever a
     // vocals/bass stem exists, pinned above the zoomed pane via the same order: -2 convention
     // this block used to set directly. Its canvas and range-hint host are populated by
     // attachOverviewCanvas/attachOverviewExtra below, not here — see overviewEl's own comment.
+  } else if (anchorTrack) {
+    /* Reuse: the pane built for a previous song is still attached (anchorTrack persisted
+     * across this song replacement). Only the parts that genuinely vary per song need
+     * rebuilding — the stem/Notes chips (different songs can have different stem sets) and
+     * capoSelect's value (capo itself was already reset to 0 above; the <select> element's
+     * own .value does not follow that reset automatically once it stops being recreated). */
+    rebuildZoomChipHost(zoomEl.chipHost);
+    if (chordEditor) chordEditor.capoSelect.value = '0';
+  } else if (zoomEl) {
+    /* Teardown: this song has no vocals/bass stem where a previous one did. Matches today's
+     * "no anchor → no zoomed pane" state exactly; a later replacement that reintroduces a
+     * vocals/bass stem re-enters the first-time branch above and builds a fresh pane. */
+    zoomEl.lane.remove();
+    zoomEl = null;
+    chordEditor = null;
+    zoomToolbar = null;
+    halfBeatBtn = null;
+    quarterBeatBtn = null;
+    zoomChipEls = [];
+    zoomNotesChipEls = {};
+    editToggleEl = null;
+    editToggleLabelEl = null;
+    editIoGroupEl = null;
+    editIoImportFileEl = null;
+    editIoExportBtnEl = null;
+    editIoImportBtnEl = null;
   }
+
+  /* Forces the zoomed pane's detection-gated controls (Notes chips, Edit-notes toggle,
+   * Export/Import buttons) back to their "nothing ready yet" state for the new song. Cheap
+   * and correct to call unconditionally (each is already null-safe): construction already
+   * gave the right initial state before Phase 6d, but a REUSED pane needs this explicit call
+   * — without it, a completed previous song's visible/enabled state would otherwise leak into
+   * a new song that has not run detection yet. See the plan doc's lifecycle-hazards section. */
+  syncNotesChipsVisibility();
+  syncZoomChips();
+  syncEditToggle();
 
   syncRangeHints();
   renderAll();
+}
+
+/** Rebuilds the zoomed pane's stem chips and "Notes: <lane>" chips inside `chipHost` to match
+ *  the current song's `tracks`/`noteLanes` — called once at the pane's first construction and
+ *  again, in place, whenever an existing pane is reused for a song replacement that keeps the
+ *  anchor stem (see buildUI()'s `if (anchorTrack)` branching). `chipHost` stays `display:
+ *  contents` in styles.css so its children act as direct flex items of `zLaneSel`, identical
+ *  to how these chips laid out before this host existed. */
+function rebuildZoomChipHost(chipHost) {
+  chipHost.innerHTML = '';
+  zoomChipEls = tracks.filter((t) => t.stem).map((t) => {
+    const chip = document.createElement('span');
+    chip.className = 'zoom-chip';
+    const select = document.createElement('button');
+    select.type = 'button';
+    select.className = 'zoom-chip-select';
+    select.style.setProperty('--chip-color', t.color);
+    select.title = tr('notes.zoomLaneShowTip', { lane: laneLabel(t) });
+    const dot2 = document.createElement('span');
+    dot2.className = 'zoom-chip-dot';
+    const label = document.createElement('span');
+    label.className = 'zoom-chip-label';
+    label.textContent = laneLabel(t);
+    select.append(dot2, label);
+    select.addEventListener('click', () => toggleZoomLane(t.stem));
+    const spk = document.createElement('button');
+    spk.type = 'button';
+    spk.className = 'zoom-chip-mute';
+    spk.textContent = '♪';
+    spk.title = tr('notes.zoomLaneMuteTip', { lane: laneLabel(t) });
+    spk.addEventListener('click', () => toggleTrack(t));
+    chip.append(select, spk);
+    chipHost.appendChild(chip);
+    return { stem: t.stem, select, label, spk };
+  });
+
+  /* One "Notes: <lane>" chip per stem that actually has a note lane this song — mutually
+   * exclusive on select (picking one clears the other, see toggleZoomNotes), independent on
+   * mute (each mutes only its own lane). Built the same way the stem chips above are. Hidden
+   * until that stem actually has notes — see syncNotesChipsVisibility — since the zoomed pane
+   * itself is visible from song load, before "Find notes" has ever run. */
+  zoomNotesChipEls = {};
+  for (const stem of NOTE_STEMS) {
+    if (!noteLanes[stem]) continue;
+    const chip = document.createElement('span');
+    chip.className = 'zoom-chip';
+    chip.hidden = true;
+    const select = document.createElement('button');
+    select.type = 'button';
+    select.className = 'mini zoom-notes-chip';
+    select.textContent = tr('notes.zoomNotesChipFor', { lane: tr('stem.' + stem) });
+    select.title = tr('notes.zoomNotesChipForTip', { lane: tr('stem.' + stem) });
+    select.addEventListener('click', () => toggleZoomNotes(stem));
+    const spk = document.createElement('button');
+    spk.type = 'button';
+    spk.className = 'zoom-chip-mute';
+    spk.textContent = '♪';
+    spk.title = tr('notes.zoomNotesMuteTipFor', { lane: tr('stem.' + stem) });
+    spk.addEventListener('click', () => toggleRibbon(stem));
+    chip.append(select, spk);
+    chipHost.appendChild(chip);
+    zoomNotesChipEls[stem] = { chip, select, spk };
+  }
 }
 
 /** The channel the zoomed pane's PITCH OVERLAY and the editing toolbar currently operate

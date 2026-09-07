@@ -357,14 +357,17 @@ input[type=range] { width: 110px; }
 
 .lanes { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 /* React owns #standard-lanes-root and #overview-lane-root (see .react-portal-host); app.js
-   owns #note-lanes-root (ribbon/zoom, still legacy — deferred to Phase 6). All three stay
-   `display: contents` so their children — not these wrappers — are the actual flex items of
-   .lanes, positioned purely with the `order` each owner sets independently from the shared
-   track order. #overview-lane-root is separate from #standard-lanes-root (rather than
+   owns #zoom-lane-root (the zoomed pane) and #note-lanes-root (the per-stem ribbon lanes) —
+   both still legacy, Phase 6d gave the zoomed pane its own root separate from #note-lanes-root
+   so its DOM can survive a song load the way the Overview lane's did after Phase 4b, without
+   changing #note-lanes-root's per-song teardown of the genuinely per-stem ribbon lanes. All
+   four stay `display: contents` so their children — not these wrappers — are the actual flex
+   items of .lanes, positioned purely with the `order` each owner sets independently from the
+   shared track order. #overview-lane-root is separate from #standard-lanes-root (rather than
    sharing it) so `#standard-lanes-root > .lane` keeps meaning exactly "one per song.tracks[]
    entry" — the Overview lane isn't one of those. No owner ever inserts into another's DOM
    subtree. */
-#note-lanes-root { display: contents; }
+#zoom-lane-root, #note-lanes-root { display: contents; }
 
 .lane {
   display: grid;
@@ -552,6 +555,11 @@ input[type=range] { width: 110px; }
    control rather than a caption for the title above it. */
 .zoom-top-row { display: flex; align-items: center; gap: 10px; }
 .zoom-lane-sel { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 1px; }
+/* Wraps the stem/Notes chips only (see rebuildZoomChipHost() in app.js) so a song replacement
+   can rebuild just them, leaving the Edit-notes toggle/Export-Import buttons untouched.
+   `display: contents` keeps its children acting as direct flex items of .zoom-lane-sel, exactly
+   as if this wrapper were not there. */
+.zoom-chip-host { display: contents; }
 .zoom-chip { display: inline-flex; align-items: center; gap: 3px; }
 /* A colour alone doesn't say which stem a dot is — see the chip's own label span. The dot
    still carries the stem's colour (via --chip-color) so it reads at a glance once learned. */

@@ -132,6 +132,12 @@ init();
     <div id="lanes" class="lanes">
       <div id="standard-lanes-root" class="react-portal-host"></div>
       <div id="overview-lane-root" class="react-portal-host"></div>
+      <!-- The zoomed pane (still legacy-owned — Phase 6d gave it this own root, separate from
+           #note-lanes-root, so its DOM survives a song load the way the Overview lane's did
+           after Phase 4b; #note-lanes-root's per-song teardown only ever needs to reach the
+           genuinely per-stem ribbon lanes). See app.js's buildUI() comment above this block's
+           construction. -->
+      <div id="zoom-lane-root"></div>
       <div id="note-lanes-root"></div>
     </div>
   </section>

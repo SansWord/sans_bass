@@ -171,7 +171,11 @@ test('i18n: every key used in index.html exists in both locales', async () => {
     }
   }
 
-  assert(keys.size >= 15, `only found ${keys.size} annotated keys — did the markup change?`);
+  // The floor shrinks as the React migration moves more of index.html's markup into
+  // React-rendered, render-time-translated components (see docs/react-migration.md) — most
+  // recently Phase 6b's `#notes-tempo` panel, which dropped this from 15. Still high enough
+  // to catch an accidental wholesale strip of the remaining legacy markup's annotations.
+  assert(keys.size >= 5, `only found ${keys.size} annotated keys — did the markup change?`);
   const missing = [];
   for (const k of keys) {
     for (const loc of I18N.LOCALES) {

@@ -1143,6 +1143,114 @@ describe('production player integration', () => {
     expect(show.textContent).toBe(initiallyOn ? 'Hide notes' : 'Show notes');
   });
 
+  it('shows the React-owned tempo panel only once a confident result arrives, and edits live-update it', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, drums: 120 });
+    const panel = player.doc.getElementById('notes-tempo');
+    expect(panel.hidden).toBe(true);
+
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({
+      type: 'result',
+      frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 },
+      tempo: { bpmValue: 120, phaseSec: 0, confidence: 0.8 },
+    });
+
+    await waitFor(() => !panel.hidden, 'tempo panel becomes visible');
+    const bpm = player.doc.getElementById('notes-tempo-bpm');
+    const status = player.doc.getElementById('notes-tempo-status');
+    expect(bpm.value).toBe('120');
+    expect(status.textContent).toBe('120.0 BPM · 80% confidence');
+
+    setRangeValue(player, bpm, 130);
+    await waitFor(() => status.textContent === '130.0 BPM · 80% confidence', 'status follows the typed BPM');
+
+    player.doc.getElementById('notes-tempo-double').click();
+    await waitFor(() => bpm.value === '260', 'doubled BPM reflected in the field');
+    player.doc.getElementById('notes-tempo-half').click();
+    await waitFor(() => bpm.value === '130', 'halved back');
+
+    // The value survives a language switch — only the status copy retranslates.
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => status.textContent === '130.0 BPM · 信心 80%', 'retranslated status');
+    expect(bpm.value).toBe('130');
+  });
+
+  it('nudges phase and changes beats-per-bar live on the tempo panel', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, drums: 120 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({
+      type: 'result',
+      frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 },
+      tempo: { bpmValue: 120, phaseSec: 0, confidence: 0.8 },
+    });
+    await waitFor(() => !player.doc.getElementById('notes-tempo').hidden, 'tempo panel visible');
+
+    const phase = player.doc.getElementById('notes-tempo-phase');
+    expect(phase.value).toBe('0');
+    player.doc.getElementById('notes-tempo-phase-fwd').click();
+    await waitFor(() => phase.value === '10', 'phase nudged forward');
+    player.doc.getElementById('notes-tempo-phase-back').click();
+    player.doc.getElementById('notes-tempo-phase-back').click();
+    await waitFor(() => phase.value === '-10', 'phase nudged back past zero');
+    setRangeValue(player, phase, 25);
+    await waitFor(() => phase.value === '25', 'typed phase value retained');
+
+    const beats = player.doc.getElementById('notes-tempo-beats');
+    expect(beats.value).toBe('4');
+    beats.value = '3';
+    beats.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    await waitFor(() => beats.value === '3', 'beats-per-bar selection retained');
+  });
+
+  it('arms the BPM-range toggle and round-trips a Re-detect through a fresh Worker', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, drums: 120 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({
+      type: 'result',
+      frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 },
+      tempo: { bpmValue: 120, phaseSec: 0, confidence: 0.8 },
+    });
+    await waitFor(() => !player.doc.getElementById('notes-tempo').hidden, 'tempo panel visible');
+
+    const rangeToggle = player.doc.getElementById('notes-tempo-range');
+    const armedEvents = [];
+    player.win.addEventListener('sansbass:temporangemode', (e) => armedEvents.push(e.detail.on));
+    expect(rangeToggle.classList.contains('note-tbtn-armed')).toBe(false);
+    rangeToggle.click();
+    await waitFor(() => rangeToggle.classList.contains('note-tbtn-armed'), 'range toggle arms');
+    rangeToggle.click();
+    await waitFor(() => !rangeToggle.classList.contains('note-tbtn-armed'), 'range toggle disarms');
+    expect(armedEvents).toEqual([true, false]);
+
+    const redetect = player.doc.getElementById('notes-tempo-redetect');
+    expect(redetect.disabled).toBe(false);
+    redetect.click();
+    await waitFor(() => redetect.disabled, 'redetect disables while in flight');
+    expect(workers).toHaveLength(2);
+    workers[1].emit({ type: 'tempo', tempo: { bpmValue: 90, phaseSec: 0.05, confidence: 0.6 } });
+    await waitFor(() => !redetect.disabled, 'redetect re-enables');
+    expect(player.doc.getElementById('notes-tempo-bpm').value).toBe('90');
+    expect(player.doc.getElementById('notes-tempo-status').textContent).toBe('90.0 BPM · 60% confidence');
+
+    // A worker error re-enables the control instead of leaving it stuck or crashing.
+    redetect.click();
+    expect(workers).toHaveLength(3);
+    workers[2].fail('boom');
+    await waitFor(() => !redetect.disabled, 'redetect re-enables after failure');
+  });
+
   it('changes exported capo and chords in empty bars without altering notes', async () => {
     const frame = document.createElement('iframe');
     const loaded = new Promise((resolve) => frame.onload = resolve);

@@ -36,30 +36,24 @@ const STEM_RANGE = { vocals: undefined, bass: BASS_RANGE };   // undefined -> th
 
 // ---------------------------------------------------------------- shared: tempo grid
 //
-// Derived from the drums stem; refresh(), the tempo grid state, and its DOM wiring stay
+// Derived from the drums stem; refresh(), the tempo grid state, and its Worker lifecycle stay
 // module-level rather than living inside either channel's closure, because both channels'
-// note lanes draw the SAME beat/bar grid from the SAME detected tempo.
-
-const tempoEl = {
-  panel: document.getElementById('notes-tempo'),
-  on: document.getElementById('notes-tempo-on'),
-  bpm: document.getElementById('notes-tempo-bpm'),
-  half: document.getElementById('notes-tempo-half'),
-  double: document.getElementById('notes-tempo-double'),
-  phase: document.getElementById('notes-tempo-phase'),
-  phaseBack: document.getElementById('notes-tempo-phase-back'),
-  phaseFwd: document.getElementById('notes-tempo-phase-fwd'),
-  beats: document.getElementById('notes-tempo-beats'),
-  rangeToggle: document.getElementById('notes-tempo-range'),
-  redetect: document.getElementById('notes-tempo-redetect'),
-  status: document.getElementById('notes-tempo-status'),
-};
+// note lanes draw the SAME beat/bar grid from the SAME detected tempo. Presentation for the
+// whole `#notes-tempo` panel moved to components/TempoPanel.jsx as of Phase 6b — see
+// docs/react-phase-6b-tempo-chord-controls-plan.md for the ownership audit. This module keeps
+// the state itself and a small subscribe/getSnapshot/commands surface of its own (`tempoGrid`
+// below), the same shape `separation`/`detection` already established, scoped to a different
+// shape of state (module-level and shared, not per-channel) — see that plan's "a new store, not
+// an extension of detection" decision. The capo control and the zoomed pane's chord
+// display/editing stay entirely legacy-owned in app.js — see that plan's "capo and chord stay
+// legacy-owned this slice" decision.
 
 /* The tempo grid. `auto` stays true until the user touches a control (or presses Re-detect,
  * which always re-adopts auto). */
 let tempo = { on: true, auto: true, bpmValue: 120, phaseMs: 0, beatsPerBar: 4, confidence: 0 };
 let tempoRange = null;        // { from, to } in seconds, or null = whole song (the default)
 let tempoRangeArmed = false;  // "Select BPM range" toggle; mirrored to app.js for the drag UI
+let tempoRedetecting = false; // true while a Re-detect tempo request is in flight
 
 const channels = [];   // filled at the bottom of this file; tempo handlers re-derive every channel
 let chordTimeline = [];
@@ -189,8 +183,7 @@ function resetTempo() {
   tempo = { on: true, auto: true, bpmValue: 120, phaseMs: 0, beatsPerBar: 4, confidence: 0 };
   tempoRange = null;
   tempoRangeArmed = false;
-  tempoEl.rangeToggle.classList.remove('note-tbtn-armed');
-  syncTempoControls();
+  publishTempo();
   chordTimeline = [];
   chordEdits = new Map();
   capo = 0;
@@ -208,93 +201,129 @@ function applyTempoResult(result) {
   };
 }
 
-/* Every control but the panel-level checkbox is meaningless without a drums stem, so they go
- * visibly inert rather than silently doing nothing. */
-function syncTempoControls() {
-  // Optional chaining (Phase 5b): this module is now also reachable from
-  // components/DetectionPanel.jsx's import (via PlayerShell.jsx), which app.js's own import
-  // graph resolves BEFORE app.js's body runs and sets window.sansBass — see view()'s comment
-  // above for the same hazard. The very first refreshAll() call at the bottom of this file
-  // reaches here before window.sansBass exists; every later call (post-load) has it.
+const tempoListeners = new Set();
+let lastTempoView = null;
+
+/** Recompute the published tempo-panel view and notify subscribers. Every control but the
+ *  panel-level checkbox is meaningless without a drums stem, so `hasDrums` gates their
+ *  `disabled` presentation rather than them silently doing nothing. */
+function publishTempo() {
+  // Optional chaining (Phase 5b, re-verified Phase 6b): this module is reachable from
+  // components/TempoPanel.jsx's import (via PlayerShell.jsx), which app.js's own import graph
+  // resolves BEFORE app.js's body runs and sets window.sansBass. The very first refreshAll()
+  // call at the bottom of this file reaches here before window.sansBass exists; every later
+  // call (post-load) has it.
   const hasDrums = !!window.sansBass?.stemBuffer?.('drums');
-  for (const c of [tempoEl.bpm, tempoEl.half, tempoEl.double, tempoEl.phase,
-                    tempoEl.phaseBack, tempoEl.phaseFwd, tempoEl.beats,
-                    tempoEl.rangeToggle, tempoEl.redetect]) c.disabled = !hasDrums;
-  tempoEl.on.checked = tempo.on;
-  tempoEl.bpm.value = tempo.bpmValue;
-  tempoEl.phase.value = tempo.phaseMs;
-  tempoEl.beats.value = String(tempo.beatsPerBar);
-  tempoEl.status.textContent = tempo.confidence > 0
-    ? tr('notes.tempoStatus', { bpm: tempo.bpmValue.toFixed(1), pct: Math.round(tempo.confidence * 100) })
-    : tr('notes.tempoStatusNone');
+  lastTempoView = Object.freeze({
+    visible: tempo.confidence > 0,
+    hasDrums,
+    on: tempo.on,
+    bpmValue: tempo.bpmValue,
+    phaseMs: tempo.phaseMs,
+    beatsPerBar: tempo.beatsPerBar,
+    confidence: tempo.confidence,
+    rangeArmed: tempoRangeArmed,
+    redetecting: tempoRedetecting,
+  });
+  for (const listener of [...tempoListeners]) {
+    try { listener(lastTempoView); } catch (error) {
+      console.error('sans_bass: tempo subscriber failed', error);
+    }
+  }
+  return lastTempoView;
 }
 
 function reinterpretAll() { for (const c of channels) c.reinterpret(); }
 
-tempoEl.on.addEventListener('change', () => { tempo.on = tempoEl.on.checked; reinterpretAll(); });
-tempoEl.bpm.addEventListener('input', () => {
-  const v = Number(tempoEl.bpm.value);
-  if (Number.isFinite(v) && v > 0) { tempo.bpmValue = v; tempo.auto = false; }
-  reinterpretAll();
-});
-tempoEl.half.addEventListener('click', () => {
-  tempo.bpmValue = +(tempo.bpmValue / 2).toFixed(1);
-  tempo.auto = false;
-  reinterpretAll();
-});
-tempoEl.double.addEventListener('click', () => {
-  tempo.bpmValue = +(tempo.bpmValue * 2).toFixed(1);
-  tempo.auto = false;
-  reinterpretAll();
-});
-const PHASE_NUDGE_MS = 10;
-tempoEl.phase.addEventListener('input', () => {
-  const v = Number(tempoEl.phase.value);
-  if (Number.isFinite(v)) { tempo.phaseMs = v; tempo.auto = false; }
-  reinterpretAll();
-});
-tempoEl.phaseBack.addEventListener('click', () => {
-  tempo.phaseMs -= PHASE_NUDGE_MS;
-  tempo.auto = false;
-  reinterpretAll();
-});
-tempoEl.phaseFwd.addEventListener('click', () => {
-  tempo.phaseMs += PHASE_NUDGE_MS;
-  tempo.auto = false;
-  reinterpretAll();
-});
-tempoEl.beats.addEventListener('change', () => {
-  tempo.beatsPerBar = Number(tempoEl.beats.value);
-  tempo.auto = false;
-  reinterpretAll();
-});
-tempoEl.rangeToggle.addEventListener('click', () => {
-  tempoRangeArmed = !tempoRangeArmed;
-  tempoEl.rangeToggle.classList.toggle('note-tbtn-armed', tempoRangeArmed);
-  window.dispatchEvent(new CustomEvent('sansbass:temporangemode', { detail: { on: tempoRangeArmed } }));
-});
-tempoEl.redetect.addEventListener('click', () => {
-  const drums = currentTempoRangeChannels();
-  if (!drums) return;
-  const w = new Worker(new URL('./notes.worker.js', import.meta.url), { type: 'module' });
-  const songToken = playerApplication.currentSongToken();
-  tempoEl.redetect.disabled = true;
-  w.onmessage = (e) => {
-    if (!playerApplication.isCurrentSongToken(songToken)) { w.terminate(); return; }
-    w.terminate();
-    if (e.data.type === 'tempo') applyTempoResult(e.data.tempo);
-    else if (e.data.type === 'error') window.sansBass.say('notes.failed', { message: e.data.message }, true);
-    syncTempoControls();
-    reinterpretAll();
-  };
-  w.onerror = (e) => {
-    if (!playerApplication.isCurrentSongToken(songToken)) { w.terminate(); return; }
-    w.terminate();
-    window.sansBass.say('notes.failed', { message: e.message || 'worker error' }, true);
-    syncTempoControls();
-  };
-  w.postMessage({ type: 'tempo', channels: drums.channels, sampleRate: drums.sampleRate });
-});
+export const PHASE_NUDGE_MS = 10;
+
+/** Peer service consumed by components/TempoPanel.jsx (Phase 6b) — the same
+ * subscribe/getSnapshot/commands shape `separation`/`detection` already established, scoped to
+ * tempo-grid state, which has no owner other than this module. No command takes a `stem`
+ * parameter: tempo is shared across both note channels, not per-channel. */
+export const tempoGrid = {
+  subscribe(listener) {
+    if (typeof listener !== 'function') throw new TypeError('subscriber must be a function');
+    tempoListeners.add(listener);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      tempoListeners.delete(listener);
+    };
+  },
+  getSnapshot() {
+    return lastTempoView ?? publishTempo();
+  },
+  commands: {
+    setOn(on) { tempo.on = on; reinterpretAll(); publishTempo(); },
+    setBpm(v) {
+      if (Number.isFinite(v) && v > 0) { tempo.bpmValue = v; tempo.auto = false; }
+      reinterpretAll();
+      publishTempo();
+    },
+    halveBpm() {
+      tempo.bpmValue = +(tempo.bpmValue / 2).toFixed(1);
+      tempo.auto = false;
+      reinterpretAll();
+      publishTempo();
+    },
+    doubleBpm() {
+      tempo.bpmValue = +(tempo.bpmValue * 2).toFixed(1);
+      tempo.auto = false;
+      reinterpretAll();
+      publishTempo();
+    },
+    setPhase(v) {
+      if (Number.isFinite(v)) { tempo.phaseMs = v; tempo.auto = false; }
+      reinterpretAll();
+      publishTempo();
+    },
+    nudgePhase(deltaMs) {
+      tempo.phaseMs += deltaMs;
+      tempo.auto = false;
+      reinterpretAll();
+      publishTempo();
+    },
+    setBeatsPerBar(v) {
+      tempo.beatsPerBar = v;
+      tempo.auto = false;
+      reinterpretAll();
+      publishTempo();
+    },
+    toggleRangeArmed() {
+      tempoRangeArmed = !tempoRangeArmed;
+      window.dispatchEvent(new CustomEvent('sansbass:temporangemode', { detail: { on: tempoRangeArmed } }));
+      publishTempo();
+    },
+    redetect() {
+      const drums = currentTempoRangeChannels();
+      if (!drums) return;
+      const w = new Worker(new URL('./notes.worker.js', import.meta.url), { type: 'module' });
+      const songToken = playerApplication.currentSongToken();
+      tempoRedetecting = true;
+      publishTempo();
+      w.onmessage = (e) => {
+        if (!playerApplication.isCurrentSongToken(songToken)) { w.terminate(); return; }
+        w.terminate();
+        if (e.data.type === 'tempo') applyTempoResult(e.data.tempo);
+        else if (e.data.type === 'error') window.sansBass.say('notes.failed', { message: e.data.message }, true);
+        tempoRedetecting = false;
+        publishTempo();
+        reinterpretAll();
+      };
+      w.onerror = (e) => {
+        if (!playerApplication.isCurrentSongToken(songToken)) { w.terminate(); return; }
+        w.terminate();
+        window.sansBass.say('notes.failed', { message: e.message || 'worker error' }, true);
+        tempoRedetecting = false;
+        publishTempo();
+      };
+      w.postMessage({ type: 'tempo', channels: drums.channels, sampleRate: drums.sampleRate });
+    },
+  },
+};
+
 /* app.js owns the drag surface (the drums stem's own lane) and dispatches this once a
  * selection commits or the caption's Clear button is pressed. Mirrored here because this
  * copy is what persists across export/import and reset — see
@@ -306,8 +335,7 @@ window.addEventListener('sansbass:temporange', (e) => { tempoRange = e.detail; }
  * Find-notes button and each channel's meta row solve for note counts. Confidence resets to
  * 0 on every song load (resetTempo()), so this re-hides on its own without extra wiring. */
 function refreshTempo() {
-  tempoEl.panel.hidden = !(tempo.confidence > 0);
-  syncTempoControls();
+  publishTempo();
   /* app.js shows a calculated/original BPM readout next to the speed percent, and needs to
    * know the current BPM — including a manual override, which is just tempo.bpmValue like
    * any other reading — regardless of which of the many controls changed it. Piggybacking on
@@ -535,7 +563,7 @@ function createNotesChannel(stem, els) {
       // Skip re-applying an auto-detected tempo once the user has manually tuned it
       // (tempo.auto === false) — otherwise running analysis on the second channel silently
       // discards a manual BPM/phase tweak made between the two runs.
-      if (m.tempo && tempo.auto) { applyTempoResult(m.tempo); syncTempoControls(); }
+      if (m.tempo && tempo.auto) { applyTempoResult(m.tempo); publishTempo(); }
       // Not just reinterpret(): a tempo result above belongs to BOTH channels, so the other
       // channel (if it already has frames) must also pick up the fresh grid.
       reinterpretAll();
@@ -986,7 +1014,7 @@ window.addEventListener('sansbass:importedits', async (e) => {
 
   if (plan.hasTempo && plan.tempo) {
     tempo = { ...tempo, ...plan.tempo, auto: false };
-    syncTempoControls();
+    publishTempo();
   }
   if (plan.hasTempoRange) {
     tempoRange = plan.tempoRange || null;

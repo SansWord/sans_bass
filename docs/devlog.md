@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 3d](#react-phase-3d--volume-and-ab-loop-controls-2026-09-06) | React now owns the primary master-volume and A/B presentation controls; implementation is complete at `f2e0b70`, with preview/production acceptance pending. |
 | [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; accepted in production at `20a55bb`. |
 | [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; accepted in production at `99ac653`. |
 | [React phase 3a](#react-phase-3a--player-header-and-loading-2026-09-06) | React now solely owns the shared player header, stable file input, loading/status UI, and cleaned drag overlay; transport groups remain legacy-owned pending later Phase 3 slices. |
@@ -82,6 +83,25 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## React phase 3d — volume and A/B loop controls (2026-09-06)
+
+- [note] The bounded ownership audit and failing-first plan live in
+  `docs/react-phase-3d-volume-loop-controls-plan.md`. `PlayerShell` now authors the primary
+  master-volume control and A/B badge/Clear button through the existing React root. The
+  facade adds only `setMasterVolume` and `clearLoop`; `app.js` retains master gain creation,
+  smoothing, loop timing/refresh, shortcuts, analytics, and drawing.
+- [insight] The dynamically built Overview volume slider does not need to migrate with the
+  primary control. Keeping its lane owner while routing both sliders through one command
+  removes cross-owner DOM writes and preserves two-way synchronization without moving the
+  overview/canvas boundary early.
+- [note] Exact implementation source `f2e0b704e9dd61a712a571cd88ec4ca37d4d2d72`
+  passes 23 focused state tests, the 30-case generated production-entry Chromium harness,
+  all 414 automated tests, the production build, and diff check. The build emits 381,311
+  JavaScript bytes, +2,268 (+0.60%) from Phase 3c. Local exact-SHA root/nested, locale,
+  real-song, genuine keyboard, focus, ownership, clean-console, desktop, and simulated
+  narrow checks pass. Preview/production deployment and rollback-anchor documentation remain
+  pending, so Phase 3e has not begun and Phase 3 is not complete.
 
 ## React phase 3c — primary seek controls (2026-09-06)
 

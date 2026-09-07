@@ -25,6 +25,12 @@ function dispatchPrimarySeek(player, fromFraction, toFraction = fromFraction) {
   dispatch('pointerup', toFraction);
 }
 
+function setRangeValue(player, input, value) {
+  Object.getOwnPropertyDescriptor(player.win.HTMLInputElement.prototype, 'value')
+    .set.call(input, String(value));
+  input.dispatchEvent(new player.win.Event('input', { bubbles: true }));
+}
+
 describe('production player integration', () => {
   it('keeps React-owned loading UI stable across locale and application publications', async () => {
     player = await openPlayer();
@@ -281,6 +287,225 @@ describe('production player integration', () => {
     await waitFor(() => audio.starts.length === 4, 'second remounted playback');
     player.doc.getElementById('play').click();
     expect(events.filter((event) => event.path === 'play')).toHaveLength(1);
+  });
+
+  it('renders one React-owned accessible master volume and keeps both sliders on one smoothed gain value', async () => {
+    player = await openPlayer();
+    const audio = instrumentAudio(player.win);
+    await loadZip(player, { vocals: sine(440, 1), bass: sine(110, 1) }, { folder: 'Volume' });
+    const application = player.win.sansBass.application;
+    const primary = player.doc.getElementById('master-vol');
+    const overview = player.doc.querySelector('.overview .lane-vol input');
+
+    expect(player.doc.querySelectorAll('[data-react-volume-controls]')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#master-vol')).toHaveLength(1);
+    expect([primary.min, primary.max, primary.step, primary.value])
+      .toEqual(['0', '1.5', '0.01', '1']);
+    expect(primary.getAttribute('aria-label')).toBe('Volume');
+    expect(primary.getAttribute('aria-valuetext')).toBe('100%');
+    expect(application.getSnapshot().masterVolume).toBe(1);
+    expect(overview.value).toBe('1');
+
+    audio.ramps.length = 0;
+    setRangeValue(player, primary, 0.37);
+    await waitFor(() => application.getSnapshot().masterVolume === 0.37,
+      'fractional primary master volume');
+    expect(overview.value).toBe('0.37');
+    expect(audio.ramps.map(({ value, timeConstant }) => [value, timeConstant]))
+      .toEqual([[0.37, 0.01]]);
+    expect(primary.getAttribute('aria-valuetext')).toBe('37%');
+
+    audio.ramps.length = 0;
+    setRangeValue(player, overview, 0.62);
+    await waitFor(() => application.getSnapshot().masterVolume === 0.62,
+      'overview-to-primary master volume');
+    expect(primary.value).toBe('0.62');
+    expect(audio.ramps.map(({ value, timeConstant }) => [value, timeConstant]))
+      .toEqual([[0.62, 0.01]]);
+
+    application.commands.setMasterVolume(-2);
+    await waitFor(() => primary.value === '0', 'minimum master volume');
+    expect(overview.value).toBe('0');
+    application.commands.setMasterVolume(2);
+    await waitFor(() => primary.value === '1.5', 'maximum master volume');
+    expect(overview.value).toBe('1.5');
+    const beforeInvalid = application.getSnapshot().masterVolume;
+    expect(() => application.commands.setMasterVolume(Number.NaN)).toThrow(/finite number/);
+    expect(application.getSnapshot().masterVolume).toBe(beforeInvalid);
+
+    application.commands.setMasterVolume(0.4);
+    audio.ramps.length = 0;
+    const startsBeforePlay = audio.starts.length;
+    await application.commands.play();
+    const startsAfterPlay = audio.starts.length;
+    expect(startsAfterPlay).toBe(startsBeforePlay + 2);
+    setRangeValue(player, primary, 0.55);
+    await waitFor(() => application.getSnapshot().masterVolume === 0.55,
+      'playing master volume');
+    expect(audio.starts).toHaveLength(startsAfterPlay);
+    application.commands.pause();
+    setRangeValue(player, primary, 0.45);
+    await waitFor(() => application.getSnapshot().masterVolume === 0.45,
+      'paused master volume');
+    expect(audio.starts).toHaveLength(startsAfterPlay);
+  });
+
+  it('keeps volume state, focus, and one direct listener across locale, routing, remount, and song replacement', async () => {
+    player = await openPlayer();
+    const audio = instrumentAudio(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220, bass: 110 }, { folder: 'Volume lifecycle' });
+    const application = player.win.sansBass.application;
+    application.commands.setMasterVolume(0.42);
+    const primary = player.doc.getElementById('master-vol');
+    const position = application.getSnapshot().transport.position;
+    primary.focus();
+    primary.dispatchEvent(new player.win.KeyboardEvent('keydown', {
+      key: 'a', bubbles: true, cancelable: true,
+    }));
+    expect(application.getSnapshot().transport).toMatchObject({ position, loopA: null });
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => primary.getAttribute('aria-label') === '音量', 'translated volume label');
+    expect(primary.getAttribute('aria-valuetext')).toBe('42%');
+    expect(application.getSnapshot().masterVolume).toBe(0.42);
+
+    player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-name').click();
+    expect(application.getSnapshot().masterVolume).toBe(0.42);
+    expect(primary.value).toBe('0.42');
+
+    player.win.sansBass.playerShell.unmount();
+    expect(player.doc.getElementById('master-vol')).toBeNull();
+    player.win.sansBass.playerShell.remount();
+    player.win.sansBass.playerShell.remount();
+    const remounted = player.doc.getElementById('master-vol');
+    expect(player.doc.querySelectorAll('[data-react-volume-controls]')).toHaveLength(1);
+    expect(remounted.value).toBe('0.42');
+    audio.ramps.length = 0;
+    setRangeValue(player, remounted, 0.51);
+    await waitFor(() => application.getSnapshot().masterVolume === 0.51,
+      'single remounted volume listener');
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0.51]);
+
+    await loadZip(player, { vocals: 440, piano: 330 }, { folder: 'Volume replacement' });
+    expect(application.getSnapshot().masterVolume).toBe(0.51);
+    expect(player.doc.getElementById('master-vol').value).toBe('0.51');
+    expect(player.doc.querySelector('.overview .lane-vol input').value).toBe('0.51');
+  });
+
+  it('renders partial and active loops in React while preserving keyboard timing, refresh, clear, and analytics', async () => {
+    player = await openPlayer();
+    const events = [];
+    player.win.goatcounter = { count: (event) => events.push(event) };
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const audio = instrumentAudio(player.win);
+    await loadZip(player, { vocals: sine(440, 2), bass: sine(110, 2) }, { folder: 'Loop' });
+    const application = player.win.sansBass.application;
+    const badge = player.doc.getElementById('loop-badge');
+    const clear = player.doc.getElementById('loop-clear');
+
+    expect(player.doc.querySelectorAll('[data-react-loop-controls]')).toHaveLength(1);
+    expect(player.doc.querySelectorAll('#loop-badge')).toHaveLength(1);
+    expect(player.win.getComputedStyle(badge).display).toBe('none');
+
+    application.commands.seek(0.4);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: 0.4, loopB: null });
+    await waitFor(() => player.win.getComputedStyle(badge).display !== 'none', 'A-only loop badge');
+    expect(player.doc.getElementById('loop-text').textContent).toContain('A set');
+    expect(badge.classList.contains('armed')).toBe(false);
+
+    application.commands.seek(0.45);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: 0.4, loopB: null });
+    await waitFor(() => player.doc.getElementById('status').textContent.includes('less than'),
+      'too-short loop status');
+
+    clear.click();
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: null, loopB: null });
+    expect(player.doc.activeElement).not.toBe(clear);
+    application.commands.seek(1.2);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    await waitFor(() => player.doc.getElementById('loop-text').textContent.includes('B set'),
+      'B-only loop badge');
+    application.commands.seek(0.8);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: 0.8, loopB: 1.2 });
+    await waitFor(() => badge.classList.contains('armed'), 'active loop badge');
+    expect(player.doc.getElementById('loop-text').textContent).toContain('A–B 0:00 → 0:01');
+
+    application.commands.seek(0.9);
+    await application.commands.play();
+    const startsBeforeRefresh = audio.starts.length;
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    await waitFor(() => audio.starts.length === startsBeforeRefresh + 2, 'playing loop refresh');
+    expect(audio.sources.slice(-2).every((source) => source.loop)).toBe(true);
+    clear.focus();
+    clear.click();
+    await waitFor(() => audio.starts.length === startsBeforeRefresh + 4, 'playing loop clear refresh');
+    expect(audio.sources.slice(-2).every((source) => !source.loop)).toBe(true);
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: null, loopB: null });
+    expect(player.win.getComputedStyle(badge).display).toBe('none');
+
+    application.commands.pause();
+    application.commands.seek(0.2);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    application.commands.seek(0.6);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: null, loopB: null });
+    application.commands.seek(0.3);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    application.commands.seek(0.7);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: null, loopB: null });
+    expect(events.filter((event) => /^loop(?:-|$)/.test(event.path)).map((event) => event.path))
+      .toEqual(['loop', 'loop-2', 'loop-4', 'loop-8']);
+  });
+
+  it('preserves loop locale/remount/replacement behavior and leaves mode, all-toggle, and lane volume legacy-owned', async () => {
+    player = await openPlayer();
+    const audio = instrumentAudio(player.win);
+    await loadZip(player, { vocals: sine(440, 2), guitar: sine(220, 2), bass: sine(110, 2) },
+      { folder: 'Adjacent controls' });
+    const application = player.win.sansBass.application;
+    application.commands.seek(0.4);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    application.commands.seek(0.8);
+    player.doc.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    const loop = { loopA: 0.4, loopB: 0.8 };
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => player.doc.getElementById('loop-text').textContent.includes('秒'),
+      'translated active loop');
+    expect(application.getSnapshot().transport).toMatchObject(loop);
+    player.win.sansBass.playerShell.unmount();
+    expect(player.doc.getElementById('loop-badge')).toBeNull();
+    expect(application.getSnapshot().transport).toMatchObject(loop);
+    player.win.sansBass.playerShell.remount();
+    player.win.sansBass.playerShell.remount();
+    expect(player.doc.querySelectorAll('[data-react-loop-controls]')).toHaveLength(1);
+    expect(application.getSnapshot().transport).toMatchObject(loop);
+
+    expect(player.doc.querySelectorAll('[data-react-mode-routing-controls]')).toHaveLength(0);
+    const mode = player.doc.getElementById('mode');
+    const all = player.doc.getElementById('all-toggle');
+    expect(mode.value).toBe('mix');
+    expect(all.textContent).toBe('全部靜音');
+    audio.ramps.length = 0;
+    mode.value = 'bass';
+    mode.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    expect(mode.value).toBe('bass');
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 1]);
+    const laneVolume = player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-vol input');
+    audio.ramps.length = 0;
+    setRangeValue(player, laneVolume, 0.33);
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 1]);
+    expect(application.getSnapshot().masterVolume).toBe(1);
+
+    await loadZip(player, { drums: 120, piano: 330 }, { folder: 'Loop replacement' });
+    expect(application.getSnapshot().transport).toMatchObject({ loopA: null, loopB: null });
+    expect(player.win.getComputedStyle(player.doc.getElementById('loop-badge')).display).toBe('none');
   });
 
   it('renders one React-owned accessible seek control and seeks by pointer and focused keyboard at both bounds', async () => {

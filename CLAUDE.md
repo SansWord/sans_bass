@@ -26,7 +26,9 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   with the React-owned player header/loading/status/drop shell. Phase 3b adds the primary
   play/pause and speed controls to that same shell/root. Phase 3c adds the primary full-song
   seek canvas, accessible seek value, and master time/rate/BPM presentation while retaining
-  `app.js` as its imperative waveform painter. Phase 2's DOM-independent
+  `app.js` as its imperative waveform painter. Phase 3d adds the primary master-volume
+  control and A/B badge/Clear presentation while `app.js` retains gain smoothing and loop
+  timing. Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -119,17 +121,19 @@ The player and demo list share `styles.css`, the translation dictionary, and
 `components/SiteHeader.jsx`. React solely owns both pages' `#site-header` descendants.
 `components/PlayerShell.jsx` additionally owns the one player file input, empty/loading
 affordance, status/error presentation, global drag overlay, primary play/pause button, and
-playback-speed and primary seek/time controls through one root with explicit portal hosts.
+playback-speed, primary seek/time, master-volume, and A/B presentation controls through one
+root with explicit portal hosts.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
 legacy dictionary traversal cannot overwrite them. Component-specific styles should be
 colocated when needed; these components reuse the established shared classes in `styles.css`.
 
-`app.js` remains authoritative for decoded tracks, song/transport/routing state, audio, and
-all legacy player regions after loading. It publishes stable status keys and a deduplicated
-transport-frame projection rather than writing the React-owned status or transport text and
-accessibility attributes. It still paints pixels and intrinsic dimensions on the React-owned
+`app.js` remains authoritative for decoded tracks, song/transport/routing state, audio,
+master gain smoothing, loop timing, and all legacy player regions after loading. It publishes
+stable status keys, master volume, and a deduplicated transport-frame projection rather than
+writing the React-owned status, volume, loop, or transport presentation. It still paints
+pixels and intrinsic dimensions on the React-owned
 primary canvas through an explicit lifecycle attachment. `sansbass:transport` remains a temporary exact-clock adapter for the
 two notes sonifiers. The lowercase `window.sansBass` bridge remains only for named
 notes/separation service operations and browser-harness application/shell

@@ -53,16 +53,9 @@ init();
         <select id="mode"></select>
       </label>
       <button id="all-toggle" class="btn ghost" type="button" data-i18n="btn.unmuteAll">Unmute all</button>
-      <label class="ctl">
-        <span data-i18n="ctl.volume">Volume</span>
-        <input type="range" id="master-vol" min="0" max="1.5" step="0.01" value="1">
-      </label>
+      <div id="master-volume-ui-root" class="react-portal-host"></div>
       <div id="playback-speed-ui-root" class="react-portal-host"></div>
-      <span id="loop-badge" class="loop-badge" hidden>
-        <span id="loop-text"></span>
-        <button id="loop-clear" class="mini" type="button"
-                data-i18n="btn.clear" data-i18n-attr="title:btn.clearLoopTip">Clear</button>
-      </span>
+      <div id="loop-controls-ui-root" class="react-portal-host"></div>
       <!-- Two spans, not one string: the keyboard half is meaningless on a touch screen and
            is hidden there, while the click/tap hint is exactly what a first-time user on a
            phone needs. See the .hint rules in styles.css. -->

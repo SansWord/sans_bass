@@ -43,12 +43,19 @@ export function instrumentAudio(win) {
   const ramps = [];
   const starts = [];
   const stops = [];
+  const sources = [];
   const originalRamp = win.AudioParam.prototype.setTargetAtTime;
+  const originalCreateSource = win.AudioContext.prototype.createBufferSource;
   const originalStart = win.AudioBufferSourceNode.prototype.start;
   const originalStop = win.AudioBufferSourceNode.prototype.stop;
   win.AudioParam.prototype.setTargetAtTime = function (value, startTime, timeConstant) {
     ramps.push({ value, startTime, timeConstant, param: this });
     return originalRamp.call(this, value, startTime, timeConstant);
+  };
+  win.AudioContext.prototype.createBufferSource = function (...args) {
+    const source = originalCreateSource.apply(this, args);
+    sources.push(source);
+    return source;
   };
   win.AudioBufferSourceNode.prototype.start = function (...args) {
     starts.push(args);
@@ -58,7 +65,7 @@ export function instrumentAudio(win) {
     stops.push(args);
     return originalStop.apply(this, args);
   };
-  return { ramps, starts, stops };
+  return { ramps, sources, starts, stops };
 }
 
 export async function loadZip(player, stems, options = {}) {

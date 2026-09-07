@@ -2,7 +2,8 @@
 
 ## Phase 4a — React standard stem lane components
 
-Status: implementation complete, awaiting PR preview/production acceptance. Evidence
+Status: PR preview verified at synthetic merge `5cff888`, awaiting production acceptance.
+Evidence
 collected 2026-09-07 America/Los_Angeles. Branch `feat/react-phase-4a-stem-lanes`; starting
 source `7c968adad1e087346a677777bc718c0af05aa820`; plan commit
 `ef324cad8a36d11a92571a1cc3f88a923dbde119`; implementation source
@@ -152,9 +153,29 @@ deferred to the PR-preview/production tiers, where it has in every prior phase.
 | Auditory | Not claimed; genuine keyboard/gain-ramp evidence was collected, not subjective listening. |
 | Real song | Not yet run against `examples/nov_you.zip` in this evidence pass; deferred to the PR-preview/production canary alongside the real deployment SHA check. |
 
-PR preview and production acceptance evidence, the affected-boundary browser check against
-the exact synthetic-merge SHA, the production delivery canary, and the exact production SHA
-are recorded below once each step completes.
+### PR-preview deployment evidence
+
+[PR #79](https://github.com/SansWord/sans_bass/pull/79)'s `test` (51s) and `deploy` (18s)
+checks passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-79/`
+displayed exact synthetic merge `5cff888473ce58315a3c7ecd4d2aaaf1bee9a83a` (`5cff888`);
+`/pr-79/demos/` displayed the same short SHA.
+
+A generated 3-second four-stem (vocals/guitar/bass/drums-click) ZIP fixture loaded through the
+real `#file-input`. The page held exactly 4 React-owned lanes (`#standard-lanes-root > .lane`)
+and 2 ribbon lanes. Clicking the Vocals `.lane-name` button muted it, moved the mode dropdown
+to `custom`, updated the all-toggle label, and returned focus to `<body>` — the first attempt
+that instead activated the pre-existing, visually-similar zoom-pane speaker icon (a different,
+already-legacy control with the same mute effect but no blur-after-click) is recorded as a
+verification-methodology note, not a defect: re-targeting `#standard-lanes-root .lane-name`
+directly confirmed the React button's own focus restoration. Dragging that lane's own volume
+input to 33% updated `application.getSnapshot().song.tracks[0].volume` while `muted` returned
+to `false` independently. The only console entries at either route were from an unrelated
+browser extension (MetaMask-style `chrome-extension://` origin); the first-party console was
+empty.
+
+### Production acceptance evidence
+
+Recorded after merge and the production delivery canary.
 
 ## Phase 3e — React mode and routing controls
 

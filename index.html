@@ -23,7 +23,7 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/main-DNww3y-U.js"></script>
+  <script type="module" crossorigin src="./assets/main-BYrVRNAG.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/SiteHeader-2gf44vNM.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/sonify-Ck3IZfdu.js">
@@ -62,22 +62,9 @@
       </p>
     </div>
 
-    <section id="sep" class="sep" hidden>
-      <!-- Shown instead of the controls on a phone or tablet, where the first
-           session.run() kills the tab. See lib/platform.js and spike/RESULTS.md.
-           The literal English matches DICT.en exactly, like every other string here —
-           it is the no-JS fallback and the readable source of truth. -->
-      <p id="sep-handheld" class="dim" hidden data-i18n="sep.handheld">Separating stems needs a computer. Separate there, then load the .zip here.</p>
-      <div class="sep-row">
-        <button id="sep-go" class="btn" data-i18n="sep.go">Separate into 6 stems</button>
-        <span id="sep-status" class="dim"></span>
-      </div>
-      <div id="sep-bar" class="sep-bar" hidden><div id="sep-fill"></div></div>
-      <div class="sep-row">
-        <button id="sep-save" class="btn ghost" hidden data-i18n="sep.save">Save stems (.zip)</button>
-        <button id="sep-cancel" class="btn ghost" hidden data-i18n="sep.cancel">Cancel</button>
-      </div>
-    </section>
+    <!-- React-owned (Phase 5a): availability/gating, including the handheld explanation,
+         start/progress/cancel/error/save presentation. See components/SeparationPanel.jsx. -->
+    <div id="separation-ui-root" class="react-portal-host"></div>
 
     <!-- Detection is button-triggered, never automatic: the first run is ~7 s of CPU on a
          4-minute track, and unbidden CPU that size is a surprise rather than a convenience.

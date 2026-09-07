@@ -26,6 +26,7 @@ const LOOKAHEAD = 0.06; // seconds of scheduling headroom before playback starts
 
 let audio = null;          // AudioContext (created on first user gesture)
 let master = null;         // master GainNode
+let masterVolume = 1;      // 0-1.5; independent of every routing and lane-mute value
 let tracks = [];           // loaded tracks
 const RIBBON_H_KEY = 'sans_bass.ribbonHeight';
 const RIBBON_H_MIN = 96;
@@ -71,8 +72,8 @@ let zoomSeconds = readZoomSeconds();
 let zoomEl = null;         // { lane, canvas, out }
 let overviewEl = null;     // { lane, canvas } — the full-song "Overview" lane docked above the
                             // zoomed pane; see renderOverview and overviewStems below
-let overviewVolEl = null;  // its volume slider — mirrors el.masterVol both ways, see its build
-                            // site and the el.masterVol 'input' listener
+let overviewVolEl = null;  // legacy overview slider mirrors the React primary control through
+                            // the authoritative application command in both directions
 let zoomPeaksByStem = {};  // stem id -> hi-res envelope, computed lazily, once per song
 let zoomCenter = 0;        // seconds; follows the playhead while playing
 let zoomHeight = readStoredNumber(ZOOM_H_KEY, ZOOM_H_DEFAULT, clampRibbonH);
@@ -148,8 +149,7 @@ let primarySeekCanvas = null; // React-owned DOM; app.js retains only imperative
 const $ = (id) => document.getElementById(id);
 const el = {
   player: $('player'), title: $('title'), mode: $('mode'),
-  masterVol: $('master-vol'), lanes: $('lanes'),
-  loopBadge: $('loop-badge'), loopText: $('loop-text'), loopClear: $('loop-clear'),
+  lanes: $('lanes'),
   allToggle: $('all-toggle'),
   buildSha: $('build-sha'),
 };
@@ -201,7 +201,7 @@ function ensureAudio() {
     // audio and produce quietly wrong stems with no error anywhere.
     audio = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
     master = audio.createGain();
-    master.gain.value = parseFloat(el.masterVol.value);
+    master.gain.value = masterVolume;
     master.connect(audio.destination);
     // Each stem's synthesised-notes gain node is created per lane, in buildUI() — no lane
     // exists yet the first time ensureAudio() runs, before any song is loaded.
@@ -328,7 +328,6 @@ async function loadFiles(fileList, fallbackName, source, token) {
   ensureAudio();
   stop(true);
   ({ a: loopA, b: loopB } = SansLoopState.clearLoop());
-  renderLoopBadge();
   ratePercent = SansTransportMath.resetRatePercent();
   tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
@@ -510,7 +509,6 @@ function loadSeparated(original, stems, token) {
   stop(false);
 
   ({ a: loopA, b: loopB } = SansLoopState.clearLoop());
-  renderLoopBadge();
   ratePercent = SansTransportMath.resetRatePercent();
   tempoInfo = null;   // belongs to the previous song; notes.js's own poll re-broadcasts fresh
   syncSpeedUI();
@@ -1227,15 +1225,14 @@ function buildUI(title) {
 
     /* No per-stem gain to control here — it's a combination, not one channel — so this
      * slider mirrors the master volume instead, the one thing that actually applies to the
-     * whole lane. Kept in sync both ways with el.masterVol, see that input listener. */
+     * whole lane. It uses the same application command as the React primary control. */
     const oVol = document.createElement('div');
     oVol.className = 'lane-vol';
     const oSlider = document.createElement('input');
-    Object.assign(oSlider, { type: 'range', min: 0, max: 1.5, step: 0.01, value: el.masterVol.value });
+    Object.assign(oSlider, { type: 'range', min: 0, max: 1.5, step: 0.01, value: masterVolume });
     oSlider.title = tr('ctl.volume');
     oSlider.addEventListener('input', () => {
-      el.masterVol.value = oSlider.value;
-      el.masterVol.dispatchEvent(new Event('input'));
+      ignoreReportedCommandError(playerApplication.commands.setMasterVolume(parseFloat(oSlider.value)));
     });
     oVol.appendChild(oSlider);
     overviewVolEl = oSlider;
@@ -2425,24 +2422,8 @@ function clearLoop() {
 
 /** Rebuild the running sources so new loop bounds take effect immediately. */
 function refreshLoop() {
-  renderLoopBadge();
   if (playing) { stop(true); play(); } else { draw(); }
   playerApplication.publish();
-}
-
-function renderLoopBadge() {
-  const badge = el.loopBadge;
-  if (!badge) return;
-  if (loopA === null && loopB === null) { badge.hidden = true; return; }
-  badge.hidden = false;
-  if (loopOn()) {
-    el.loopText.textContent = tr('loop.range',
-      { a: fmt(loopA), b: fmt(loopB), len: (loopB - loopA).toFixed(1) });
-    badge.classList.add('armed');
-  } else {
-    el.loopText.textContent = tr(loopA !== null ? 'loop.aSet' : 'loop.bSet');
-    badge.classList.remove('armed');
-  }
 }
 
 function syncSpeedUI() {
@@ -2690,7 +2671,6 @@ function retranslate() {
   if (editIoExportBtnEl) editIoExportBtnEl.textContent = tr('notes.export');
   if (editIoImportBtnEl) editIoImportBtnEl.textContent = tr('notes.import');
   syncTempoRangeHint();
-  renderLoopBadge();
   // #all-toggle carries data-i18n="btn.unmuteAll", so setLocale's apply() has just reset
   // its text — clobbering "Restore previous". This runs after, and must keep doing so:
   // setLocale applies the markup first and dispatches the event second, in that order.
@@ -2741,6 +2721,14 @@ function toggleTrack(t) {
   if (t.stem) gcOnce(`toggle-${t.stem}`);   // stem ids, never labels — never a filename
   const index = tracks.indexOf(t);
   syncRoutingState(route(routingState, { type: 'toggle', key: laneKey(t, index) }));
+}
+
+/** Apply one authoritative master-volume value without changing any routing state. */
+function setMasterVolume(value) {
+  masterVolume = Math.max(0, Math.min(1.5, value));
+  ensureAudio();
+  master.gain.setTargetAtTime(masterVolume, audio.currentTime, 0.01);
+  if (overviewVolEl) overviewVolEl.value = String(masterVolume);
 }
 
 // ---------------------------------------------------------------- input
@@ -3382,7 +3370,6 @@ function attachSeek(canvas, opts) {
   canvas.addEventListener('pointercancel', () => { tempoRangeDrag = null; rangeDrag = null; scrubbing = false; });
 }
 
-on(el.loopClear, 'click', clearLoop);
 on(el.allToggle, 'click', toggleAllTracks);
 /* Hand focus back after a choice. The global keydown handler ignores events aimed at a
  * <select> — it has to, or ArrowLeft/Right would seek instead of moving the selection —
@@ -3418,11 +3405,6 @@ window.addEventListener('sansbass:tempo', (e) => {
   if (changed) draw();
 });
 gcOnce(`lang-${SansI18n.getLocale()}`);
-on(el.masterVol, 'input', () => {
-  ensureAudio();
-  master.gain.setTargetAtTime(parseFloat(el.masterVol.value), audio.currentTime, 0.01);
-  if (overviewVolEl) overviewVolEl.value = el.masterVol.value;
-});
 
 document.addEventListener('keydown', (e) => {
   // This exclusion is also what keeps syncNoteFields' clobber-avoidance sound: it's why a
@@ -3527,6 +3509,7 @@ function applicationSnapshot() {
   return {
     song,
     loading,
+    masterVolume,
     transport: applicationTransportSnapshot(),
     status: lastSay ? { key: lastSay.key, params: lastSay.params || null, error: !!lastSay.isErr } : null,
   };
@@ -3544,6 +3527,8 @@ playerApplication.initialize({
     seek,
     previewSeek,
     setPlaybackRate: (rate) => setRate(rate * 100),
+    setMasterVolume,
+    clearLoop,
     replaceSong: loadSeparated,
     rejectLoad: (reason, details) => {
       if (reason === 'folder') {

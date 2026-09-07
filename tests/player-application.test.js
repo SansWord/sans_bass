@@ -5,6 +5,7 @@ function adapter(overrides = {}) {
   const state = {
     song: null,
     loading: false,
+    masterVolume: 1,
     transport: {
       playing: false, position: 0, duration: 0, playbackRate: 1, loopA: null, loopB: null,
       tempoBpm: null,
@@ -23,6 +24,8 @@ function adapter(overrides = {}) {
       seek: vi.fn(),
       previewSeek: vi.fn(),
       setPlaybackRate: vi.fn(),
+      setMasterVolume: vi.fn(),
+      clearLoop: vi.fn(),
       replaceSong: vi.fn(),
       ...overrides.commands,
     },
@@ -48,6 +51,7 @@ describe('player application command/subscription facade', () => {
       lifecycle: 'ready',
       song: null,
       loading: false,
+      masterVolume: 1,
       transport: { playing: false, position: 0, duration: 0, playbackRate: 1 },
       commandError: null,
     });
@@ -90,6 +94,8 @@ describe('player application command/subscription facade', () => {
     application.commands.seek(2.5);
     application.commands.previewSeek(2.75);
     application.commands.setPlaybackRate(0.95);
+    application.commands.setMasterVolume(0.375);
+    application.commands.clearLoop();
     application.commands.replaceSong({ name: 'song.wav' }, { vocals: {} });
 
     expect(owner.commands.load).toHaveBeenCalledWith(file, 1);
@@ -100,11 +106,14 @@ describe('player application command/subscription facade', () => {
     expect(owner.commands.seek).toHaveBeenCalledWith(2.5);
     expect(owner.commands.previewSeek).toHaveBeenCalledWith(2.75);
     expect(owner.commands.setPlaybackRate).toHaveBeenCalledWith(0.95);
+    expect(owner.commands.setMasterVolume).toHaveBeenCalledWith(0.375);
+    expect(owner.commands.clearLoop).toHaveBeenCalledOnce();
     expect(owner.commands.replaceSong).toHaveBeenCalledWith(
       { name: 'song.wav' }, { vocals: {} }, 2,
     );
     expect(application.currentSongToken()).toBe(2);
     expect(() => application.commands.rejectLoad('mystery')).toThrow(PlayerCommandError);
+    expect(() => application.commands.setMasterVolume(Number.NaN)).toThrow(PlayerCommandError);
   });
 
   it('publishes a deduplicated transport clock and cleans its subscription independently', () => {

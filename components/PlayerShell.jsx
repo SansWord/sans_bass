@@ -76,6 +76,45 @@ function PlaybackSpeed({ application, transport }) {
   </label>;
 }
 
+function MasterVolume({ application, volume }) {
+  const percent = Math.round(volume * 100);
+  const onInput = (event) => {
+    ignoreReportedError(application.commands.setMasterVolume(Number(event.currentTarget.value)));
+  };
+  return <label className="ctl" data-react-volume-controls>
+    <span>{t('ctl.volume')}</span>
+    <input type="range" id="master-vol" min="0" max="1.5" step="0.01"
+      value={volume} aria-label={t('ctl.volume')} aria-valuetext={`${percent}%`}
+      onChange={onInput} />
+  </label>;
+}
+
+function LoopControls({ application, transport }) {
+  const { loopA, loopB } = transport;
+  const visible = loopA !== null || loopB !== null;
+  const active = loopA !== null && loopB !== null;
+  let text = '';
+  if (active) {
+    text = t('loop.range', {
+      a: formatClockTime(loopA),
+      b: formatClockTime(loopB),
+      len: (loopB - loopA).toFixed(1),
+    });
+  } else if (visible) {
+    text = t(loopA !== null ? 'loop.aSet' : 'loop.bSet');
+  }
+  const onClear = (event) => {
+    ignoreReportedError(application.commands.clearLoop());
+    event.currentTarget.blur();
+  };
+  return <span id="loop-badge" className={`loop-badge${active ? ' armed' : ''}`}
+    hidden={!visible} data-react-loop-controls>
+    <span id="loop-text">{text}</span>
+    <button id="loop-clear" className="mini" type="button"
+      title={t('btn.clearLoopTip')} onClick={onClear}>{t('btn.clear')}</button>
+  </span>;
+}
+
 function PrimarySeekControls({ application, hosts }) {
   const transport = useSyncExternalStore(
     application.subscribeTransport,
@@ -222,6 +261,10 @@ function PlayerShell({ application, hosts }) {
       transport={snapshot.transport} />, hosts.playbackButton)}
     {createPortal(<PlaybackSpeed application={application}
       transport={snapshot.transport} />, hosts.playbackSpeed)}
+    {createPortal(<MasterVolume application={application}
+      volume={snapshot.masterVolume} />, hosts.masterVolume)}
+    {createPortal(<LoopControls application={application}
+      transport={snapshot.transport} />, hosts.loopControls)}
     <PrimarySeekControls application={application} hosts={hosts} />
   </>;
 }
@@ -236,6 +279,8 @@ export function mountPlayerShell(application, doc = document) {
     overlay: doc.getElementById('drag-overlay-root'),
     playbackButton: doc.getElementById('playback-button-ui-root'),
     playbackSpeed: doc.getElementById('playback-speed-ui-root'),
+    masterVolume: doc.getElementById('master-volume-ui-root'),
+    loopControls: doc.getElementById('loop-controls-ui-root'),
     primarySeek: doc.getElementById('primary-seek-ui-root'),
     primaryTime: doc.getElementById('primary-time-ui-root'),
   };

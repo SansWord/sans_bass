@@ -275,7 +275,7 @@ release integrity.
 | Analytics | `A6` | `ANALYTICS-001` | Events do not reach GoatCounter from localhost. | merge | — | `ANALYTICS-001` |
 | Analytics | `A7` | `ANALYTICS-001` | `separate-handheld-blocked` fires **once** per visitor shown the message, never once per poll. | merge | — | `ANALYTICS-001` |
 
-## React migration boundary coverage (phases 0–3c)
+## React migration boundary coverage (phases 0–3d)
 
 The historical inventory above remains unchanged. Phase 0's legacy-header jsdom test added
 LANG-001 and demo-listing evidence for button state, input identity, navigation, and demo
@@ -333,3 +333,15 @@ after repeated remounts. `tests/player-application.test.js` separately proves de
 transport subscriptions and canvas attachment cleanup, while `tests/time.test.js` owns the
 shared deterministic clock formatting. Deployed trusted input, real-song, physical handheld,
 Worker/model, subjective visual, background, and auditory evidence remains separate.
+
+The Phase 3d additions cover one React-authored primary master-volume control and A/B loop
+badge/Clear control through the production entry. Generated WAV/ZIP cases prove the default,
+minimum, maximum, fractional, invalid, and bounded volume values; 0.01-second master-gain
+smoothing while paused and playing; overview mirroring in both directions; independence from
+lane routing; bilingual accessible value/labels; focused-input shortcut exclusion; shell
+remount and song replacement; one listener/gain application; A-only, B-only, reversed,
+too-short, replaced, cleared, C, and Escape loop behavior; live source refresh and native
+loop flags; and loop analytics buckets without duplicated listeners. Existing loop-state,
+transport/rate, sonifier, malformed-input, storage, fake-Worker, and routing tests remain the
+authority for their unchanged layers. Deployed real-song, physical-handheld, subjective
+visual, background, and auditory evidence remains separate.

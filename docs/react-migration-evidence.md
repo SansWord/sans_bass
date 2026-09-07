@@ -1,5 +1,119 @@
 # React migration evidence
 
+## Phase 3d — React volume and A/B loop controls
+
+Status: PR preview verified; production acceptance pending.
+Evidence collected 2026-09-06 America/Los_Angeles. Branch
+`feat/react-phase-3d-volume-loop-controls`; starting source
+`61f72522e2e6b311ed0b6b9acf58f83e043e50fc`. Previous accepted boundary:
+`20a55bbf61984b7a49771f5e367bb33729c879ad`. Implementation source:
+`f2e0b704e9dd61a712a571cd88ec4ca37d4d2d72`. The ignored
+`.codex/rules/default.rules` remains outside this slice; no pre-existing `demo.md` was present.
+
+### Ownership transferred and retained
+
+The shared two-slice audit and bounded Phase 3d plan are recorded in
+[react-phase-3d-volume-loop-controls-plan.md](react-phase-3d-volume-loop-controls-plan.md).
+`components/PlayerShell.jsx` now authors the one primary master-volume label/slider,
+bilingual accessible value, input listener, A/B badge, translated partial/active state, and
+Clear button through two portal hosts in the existing React root. The application facade adds
+only `setMasterVolume(value)` and `clearLoop()`; the existing snapshot adds the authoritative
+master-volume value while the existing transport projection continues to carry A/B bounds.
+
+`app.js` retains the numeric master-volume state, master `GainNode` creation, 0.01-second
+smoothing, audio graph, loop normalization/minimum, source/worklet refresh, seek/rate
+interaction, audio-thread loop flags, waveform markers, analytics, and the one document
+keyboard owner. The legacy overview-volume slider stays with the overview lane but invokes the
+same application command and mirrors the authoritative value in both directions; it no longer
+reads, writes, or dispatches through React DOM. The parser-authored primary volume/loop nodes,
+their eager captures, direct presentation writes, and direct listeners are removed.
+
+Mode/all-toggle routing, per-lane controls, lanes, overview/zoom DOM and canvases, separation,
+detection, notes, Workers, AudioWorklets, and DSP retain their previous owners. A/B/C/Escape
+remain with the shared document shortcut owner. Phase 3 is not complete and Phase 3e must not
+begin until this implementation is accepted in production and its rollback-anchor PR merges.
+
+### Failing-first, exact-source automated, build, and local evidence
+
+Environment: Apple M4 Max, macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium 151.0.7922.34, and Codex in-app Chromium.
+
+| Command / boundary | Result at exact implementation source `f2e0b704e9dd61a712a571cd88ec4ca37d4d2d72` |
+|---|---|
+| Failing-first `npx vitest run --project node tests/player-application.test.js` | 7 existing cases passed and 1 expected case failed because `setMasterVolume` did not exist. |
+| Failing-first `npx vitest run --project browser tests/player.test.js` | 26 existing cases passed and 4 expected Phase 3d cases failed: React volume/loop markers were absent, the volume command was absent, and parser-authored loop DOM survived shell unmount. |
+| `npx vitest run --project node tests/player-application.test.js tests/loop-state.test.js tests/routing-state.test.js` | 3 files, 23 tests passed. |
+| `npx vitest run --project browser tests/player.test.js` | 1 file, 30 tests passed. This is the complete current generated production-entry behavior harness, not a run of only the real-song fixture. Intentional malformed-ZIP and invalid-audio console entries appeared. |
+| `npm test` | 31 files, 414 tests passed. Expected Node experimental `localStorage` warning and the same intentional malformed/decode fixture entries only. |
+| `npm run build` | Passed; 56 modules transformed; existing intentional worklet URL warning only. |
+| `git diff --check f2e0b704e9dd61a712a571cd88ec4ca37d4d2d72^ f2e0b704e9dd61a712a571cd88ec4ca37d4d2d72` | Passed. |
+| Codex in-app Chromium against local `npm run preview` | Root and `/demos/` displayed exact `f2e0b70`; saved Traditional Chinese persisted; one React root/input/volume/loop owner and no React mode owner; `examples/nov_you.zip` loaded as the 4:23 six-stem song; primary/overview volume mirrored at 42%; focused volume excluded A; genuine A/Arrow/B exposed a 1.5-second loop; genuine Space advanced the AudioContext-backed clock and C cleared the loop; first-party warning/error console was empty. |
+
+The browser additions use generated WAV/ZIP stems through the real file input and instrument
+actual `AudioParam.setTargetAtTime`, `AudioContext.createBufferSource`, and source start/loop
+state. They prove volume default/minimum/maximum/fractional/invalid/bounded behavior; 0.01
+master-gain smoothing while paused and playing without source restart; overview synchronization
+both ways; mute/routing independence; bilingual label/value; input focus exclusion; state and
+one gain application across shell remount; volume preservation and loop clearing on song
+replacement; A-only, B-only, complete, reversed, too-short, replaced, C/Escape-cleared loops;
+paused/running loop changes; native source refresh/flags; and power-of-two loop analytics
+without duplicated listeners. Existing 50%-rate loop clamping/clock coverage, pure loop bounds,
+unequal-duration source plans, seek bounds, and sonifier alignment remain green rather than
+being duplicated.
+
+The exact-source build emits **381,311 bytes** across JavaScript assets versus Phase 3c's
+379,043: **+2,268 bytes (+0.60%)**. The player entry is 112,484 bytes and the shared
+React/header chunk is 219,547 bytes. No dependency, route, Worker, AudioWorklet, DSP, or static
+asset was added. Local browser checks started by confirming the displayed SHA. Desktop and a
+simulated 390-by-844 viewport were visually reviewed; the narrow document had equal 390-pixel
+client and scroll widths. This is simulated responsive evidence, not a physical-handheld run.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | The complete production-entry browser file uses generated WAV/ZIP fixtures for volume/gain, loop/source, locale/focus/remount, replacement, routing regression, malformed recovery, and fake-Worker paths. |
+| Malformed input | Existing generated malformed ZIP, unsupported/multiple/folder drop, partial decode, and recovery cases pass; `tests/unzip.test.js` retains exhaustive byte-mutation coverage. No duplicate Phase 3d test was added. |
+| Storage/locale | Both languages, loaded state, accessible volume/loop copy, and saved local-preview locale pass. Existing `tests/i18n.test.js` and `tests/demo-header.test.jsx` retain blocked/throwing storage coverage. |
+| Handheld | Existing `tests/platform.test.js` passed. A 390-by-844 viewport was simulated; no physical device was run. |
+| Worker | Existing deterministic stale notes/separation Worker cases passed. No Worker/model code changed and no real model ran. |
+| Visual | Desktop and simulated narrow local production layouts were reviewed without overflow or redesign. Exhaustive baseline image comparison remains omitted. |
+| Auditory | Genuine keyboard playback advanced the AudioContext-backed clock, but no listening, subjective gain/seam quality, note-tone alignment, or background-tab check is claimed. |
+| Real song | The local exact-source build loaded `examples/nov_you.zip` as `9 十二月的妳`, 4:23, six stems. This is real-song smoke only, not synthetic-matrix evidence. |
+
+### PR-preview deployment evidence
+
+[PR #75](https://github.com/SansWord/sans_bass/pull/75) `test` (38 seconds) and `deploy`
+(12 seconds) checks passed. GitHub's current merge ref was
+`15709e3a44c1214bfeff6a87350599c8e6007bed`; before any behavior assertion, the published
+preview at `https://sansword.github.io/sans_bass/pr-75/` displayed exact `15709e3`.
+
+Codex in-app Chromium verified the player root and `/pr-75/demos/` under the nested base; both
+displayed the same SHA, navigation stayed below `/pr-75/`, and the explicit Traditional
+Chinese choice persisted across the fresh route. A generated 0.4-second vocals/bass WAV/ZIP
+fixture loaded through the real single input as `Phase 3d preview`. The page retained one
+React shell, file input, volume owner, and loop owner, no React mode owner, two legacy lane
+volume controls, and the unchanged legacy mode/all-toggle state. Setting primary volume to
+42% updated the overview mirror. While that input was focused, genuine A did not set a loop;
+after focus returned to the page, genuine A/ArrowRight/B exposed a 0.4-second loop, genuine
+Space advanced the AudioContext-backed clock, and C cleared the loop.
+
+The committed `examples/nov_you.zip` then loaded as `9 十二月的妳`, 4:23, with six stems.
+Primary/overview volume mirrored at 55%; focused A was excluded; genuine Space advanced the
+clock; genuine A/ArrowRight/B presented a translated 1.5-second loop; and activating the
+React Clear button returned focus to `BODY` and hid the badge. The loaded page still had one
+React root/volume/loop owner, no React mode owner, six legacy lane-volume controls, and the
+unchanged `mix` selection. The first-party warning/error console was empty.
+
+Desktop and simulated 390-by-844 loaded-player layouts were visually reviewed; the narrow
+document had equal 390-pixel client and scroll widths. This is responsive-viewport evidence,
+not a physical-device claim. The hosted page exposes no shell-remount control; the required
+remount/state-preservation assertion passed in the same PR's exact production-entry Chromium
+gate (one owner/gain listener, current song/volume/loop retained across repeated unmount and
+remount), while the hosted locale render separately preserved song, volume, routing, and
+ownership. The complete synthetic/malformed/Worker matrix was not repeated against GitHub
+Pages, and the real-song load is deployment smoke rather than a substitute for it.
+
 ## Phase 3c — React seek controls
 
 Status: accepted in production.

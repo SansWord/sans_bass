@@ -140,6 +140,7 @@ describe('production player integration', () => {
     const standardCanvasCount = player.doc.querySelectorAll('#standard-lanes-root canvas').length;
     const overviewCanvasCount = player.doc.querySelectorAll('#overview-lane-root canvas').length;
     const noteCanvases = [...player.doc.querySelectorAll('#note-lanes-root canvas')];
+    const zoomCanvases = [...player.doc.querySelectorAll('#zoom-lane-root canvas')];
     player.doc.dispatchEvent(new player.win.DragEvent('dragenter', { bubbles: true, cancelable: true }));
     await waitFor(() => player.win.getComputedStyle(player.doc.getElementById('drag-overlay')).display === 'flex',
       'overlay before remount');
@@ -147,11 +148,13 @@ describe('production player integration', () => {
     player.win.sansBass.playerShell.unmount();
     expect(application.getSnapshot().song).toEqual(song);
     // Standard lanes and the shared overview lane are both React-owned (Phase 4a/4b), so
-    // unmounting the shell clears both portals just like every other React-owned region —
-    // the ribbon/zoom canvases in #note-lanes-root are legacy DOM and stay untouched.
+    // unmounting the shell clears both portals just like every other React-owned region — the
+    // ribbon canvases in #note-lanes-root and the zoomed pane's canvas in #zoom-lane-root
+    // (its own root since Phase 6d) are legacy DOM and stay untouched.
     expect(player.doc.querySelectorAll('#standard-lanes-root canvas')).toHaveLength(0);
     expect(player.doc.querySelectorAll('#overview-lane-root canvas')).toHaveLength(0);
     expect([...player.doc.querySelectorAll('#note-lanes-root canvas')]).toEqual(noteCanvases);
+    expect([...player.doc.querySelectorAll('#zoom-lane-root canvas')]).toEqual(zoomCanvases);
     expect(player.doc.getElementById('drag-overlay')).toBeNull();
     player.win.sansBass.playerShell.remount();
     player.win.sansBass.playerShell.remount();

@@ -718,8 +718,8 @@ function buildUI(title) {
      * Notes chips and Edit toggle inside it wait for detection (syncNotesChipsVisibility).
      *
      * Built once and reused across a song replacement that keeps a vocals/bass stem — see
-     * the `else if (zoomEl)` reuse branch and the `else if (zoomEl)` teardown branch below,
-     * and docs/react-phase-6d-zoomed-pane-mount-refactor-plan.md for why: this mirrors the
+     * the `else if (anchorTrack)` reuse branch and the `else if (zoomEl)` teardown branch
+     * below, and docs/react-phase-6d-zoomed-pane-mount-refactor-plan.md for why: this mirrors the
      * Overview lane's own persistence fix from Phase 4b, applied to the much larger zoomed
      * pane so its capo/chord/Edit-toggle/Export-Import controls can eventually become a
      * stable React host (Phase 6e) without losing their DOM identity on every song load. */

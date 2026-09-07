@@ -1,5 +1,192 @@
 # React migration evidence
 
+## Phase 6d — zoomed-pane mount-lifecycle refactor
+
+Status: accepted in production at rollback anchor
+`6a49bb47d9cfb2f6eb43c2059a97694e1d00c331`, the fourth of Phase 6's now-five ordered
+sub-slices (the fifth — 6e, the capo/chord/Edit-toggle/Export-Import ownership handoff this
+slice unblocks — remains not yet started). Evidence collected 2026-09-07
+America/Los_Angeles. Branch `feat/react-phase-6d-zoomed-pane-mount-refactor`; starting source
+`4fddb9d6c6551288be1e62d6ac035fb0815cf93a` (Phase 6c documentation-anchor merge, PR #92); plan
+and implementation committed together as `c31a99a` (a small follow-up commit `906494d` fixed
+two stale comments a fresh-context review found before the PR opened; squash-merged as PR #93's
+single commit). Previous accepted implementation rollback anchor: Phase 6c at
+`2aa9cdcf07f8ed5cb1d04119b93f2a55a121bafe`, documented through
+[PR #91](https://github.com/SansWord/sans_bass/pull/91) and anchored through
+[PR #92](https://github.com/SansWord/sans_bass/pull/92).
+
+This slice is a **pure refactor with zero ownership change** — it does not move the capo
+control, the chord editor, the Edit-notes toggle, or the shared Export/Import edits JSON
+buttons to React. Every one of them stays 100% `app.js`-owned, pixel-for-pixel and
+behaviorally identical to before this PR. What changes is only the zoomed pane's DOM
+*lifecycle*: it is now built once and reused across a song replacement that keeps a
+vocals/bass stem, instead of being destroyed and rebuilt on every song load — the same fix
+Phase 4b applied to the Overview lane, applied here to the much larger zoomed pane, because
+that lifecycle problem is exactly what blocked 6b's and 6c's own audits from moving those four
+controls to React.
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-6d-zoomed-pane-mount-refactor-plan.md](react-phase-6d-zoomed-pane-mount-refactor-plan.md),
+including the scope decision this slice's own audit made explicit before implementation:
+
+**A pure-refactor PR, separate from the ownership handoff.** The task's audit asked whether
+this restructuring was small enough to land in the same PR as the four controls' React
+ownership, or needed its own bounded PR first. It needed its own: the restructuring touches
+roughly 200 lines of `buildUI()`'s zoomed-pane construction and introduces two lifecycle
+hazards with no analogue in Phase 4b's much smaller Overview extraction —
+
+1. **Listener duplication.** `attachZoom(zCanvas)` and `attachResize(zGrip, …)` register
+   `addEventListener` calls directly on nodes that, once persisted across song loads, would
+   stack a second set of listeners if re-registered on a reused node. Fixed by calling each
+   exactly once, only in the pane's first-time construction branch.
+2. **Stale visibility/value state.** `editToggleLabelEl.hidden`, `editIoGroupEl.hidden`,
+   `editToggleEl.disabled`/`.checked`, and `capoSelect.value` were previously correct only
+   because construction itself set them fresh every song. Once reused, a completed previous
+   song's visible/enabled/nonzero-capo state would otherwise leak into a new song that has not
+   run detection yet. Fixed by explicitly calling `syncNotesChipsVisibility()`/
+   `syncZoomChips()`/`syncEditToggle()` at the end of every `buildUI()` call (already
+   null-safe, already reading the freshly-reset `noteLanes`/`zoomNotesStem`) and resetting
+   `capoSelect.value = '0'` on reuse.
+
+Bundling both into one PR would have made a regression in either half harder to isolate — a
+failing capo/chord test could mean either "the DOM lifecycle refactor is wrong" or "the new
+React component reads the wrong published field," two independently falsifiable claims a split
+keeps independently falsifiable. See the plan doc's "Scope decision" section for the full
+reasoning, including why this shape (a bounded, ownership-neutral structural PR whose only job
+is to make a later ownership PR possible) has no direct precedent in this migration — every
+prior slice's restructuring and ownership move were the same-sized change because every prior
+region was small enough for that; this plan applies Phase 4b's lifecycle fix to a bigger region
+first, on its own.
+
+`index.html` gains a new sibling root `<div id="zoom-lane-root"></div>` inside `#lanes`,
+alongside `#standard-lanes-root`, `#overview-lane-root`, and `#note-lanes-root` — `display:
+contents` like the other three. `app.js`'s `buildUI()` restructures the `if (anchorTrack)`
+block into first-time-construction (`!zoomEl`), reuse (`anchorTrack` persists and `zoomEl`
+already exists), and teardown (`anchorTrack` disappears where it previously existed) paths. A
+new `rebuildZoomChipHost(chipHost)` function — called from both the first-time and reuse
+paths — rebuilds only the genuinely per-song stem/Notes chip lists, nested inside a dedicated
+`zChipHost` span (`display: contents` in `styles.css`, so it doesn't affect `zLaneSel`'s flex
+layout) so that rebuild cannot reach the permanent `editToggleLabelEl`/`editIoGroupEl` siblings
+appended once at first construction. `notes.js`, `separate.js`, every `components/*.jsx` file,
+and `lib/player-application.js` are unchanged — no published snapshot or command changed shape.
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+Five new focused production-entry Chromium cases (`tests/player.test.js`) were run against the
+**current legacy owner** first: node-identity of `.zoom-chord-row`/`.capo-select`/
+`#notes-edit`/`.zoom-edit-io` across a song replacement failed as expected (today's
+implementation always recreates these nodes); the other four (chip-list rebuild correctness,
+clean teardown/remount across an anchor stem disappearing and reintroducing, and no
+double-registered zoom-canvas wheel listeners after repeated loads) already passed against the
+legacy owner, since today's "always destroy and rebuild" behavior incidentally satisfies them
+— they serve as the regression safety net proving nothing else changed. After implementation,
+all five passed, and a pre-existing lane-order test's `.lane.ribbon-zoom` selector (previously
+scoped to `#note-lanes-root`, now `#zoom-lane-root`) was updated to match the new root.
+
+After implementation:
+
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 55 tests passed (5 new,
+  1 pre-existing selector updated for the new root);
+- full `npm test`: 31 files, 449 tests passed (444 baseline + 5 new Chromium cases);
+- `npm run build`: passed; existing intentional unresolved-at-build-time
+  `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+An independent fresh-context review (general-purpose agent, given the plan doc and the full
+diff) found no correctness bugs — only two stale comments (a `buildUI()` comment naming the
+wrong branch condition for the reuse path, and the shell-remount test's comment describing the
+zoom canvas as living in `#note-lanes-root` after it had moved) — both fixed in follow-up
+commit `906494d` before the PR was opened. The review specifically verified the two lifecycle
+hazards above (listener duplication, stale visibility) against the actual code, confirmed
+`rebuildZoomChipHost`'s call sites and the teardown branch's reference-nulling are complete,
+and confirmed the `.zoom-chip-host`/root `display: contents` CSS preserves the original flex
+layout exactly.
+
+The exact-source build emits **121,946 bytes** in the player entry (`dist/assets/main-*.js`)
+versus Phase 6c's 121,658: **+288 bytes (+0.24%)**. The CSS chunk grows from 13,274 to 13,323
+bytes (**+49 bytes**, the two new `display: contents` rules) and the shared React/header chunk
+is unchanged at exactly 218,172 bytes — no new dependency was added, and no React component
+changed (this slice touches no `components/*.jsx` file).
+
+### Exact-source local smoke
+
+Local production build served via `npm run preview` (root, port 8777) and a second static
+server with the same build copied under `pr-999/` (nested-route smoke, port 8778, since Vite's
+asset paths are relative). A generated 4-second four-stem (vocals/guitar/bass/drums) ZIP
+fixture and a second 1-second two-stem (vocals/drums) ZIP fixture, both built with the
+repository's own `tests/helpers/audio-fixtures.js#stemsZip` run directly under Node (the real
+`lib/wav.js`/`lib/zip.js` encoders), loaded through the real `#file-input` at both origins via
+a direct file-input upload.
+
+At root: the first fixture loaded with the zoomed pane's `.zoom-chord-row`, `.capo-select`,
+`#notes-edit`, and `.zoom-edit-io` all present. A real "Find notes" detection run against the
+vocals channel completed and enabled the Edit-notes toggle; setting the capo select to `5` and
+dispatching `change` made the Export/Import group visible (`hidden: false`). Loading the second
+fixture (different stem set, no detection run) confirmed all four node references (`===`
+comparison against references captured before the replacement) were the **same** DOM
+elements — not rebuilt ones — while `capoSelect.value` read back `'0'`, `editToggle.disabled`
+was `true`, `editToggle.parentElement.hidden` was `true`, and `editIoGroup.hidden` was `true`:
+none of the first song's completed state leaked into the second. The stem-chip labels
+correctly rebuilt to the second fixture's actual stems (`人聲`/`鼓組` under the page's default
+zh-TW, i.e. Vocals/Drums). The nested route repeated the initial load and confirmed the same
+zoomed-pane hosts/nodes were present. Console at both origins carried no first-party errors.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | Generated four-stem and two-stem WAV/ZIP fixtures cover ordinary stems, a same-anchor song replacement, a different-stem-set replacement, and an anchor-stem-disappears-then-reintroduces replacement, through the production-entry Chromium suite and a local exact-source smoke. |
+| Malformed input | Unchanged; no lane-ownership-affecting code path touched. |
+| Storage/locale | Unaffected by this slice — no translated copy or locale-dependent state changed; the existing i18n suite is untouched. |
+| Handheld | Unaffected; no new capability-gated code. |
+| Worker | Unaffected; no Worker/model code changed — the one real "Find notes" detection run in the exact-source smoke used the real detection Worker only to reach a populated channel state, not as a boundary this slice changes. |
+| Visual | Exact-source local smoke and the PR-preview/production checks reviewed zoomed-pane layout, chip content, and control visibility at desktop width; no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine command/state evidence was collected, not subjective listening. |
+| Real song | Not run against `examples/nov_you.zip` in this evidence pass; the changed boundary (DOM lifecycle only, no audio-path, Worker, or musical-interpretation change) does not plausibly affect it, matching prior Phase 6 sub-slices' own scoping. |
+
+### PR-preview deployment evidence
+
+[PR #93](https://github.com/SansWord/sans_bass/pull/93)'s `test` and `deploy` checks both
+passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-93/`
+displayed exact synthetic merge `e59d1aced43b7728e047e093fb0608868c733d6d` (`e59d1ac`),
+matching `gh api repos/SansWord/sans_bass/pulls/93 --jq '.merge_commit_sha'` at the time of
+that check. The same node-identity/reset/chip-rebuild check performed in the local smoke above
+was repeated against the live preview with the same two generated fixtures and produced
+identical results. The first-party console carried no errors.
+
+### Production acceptance evidence
+
+PR #93 squash-merged as exact production source
+`6a49bb47d9cfb2f6eb43c2059a97694e1d00c331`. Its
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34168303091) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34168303096) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/` (fetched with a
+cache-busting query string) displayed exact `6a49bb4`.
+
+The production delivery canary repeated the affected boundary: the first generated fixture
+loaded with the zoomed pane's `.zoom-chord-row`/`.capo-select` present and the stem-chip
+labels correctly reflecting its four stems. The first-party console carried no errors.
+
+The complete synthetic, malformed-input, storage-fault, and narrow-viewport matrices were not
+repeated in production because the canary agreed with the exact-source and preview evidence
+above. No real-song (`examples/nov_you.zip`), musical-accuracy, physical-handheld, or
+subjective auditory check is claimed for this increment, for the same reasons given in the
+omissions table above.
+
+Phase 6d is accepted at the full SHA above, the fourth of Phase 6's now-five ordered
+sub-slices. It changes no product-facing behavior and no control ownership — only the zoomed
+pane's DOM lifecycle — but by doing so it resolves the root cause 6b's and 6c's own audits
+each found blocking their scope. The capo control, the zoomed pane's chord display/editing,
+the Edit-notes toggle, the shared Export/Import edits JSON buttons, and the
+ribbon/overview/zoomed-pane lanes stay untouched and legacy-owned, now unblocked for Phase 6e
+(not yet started) rather than blocked on a not-yet-scheduled restructuring. This separate
+documentation-only PR records the immutable rollback anchor.
+
 ## Phase 6c — React edit list, undo, and list-export controls
 
 Status: accepted in production at rollback anchor

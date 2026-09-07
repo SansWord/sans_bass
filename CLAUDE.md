@@ -149,9 +149,25 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   `notes.js`, so it never retranslated on a language switch until the next edit changed it;
   render-time translation via `t()` fixes this as a natural side effect. `app.js` needed zero
   changes for this slice, the same as Phase 6b. This completes all three originally-scheduled
-  Phase 6 sub-slices; one future, not-yet-scheduled sub-slice remains (capo control, chord
-  display/editing, the Edit-notes toggle, and the shared Export/Import edits JSON buttons — all
-  four blocked on the same zoomed-pane mount-lifecycle restructuring). Phase 2's DOM-independent
+  Phase 6 sub-slices; one future sub-slice remained blocked on a zoomed-pane mount-lifecycle
+  restructuring (capo control, chord display/editing, the Edit-notes toggle, and the shared
+  Export/Import edits JSON buttons). Phase 6d performs exactly that restructuring, as a pure
+  refactor with **zero ownership change** — every one of those four controls stays 100%
+  `app.js`-owned, pixel-for-pixel and behaviorally identical to before. `index.html` gains a
+  new `#zoom-lane-root` sibling of `#note-lanes-root` (both `display: contents`, same pattern
+  as `#standard-lanes-root`/`#overview-lane-root`), and the zoomed pane (`zLane` and everything
+  inside it — the capo/chord row, Edit-notes toggle, Export/Import buttons, canvas, toolbar,
+  fields, and stem/Notes chip lists) is now built once and reused across a song replacement
+  that keeps a vocals/bass stem, instead of being destroyed and rebuilt every `buildUI()` call
+  — mirroring the fix Phase 4b applied to the Overview lane. A new `rebuildZoomChipHost()`
+  rebuilds only the genuinely per-song stem/Notes chip lists (nested in their own `zChipHost`
+  span) on both first construction and reuse, leaving the permanent Edit-notes-toggle/
+  Export-Import-button siblings untouched; `attachZoom`/`attachResize` are now registered
+  exactly once, at first construction, to avoid double-firing wheel/drag gestures on a node
+  that no longer gets recreated every song; and `buildUI()` explicitly re-syncs the pane's
+  detection-gated visibility/capo value on every reuse, since construction alone no longer
+  does that for it. This unblocks — but does not itself perform — Phase 6e, the actual
+  ownership handoff of those four controls to React. Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -287,11 +303,16 @@ still-legacy `<section id="notes-{stem}">` sections as the tune row, extending t
 `detection` export rather than a second store (Phase 6c) — completing all three
 originally-scheduled Phase 6 sub-slices. The capo control, the zoomed pane's chord
 display/editing, the Edit-notes toggle, and the shared Export/Import edits JSON buttons stay
-entirely legacy-owned in `app.js`, found entangled with its still-legacy, per-song-rebuilt
-zoomed-pane construction (the capo/chord row additionally with its rAF-driven paint loop) —
-deferred to one future, not-yet-scheduled sub-slice (see
+entirely legacy-owned in `app.js` (the capo/chord row additionally with its rAF-driven paint
+loop) — originally found entangled with `app.js`'s then-per-song-rebuilt zoomed-pane
+construction and deferred to a future, not-yet-scheduled sub-slice (see
 `docs/react-phase-6b-tempo-chord-controls-plan.md` and
-`docs/react-phase-6c-editor-export-controls-plan.md`).
+`docs/react-phase-6c-editor-export-controls-plan.md`). Phase 6d resolved that entanglement as
+a pure, ownership-neutral refactor: the zoomed pane now persists across a song replacement
+that keeps a vocals/bass stem (its own `#zoom-lane-root`, separate from `#note-lanes-root`,
+built once and reused rather than torn down every `buildUI()` call — see
+`docs/react-phase-6d-zoomed-pane-mount-refactor-plan.md`), so these four controls' ownership
+handoff is now Phase 6e, scheduled and unblocked rather than deferred indefinitely.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the

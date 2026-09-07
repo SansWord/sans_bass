@@ -1,5 +1,72 @@
 # React migration evidence
 
+## Phase 3e — React mode and routing controls
+
+Status: implementation committed; review and deployment acceptance pending. Evidence
+collected 2026-09-06–07 America/Los_Angeles. Branch
+`feat/react-phase-3e-mode-routing-controls`; starting source
+`82b6ac3f5897e34204c3549dd7506b863f7dbe61`; implementation source
+`385e8ab38e982988a4c19d14e5a5428d7c52200c`. Previous accepted implementation rollback
+anchor: Phase 3d at `4b14667a935f1faef4af1f8ba8df8acb37d6ab5f`; its separate anchor
+documentation merged through PR #76 before Phase 3e began.
+
+### Ownership and command boundary
+
+React now solely authors the top-level Play label/select, translated mode options,
+accessibility, all-toggle presentation, focus restoration, and both direct listeners through
+one `mode-routing-ui-root` portal in the existing player shell. `playerApplication` adds only
+`setMode(mode)` and `toggleAllTracks()` and publishes `{ mode, allToggleLabel }`. Existing
+song-track projections add their source display label so React can translate known stems while
+unknown lanes keep filename-derived labels; option values remain stable IDs.
+
+`app.js` remains authoritative for `routingState`, pure transition invocation, routing
+snapshots, lane mute flags, gain smoothing, explicit-mix exclusion, lane classes, lane-name
+clicks, 0 and 1–6 shortcuts, and analytics. `applyGains()` now consults
+`routingState.mode` directly rather than reading a React-owned select. The parser-authored
+select/button, legacy option construction, eager captures, presentation writes, and direct
+listeners are removed. Lanes, lane volume, overview/zoom, separation, detection, notes,
+Workers, AudioWorklets, canvases other than the already accepted primary seek canvas, and DSP
+retain their previous owners.
+
+### Failing-first and automated evidence
+
+Before implementation, the focused Node run had 18 passing and one expected failing test:
+the two new facade commands did not exist. The focused production-entry Chromium run had 28
+passing and three expected failing tests: the routing projection and React owner did not
+exist. These were contract failures, while adjacent behavior remained green.
+
+After implementation:
+
+- focused Node routing/application run: 2 files, 19 tests passed;
+- focused production-entry Chromium run: 1 file, 31 tests passed;
+- full `npm test`: 31 files, 415 tests passed;
+- `npm run build`: passed with the existing intentional unresolved-at-build-time
+  `stretch-processor.js` URL warning;
+- `git diff --check`: passed, and a source search found no remaining non-test mode/all-toggle
+  DOM captures, reads, presentation writes, option builders, or direct listeners.
+
+Generated production-entry fixtures cover ordinary stems, a full mix plus stems, an unknown
+lane, and all six recognized stems. They exercise every selector value, fresh/all-off/partial/
+restorable all-toggle states, lane-name publication, genuine 0 and 1–6 keyboard events,
+focused select/button exclusion and blur, English/Traditional Chinese rerender, repeated shell
+remount, replacement reset, and one analytics/listener path. Assertions observe actual
+`AudioParam.setTargetAtTime` values, including explicit mix/stem mutual exclusion, rather than
+inferring audio state from CSS. The lifecycle case also retains a narrow 42% master-volume,
+A/B loop, and legacy per-lane-volume regression.
+
+The exact committed production build contains 113,165 bytes in the player bundle versus
+112,484 at accepted `main` (+681, +0.61%); the 218,172-byte shared React chunk is unchanged.
+Across those two JS bundles the increase is 0.21%.
+
+### Pending and explicit omissions
+
+The exact-commit local interactive smoke was attempted after the build but the Codex browser
+control reached its usage cap before opening localhost. No local root/nested, visual, or
+interactive-browser pass is claimed. PR checks, exact synthetic-merge preview verification,
+merge, exact-SHA production canary, and the separate rollback-anchor documentation PR remain
+pending. Physical-handheld, subjective auditory, background-tab, and real-model checks are
+also not claimed. Phase 3 is not complete.
+
 ## Phase 3d — React volume and A/B loop controls
 
 Status: accepted in production at rollback anchor

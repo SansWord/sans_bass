@@ -31,3 +31,7 @@ demos/index.html
 
 # testing data that should not be upload
 examples/
+
+# Vitest browser-mode failure screenshots/attachments — regenerated per run, never committed
+.vitest-attachments/
+tests/__screenshots__/

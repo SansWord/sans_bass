@@ -137,14 +137,19 @@ describe('production player integration', () => {
     await loadZip(player, { vocals: 440, bass: 110 }, { folder: 'Mounted once' });
     const application = player.win.sansBass.application;
     const song = application.getSnapshot().song;
-    const canvases = [...player.doc.querySelectorAll('.lane canvas')];
+    const standardCanvasCount = player.doc.querySelectorAll('#standard-lanes-root canvas').length;
+    const noteCanvases = [...player.doc.querySelectorAll('#note-lanes-root canvas')];
     player.doc.dispatchEvent(new player.win.DragEvent('dragenter', { bubbles: true, cancelable: true }));
     await waitFor(() => player.win.getComputedStyle(player.doc.getElementById('drag-overlay')).display === 'flex',
       'overlay before remount');
 
     player.win.sansBass.playerShell.unmount();
     expect(application.getSnapshot().song).toEqual(song);
-    expect([...player.doc.querySelectorAll('.lane canvas')]).toEqual(canvases);
+    // Standard lanes are React-owned (Phase 4a), so unmounting the shell clears their portal
+    // just like every other React-owned region — the ribbon/zoom/overview canvases in
+    // #note-lanes-root are legacy DOM and stay untouched.
+    expect(player.doc.querySelectorAll('#standard-lanes-root canvas')).toHaveLength(0);
+    expect([...player.doc.querySelectorAll('#note-lanes-root canvas')]).toEqual(noteCanvases);
     expect(player.doc.getElementById('drag-overlay')).toBeNull();
     player.win.sansBass.playerShell.remount();
     player.win.sansBass.playerShell.remount();
@@ -152,6 +157,8 @@ describe('production player integration', () => {
     expect(player.doc.querySelectorAll('[data-react-player-shell]')).toHaveLength(1);
     expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
     expect(player.doc.querySelectorAll('#lang-toggle')).toHaveLength(1);
+    // Fresh lane canvases, one per track, repainted from the unchanged song/peak data.
+    expect(player.doc.querySelectorAll('#standard-lanes-root canvas')).toHaveLength(standardCanvasCount);
     expect(application.getSnapshot().song).toEqual(song);
     expect(player.win.getComputedStyle(player.doc.getElementById('drag-overlay')).display).toBe('none');
 
@@ -369,7 +376,7 @@ describe('production player integration', () => {
     expect(primary.getAttribute('aria-valuetext')).toBe('42%');
     expect(application.getSnapshot().masterVolume).toBe(0.42);
 
-    player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-name').click();
+    player.doc.querySelector('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-name').click();
     expect(application.getSnapshot().masterVolume).toBe(0.42);
     expect(primary.value).toBe('0.42');
 
@@ -390,6 +397,78 @@ describe('production player integration', () => {
     expect(application.getSnapshot().masterVolume).toBe(0.51);
     expect(player.doc.getElementById('master-vol').value).toBe('0.51');
     expect(player.doc.querySelector('.overview .lane-vol input').value).toBe('0.51');
+  });
+
+  it('gives every stem lane one React owner with translated/unknown labels and stable canvases', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: sine(440, 1), bass: sine(110, 1) }, {
+      unknown: { ambience: sine(220, 1) }, folder: 'Standard lanes',
+    });
+    const lanes = [...player.doc.querySelectorAll('#standard-lanes-root > .lane')];
+    expect(lanes).toHaveLength(3);
+    expect(player.doc.querySelectorAll('[data-react-lane]')).toHaveLength(3);
+    const names = lanes.map((lane) => lane.querySelector('.lane-name'));
+    expect(names.every((name) => name.tagName === 'BUTTON')).toBe(true);
+    expect(names.map((name) => name.querySelector('.txt').textContent))
+      .toEqual(['Vocals', 'Bass', 'ambience']);
+    expect(names.map((name) => name.querySelector('.kbd').textContent)).toEqual(['1', '2', '3']);
+
+    const canvases = lanes.map((lane) => lane.querySelector('canvas'));
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => player.doc.documentElement.lang === 'zh-TW', 'translated lane labels');
+    const relanes = [...player.doc.querySelectorAll('#standard-lanes-root > .lane')];
+    expect(relanes.map((lane) => lane.querySelector('canvas'))).toEqual(canvases);
+    expect(relanes.map((lane) => lane.querySelector('.txt').textContent))
+      .toEqual(['人聲', '貝斯', 'ambience']);
+  });
+
+  it('keeps lane mute keyboard-operable with focus restoration and per-lane volume independent of mute', async () => {
+    player = await openPlayer();
+    const audio = instrumentAudio(player.win);
+    await loadZip(player, { vocals: sine(440, 1), bass: sine(110, 1) }, { folder: 'Lane mute/volume' });
+    const application = player.win.sansBass.application;
+    const lanes = [...player.doc.querySelectorAll('#standard-lanes-root > .lane')];
+    const vocalsName = lanes[0].querySelector('.lane-name');
+
+    audio.ramps.length = 0;
+    vocalsName.focus();
+    vocalsName.click();
+    expect(player.doc.activeElement).toBe(player.doc.body);
+    expect(application.getSnapshot().song.tracks[0].muted).toBe(true);
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 1]);
+    await waitFor(() => lanes[0].classList.contains('muted'), 'React lane-mute presentation');
+
+    audio.ramps.length = 0;
+    setRangeValue(player, lanes[0].querySelector('.lane-vol input'), 0.4);
+    await waitFor(() => application.getSnapshot().song.tracks[0].volume === 0.4, 'per-lane volume command');
+    expect(application.getSnapshot().song.tracks[0].muted).toBe(true);
+    expect(lanes[0].classList.contains('muted')).toBe(true);
+    // applyGains() re-ramps every lane on any change; the muted lane's gain target stays 0
+    // even though its underlying volume changed — mute and volume stay independent.
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 1]);
+
+    audio.ramps.length = 0;
+    vocalsName.click();
+    expect(application.getSnapshot().song.tracks[0].muted).toBe(false);
+    expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0.4, 1]);
+    await waitFor(() => !lanes[0].classList.contains('muted'), 'React lane-unmute presentation');
+  });
+
+  it('keeps the drums tempo hint and a note-ribbon lane in their established visual order via CSS order', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: sine(440, 1), guitar: sine(220, 1), bass: sine(110, 1), drums: sine(60, 1) },
+      { folder: 'Lane order' });
+    const order = (el) => Number(player.win.getComputedStyle(el).order);
+    const [vocals, guitar, bass, drums] = [...player.doc.querySelectorAll('#standard-lanes-root > .lane')];
+    const vocalsRibbon = player.doc.querySelector('#note-lanes-root .lane.ribbon');
+    const overview = player.doc.querySelector('.lane.overview');
+    const zoom = player.doc.querySelector('.lane.ribbon-zoom');
+    expect(drums.querySelector('.tempo-range-hint')).toBeTruthy();
+    expect([overview, zoom].every((el) => order(el) < order(vocals))).toBe(true);
+    expect(order(vocals)).toBeLessThan(order(vocalsRibbon));
+    expect(order(vocalsRibbon)).toBeLessThan(order(guitar));
+    expect(order(guitar)).toBeLessThan(order(bass));
+    expect(order(bass)).toBeLessThan(order(drums));
   });
 
   it('renders partial and active loops in React while preserving keyboard timing, refresh, clear, and analytics', async () => {
@@ -514,7 +593,7 @@ describe('production player integration', () => {
     await waitFor(() => all.textContent === '回復先前狀態',
       'remounted all-toggle publication');
     expect(events.filter((event) => event.path === 'unmute-all')).toHaveLength(1);
-    const laneVolume = player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-vol input');
+    const laneVolume = player.doc.querySelector('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-vol input');
     audio.ramps.length = 0;
     setRangeValue(player, laneVolume, 0.33);
     expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0.33, 1, 1]);
@@ -761,7 +840,7 @@ describe('production player integration', () => {
     await loadZip(player, { vocals: 440, bass: 110 }, {
       folder: 'Partial', invalidAudio: { 'broken.wav': new Uint8Array([1, 2, 3, 4]) },
     });
-    expect(player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)')).toHaveLength(2);
+    expect(player.doc.querySelectorAll('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)')).toHaveLength(2);
     expect(player.doc.getElementById('status').textContent).toContain('broken.wav');
     expect(player.win.sansBass.application.getSnapshot().song.title).toBe('Partial');
   });
@@ -894,7 +973,7 @@ describe('production player integration', () => {
     });
     expect(input.multiple).toBe(false);
     expect(player.doc.getElementById('title').textContent).toBe('Fixture song');
-    expect([...player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) > .lane-name .txt')].map((node) => node.textContent))
+    expect([...player.doc.querySelectorAll('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) > .lane-name .txt')].map((node) => node.textContent))
       .toEqual(['Vocals', 'Bass']);
   });
 
@@ -968,9 +1047,9 @@ describe('production player integration', () => {
     expect(audio.ramps.map((ramp) => ramp.value)).toEqual([0, 0, 1]);
 
     audio.ramps.length = 0;
-    const lane = player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)');
+    const lane = player.doc.querySelector('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)');
     lane.querySelector('.lane-name').click();
-    expect(lane.classList.contains('muted')).toBe(false);
+    await waitFor(() => !lane.classList.contains('muted'), 'React lane-mute presentation');
     expect(application.getSnapshot().routing.mode).toBe('custom');
     expect(player.doc.getElementById('all-toggle').textContent).toBe('Unmute all');
     expect(audio.ramps.map((ramp) => ramp.value)).toEqual([1, 0, 1]);
@@ -1065,7 +1144,7 @@ describe('production player integration', () => {
     workers[0].emit({ type: 'result', stems: Object.fromEntries(
       ['vocals', 'guitar', 'bass', 'drums', 'piano', 'other'].map((stem) => [stem, { left: channel(), right: channel() }]),
     ) });
-    await waitFor(() => player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === 6,
+    await waitFor(() => player.doc.querySelectorAll('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === 6,
       'six separated lanes');
     expect(player.win.getComputedStyle(go).display).toBe('none');
     expect(player.win.getComputedStyle(player.doc.getElementById('sep-save')).display).not.toBe('none');
@@ -1078,7 +1157,7 @@ describe('production player integration', () => {
     const application = player.win.sansBass.application;
     const canvases = [...player.doc.querySelectorAll('.lane canvas')];
     const input = player.doc.getElementById('file-input');
-    player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-name').click();
+    player.doc.querySelector('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .lane-name').click();
     await waitFor(() => player.doc.getElementById('mode').value === 'custom',
       'lane routing publication');
     const mode = player.doc.getElementById('mode').value;
@@ -1111,7 +1190,7 @@ describe('production player integration', () => {
     });
     expect(player.doc.getElementById('mode').value).toBe(mode);
     expect([...player.doc.querySelectorAll('.lane canvas')]).toEqual(canvases);
-    expect(player.doc.querySelector('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .txt').textContent)
+    expect(player.doc.querySelector('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview) .txt').textContent)
       .toBe('人聲');
   });
 });

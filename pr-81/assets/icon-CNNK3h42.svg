@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180"
+     role="img" aria-label="sans_bass">
+  <!-- Six lanes, in lane order, in the exact stem colours from lib/stems.js — except the
+       bass, which is flattened to a grey stub. That gap is the whole idea: the app is for
+       playing the bass part yourself, so the icon is the song sans bass.
+
+       Full bleed on purpose. iOS applies its own corner mask to a home-screen icon, and
+       artwork that arrives pre-rounded shows a visible double radius. -->
+  <rect width="180" height="180" fill="#0d0d10"/>
+  <rect x="22"  y="70" width="16" height="40"  rx="8" fill="#ff2e63"/><!-- vocals -->
+  <rect x="46"  y="42" width="16" height="96"  rx="8" fill="#ffb703"/><!-- guitar -->
+  <rect x="70"  y="82" width="16" height="16"  rx="8" fill="#3a3a44"/><!-- bass — flattened -->
+  <rect x="94"  y="38" width="16" height="104" rx="8" fill="#4cc9f0"/><!-- drums -->
+  <rect x="118" y="56" width="16" height="68"  rx="8" fill="#b388ff"/><!-- piano -->
+  <rect x="142" y="73" width="16" height="34"  rx="8" fill="#8d99ae"/><!-- other -->
+</svg>

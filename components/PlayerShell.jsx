@@ -5,6 +5,7 @@ import { AUDIO_RE } from '../lib/stems.js';
 import { t } from '../lib/i18n.js';
 import { isHandheld } from '../lib/platform.js';
 import { formatClockTime, formatClockTimeCentiseconds } from '../lib/time.js';
+import { SeparationPanel } from './SeparationPanel.jsx';
 import { SiteHeaderContent } from './SiteHeader.jsx';
 import { useLocale } from './useLocale.js';
 
@@ -394,6 +395,7 @@ function PlayerShell({ application, hosts }) {
     {createPortal(<ModeRoutingControls application={application}
       routing={snapshot.routing} song={snapshot.song} />, hosts.modeRouting)}
     <PrimarySeekControls application={application} hosts={hosts} />
+    {createPortal(<SeparationPanel />, hosts.separation)}
     {snapshot.song && <StemLanes application={application}
       tracks={snapshot.song.tracks} hosts={hosts} />}
     {snapshot.song && snapshot.song.tracks.some((track) => track.stem === 'vocals' || track.stem === 'bass')
@@ -418,6 +420,7 @@ export function mountPlayerShell(application, doc = document) {
     primaryTime: doc.getElementById('primary-time-ui-root'),
     standardLanes: doc.getElementById('standard-lanes-root'),
     overviewLane: doc.getElementById('overview-lane-root'),
+    separation: doc.getElementById('separation-ui-root'),
   };
   if (Object.values(hosts).some((host) => !host)) {
     console.warn('sans_bass: player React shell host missing — skipped');

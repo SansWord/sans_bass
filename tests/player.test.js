@@ -1190,8 +1190,9 @@ describe('production player integration', () => {
     const go = player.doc.getElementById('sep-go');
     await waitFor(() => player.win.getComputedStyle(go).display !== 'none', 'separation control');
     go.click();
-    expect(go.disabled).toBe(true);
-    expect(player.win.getComputedStyle(player.doc.getElementById('sep-cancel')).display).not.toBe('none');
+    await waitFor(() => go.disabled, 'go disabled once separation starts');
+    await waitFor(() => player.win.getComputedStyle(player.doc.getElementById('sep-cancel')).display !== 'none',
+      'cancel control shown while running');
     const channel = () => new player.win.Float32Array(441);
     workers[0].emit({ type: 'result', stems: Object.fromEntries(
       ['vocals', 'guitar', 'bass', 'drums', 'piano', 'other'].map((stem) => [stem, { left: channel(), right: channel() }]),
@@ -1201,6 +1202,72 @@ describe('production player integration', () => {
     expect(player.win.getComputedStyle(go).display).toBe('none');
     expect(player.win.getComputedStyle(player.doc.getElementById('sep-save')).display).not.toBe('none');
     expect(player.doc.getElementById('sep-status').textContent).toBe('');
+  });
+
+  it('retranslates the separation status line after a language switch mid-run', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadSong(player);
+    const go = player.doc.getElementById('sep-go');
+    await waitFor(() => player.win.getComputedStyle(go).display !== 'none', 'separation control');
+    go.click();
+    workers[0].emit({ type: 'progress', segment: 1, total: 4, etaSec: 12 });
+    const status = player.doc.getElementById('sep-status');
+    await waitFor(() => status.textContent === 'segment 1/4 — about 12s left', 'English progress status');
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => status.textContent === '第 1/4 段 — 大約還要 12 秒', 'retranslated progress status');
+    // A later message re-renders in whichever language is now active, proving the panel
+    // reads the live locale rather than one captured when the message first arrived.
+    workers[0].emit({ type: 'progress', segment: 2, total: 4, etaSec: 8 });
+    await waitFor(() => status.textContent === '第 2/4 段 — 大約還要 8 秒', 'second progress status in zh-TW');
+  });
+
+  it('recovers to a reusable idle state after cancellation', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadSong(player);
+    const go = player.doc.getElementById('sep-go');
+    const cancelBtn = player.doc.getElementById('sep-cancel');
+    const status = player.doc.getElementById('sep-status');
+    await waitFor(() => player.win.getComputedStyle(go).display !== 'none', 'separation control');
+
+    go.click();
+    await waitFor(() => player.win.getComputedStyle(cancelBtn).display !== 'none', 'cancel shown while running');
+    cancelBtn.click();
+    expect(workers[0].sent).toContainEqual({ type: 'cancel' });
+    await waitFor(() => status.textContent === 'cancelling…', 'cancelling status');
+    workers[0].emit({ type: 'error', message: 'cancelled' });
+    await waitFor(() => status.textContent === 'cancelled', 'cancelled status');
+    await waitFor(() => !go.disabled && player.win.getComputedStyle(go).display !== 'none',
+      'go control usable again after cancellation');
+    expect(player.win.getComputedStyle(cancelBtn).display).toBe('none');
+  });
+
+  it('recovers to a reusable idle state after a worker failure, resolving the oom thunk at render time', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadSong(player);
+    const go = player.doc.getElementById('sep-go');
+    const status = player.doc.getElementById('sep-status');
+    await waitFor(() => player.win.getComputedStyle(go).display !== 'none', 'separation control');
+
+    go.click();
+    await waitFor(() => workers.length === 1, 'separation worker created');
+    // A worker error with no message (the OOM-reaper shape, per w.onerror's own comment)
+    // falls back to a translated-string thunk that must resolve at render time.
+    workers[0].fail();
+    await waitFor(() => status.textContent === 'worker failed: out of memory? — try a shorter track',
+      'worker-failure status with resolved oom thunk');
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => status.textContent === 'worker 失敗：記憶體不足？ — 試試比較短的歌',
+      'retranslated worker-failure status including the oom thunk');
+    await waitFor(() => !go.disabled && player.win.getComputedStyle(go).display !== 'none',
+      'go control usable again after a worker failure');
+
+    // worker onerror is the one path that nulls the cached worker, so a retry actually
+    // creates a fresh instance rather than reusing the failed one.
+    go.click();
+    await waitFor(() => workers.length === 2, 'second separation worker created after failure');
   });
 
   it('rerenders language without replacing playback canvases or routing', async () => {

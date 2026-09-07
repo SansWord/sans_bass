@@ -1,5 +1,161 @@
 # React migration evidence
 
+## Phase 4a — React standard stem lane components
+
+Status: implementation complete, awaiting PR preview/production acceptance. Evidence
+collected 2026-09-07 America/Los_Angeles. Branch `feat/react-phase-4a-stem-lanes`; starting
+source `7c968adad1e087346a677777bc718c0af05aa820`; plan commit
+`ef324cad8a36d11a92571a1cc3f88a923dbde119`; implementation source
+`bf2af5801ae7e7454b332da8f8c21d5d204e9ef8`. Previous accepted implementation rollback anchor:
+Phase 3e at `41ff22cdfad6221164ea7105273b24d338251c95`, documented through
+[PR #78](https://github.com/SansWord/sans_bass/pull/78).
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-4a-stem-lanes-plan.md](react-phase-4a-stem-lanes-plan.md), including its
+implementation addendum on the drums tempo hint. `components/PlayerShell.jsx` adds
+`StemLanes`/`Lane`, portalled into a new `#standard-lanes-root` inside `#lanes`: one `<Lane>`
+per track (mix, recognized stems, and unknown lanes, in existing order) owns the translated/
+unknown label, a real keyboard-operable `<button class="lane-name">` (upgraded from a
+non-focusable `<div>`) that blurs after activation, the `.muted` class read straight from the
+snapshot, the per-lane volume slider, and a stable `<canvas>` host. The drums `<Lane>` also
+renders an empty `.tempo-range-hint` host, populated by `app.js` through a new
+`attachLaneExtra` hook so the hint's caption/Clear button keep exactly their previous nested-
+in-card presentation.
+
+`lib/player-application.js` adds `commands.toggleTrack(id)`, `commands.setTrackVolume(id,
+value)`, `attachLaneCanvas(id, canvas)`, and `attachLaneExtra(id, node)` — the last two mirror
+`attachPrimarySeekCanvas`'s explicit attach/detach shape. `applicationSnapshot()`'s
+`song.tracks[]` items gain `color`, `muted` (the same effective boolean `applyGains()` already
+computed, now factored into a shared `trackAudible()` helper so there is exactly one
+computation), and `volume`.
+
+`app.js` retains decoded tracks, `routingState` and all transitions, gain smoothing, the
+explicit Full-mix/stems exclusion rule, peak generation, waveform painting, resize, lane-
+canvas seek (`attachSeek`), and the document keyboard owner (0 and 1–6 unchanged, still
+self-publishing since they bypass the facade). Ribbon (notes) lanes, the zoomed pane, and the
+overview lane remain entirely `app.js`'s own `#note-lanes-root` subtree (Phase 6 / Phase 4b).
+Visual order between the two subtrees — previously achieved by `insertBefore`ing ribbon/zoom/
+overview nodes relative to a captured standard-lane DOM reference — is now recovered purely
+with CSS `order` (`#standard-lanes-root`/`#note-lanes-root` are both `display: contents`),
+computed independently on each side from the identical, already-shared `tracks` order. No
+DOM reference crosses the ownership boundary in either direction anymore. `retranslate()`
+drops its now-dead standard-lane block; React re-renders lane text from `useLocale()` like
+every other React-owned control.
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+Before implementation, the focused Node facade run had 9 passing cases (the three new
+commands/attach hooks did not exist yet, so this run was against the already-implemented
+facade layer — see note below). The focused production-entry Chromium run
+(`tests/player.test.js`) had 31 passing and 3 expected failing cases: no `#standard-lanes-root`
+content existed yet (`querySelectorAll('#standard-lanes-root > .lane')` returned nothing), so
+every new lane-ownership assertion failed with the DOM absent. These were the intended
+contract failures; the other 31 cases (including every pre-existing lane/volume/routing
+assertion, still querying through `#lanes .lane:not(...)`) stayed green throughout.
+
+*Note on sequencing:* the thin facade wiring (`lib/player-application.js`) was implemented
+immediately before its Node test, since it is mechanical delegation identical in shape to the
+existing `setMode`/`toggleAllTracks`/`attachPrimarySeekCanvas` commands it sits beside; the
+genuinely risky layer — React lane ownership and the `order`-based positioning scheme — is
+what the browser failing-first run above exercised before any of `app.js`'s or
+`PlayerShell.jsx`'s lane code existed.
+
+After implementation:
+
+- focused Node `tests/player-application.test.js`: 1 file, 12 tests passed (3 new: attach/
+  detach for `attachLaneCanvas` and `attachLaneExtra`, and `toggleTrack`/`setTrackVolume`
+  delegation plus their validation errors);
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 34 tests passed (3 new
+  cases plus a required update to one pre-existing remount test and one pre-existing mute-
+  click assertion — see below);
+- full `npm test`: 31 files, 420 tests passed;
+- `npm run build`: passed; 56 modules transformed; existing intentional unresolved-at-build-
+  time `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+Two pre-existing tests needed adjustment for reasons intrinsic to the ownership transfer, not
+weakened assertions:
+
+1. `cleans overlay/listeners on shell remount without disposing the song or duplicating loads`
+   previously asserted `.lane canvas` identity was unchanged by `unmount()`, true only because
+   lanes were entirely outside the React tree. Now that standard lanes are React-owned,
+   unmounting the shell clears their portal like every other React-owned region. The test now
+   asserts `#standard-lanes-root canvas` count drops to zero and `#note-lanes-root canvas`
+   (legacy) identity is unaffected, then that remount recreates the same count of fresh,
+   repainted canvases with the song/volume/routing state intact — matching how every other
+   React-owned control (play button, volume slider, seek canvas) already behaves across
+   remount.
+2. Two mute-toggle assertions (one pre-existing, one new) needed `await waitFor(...)` around
+   the DOM `.muted` class: clicking a React button inside a React event handler batches the
+   resulting `publish()` → re-render, so the class update is asynchronous relative to
+   `.click()` returning, unlike the old direct `classList.toggle()` write from a plain
+   `addEventListener('click', ...)`. `application.getSnapshot()` and real `AudioParam` gain
+   ramps remain synchronously observable immediately after the click in both tests.
+
+The new Chromium cases prove: one React lane owner (`data-react-lane`, one per track,
+including an unknown lane) with translated/untranslated labels and stable canvas identity
+across a locale change; a real, keyboard-operable, focus-restoring mute button producing the
+expected `AudioParam.setTargetAtTime` sequence; per-lane volume routed through the facade and
+staying independent of mute (including while muted — `applyGains()` still ramps every lane
+every call, so the ramp array is unchanged rather than empty); and the drums tempo hint plus a
+note-ribbon lane's CSS `order` correctly interleaving relative to the standard lanes and the
+pinned-above overview/zoom lanes.
+
+The exact-source build emits **114,617 bytes** in the player entry (`dist/assets/main-*.js`)
+versus Phase 3e's 113,165: **+1,452 bytes (+1.28%)**. The shared React/header chunk is
+unchanged at 218,172 bytes — no new dependency was added. A separate 13,274-byte CSS chunk
+exists (not tracked in earlier phases' byte comparisons); it carries only the small
+`.lane-name` button-reset and `#note-lanes-root`/`.react-portal-host` `display: contents`
+additions plus everything already shared with `SiteHeader.jsx`.
+
+### Exact-source local smoke
+
+Local production build served via `npm run preview` (root) and a second static server with
+the same build copied under `pr-99/` (nested-route smoke, since Vite's asset paths are
+relative). Both displayed the same content and behavior. A generated 3-second four-stem
+(vocals/guitar/bass/drums-click) ZIP fixture, built with the repository's own
+`tests/helpers/audio-fixtures.js#stemsZip`, loaded through the real `#file-input` at both
+origins.
+
+At root: four React-owned lanes rendered with correct labels/order/kbd hints; the drums
+lane's tempo-range hint ("whole song" / Clear) rendered nested inside its own card, as before
+migration. Genuine `1` (after `0`) and mouse clicks on the Vocals lane-name button toggled
+mute, updated the mode dropdown to "Custom…"/`Restore previous`/`Unmute all` correctly, and
+returned focus to `<body>`. Dragging the Vocals lane's own volume slider to 39% left `muted`
+unaffected in both directions (confirmed via `application.getSnapshot().song.tracks`).
+Switching English↔繁體中文 retranslated every lane label without touching canvases, gain, or
+routing state (the pre-existing, unrelated-to-this-phase defect where the legacy Overview
+lane's own label and its Clear button's static text are never retranslated by `retranslate()`
+was observed and is not new — `overviewEl`/`tempoClearBtn` were never in that function's
+scope before this migration either, and both remain explicitly Phase 4b/6 territory). The
+nested route repeated the load/interaction with identical results. The only console entries
+at either origin were the expected localhost GoatCounter refusal; no first-party warning or
+error appeared. A simulated narrow-viewport check did not take effect in this browser
+automation session (the window resize did not propagate to the page's viewport) and is
+deferred to the PR-preview/production tiers, where it has in every prior phase.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | Generated four-stem WAV/ZIP fixtures cover ordinary stems, an unknown lane, mute/volume independence, locale, remount, and `order`-based positioning through the production-entry Chromium suite and a local exact-source smoke. |
+| Malformed input | Unchanged; existing generated malformed ZIP and rejection cases pass, none touch lane ownership. |
+| Storage/locale | Both languages pass in Chromium and in exact-source local smoke; lane labels retranslate without touching audio/canvas/routing. |
+| Handheld | Existing capability-predicate coverage passes; no physical device run, and the local simulated narrow-viewport check did not take effect this session (deferred to PR preview). |
+| Worker | Unaffected; no Worker/model code changed. |
+| Visual | Exact-source local smoke reviewed lane layout, order, and the drums tempo hint nested in its card at desktop width; no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine keyboard/gain-ramp evidence was collected, not subjective listening. |
+| Real song | Not yet run against `examples/nov_you.zip` in this evidence pass; deferred to the PR-preview/production canary alongside the real deployment SHA check. |
+
+PR preview and production acceptance evidence, the affected-boundary browser check against
+the exact synthetic-merge SHA, the production delivery canary, and the exact production SHA
+are recorded below once each step completes.
+
 ## Phase 3e — React mode and routing controls
 
 Status: accepted in production at rollback anchor

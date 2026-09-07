@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 4a](#react-phase-4a--standard-stem-lane-components-2026-09-07) | React now owns each standard stem lane's label, keyboard-operable mute, per-lane volume, and canvas host; ribbon/zoom/overview lanes stay legacy, positioned purely by CSS `order`. Implementation complete; PR/production acceptance pending. |
 | [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; accepted at `41ff22c`, completing Phase 3. |
 | [React phase 3d](#react-phase-3d--volume-and-ab-loop-controls-2026-09-06) | React now owns the primary master-volume and A/B presentation controls; accepted in production at `4b14667`. |
 | [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; accepted in production at `20a55bb`. |
@@ -84,6 +85,49 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## React phase 4a — standard stem lane components (2026-09-07)
+
+- [new] React solely authors each standard stem lane (mix/stems/unknown) through a new
+  `#standard-lanes-root` portal: translated/unknown label, a real keyboard-operable
+  `<button class="lane-name">` (was a non-focusable `<div>`) that blurs after activation, the
+  `.muted` class read straight from the snapshot, per-lane volume, and a stable canvas host.
+  The drums lane also gets an explicit extra-content host so its legacy tempo-range hint keeps
+  its previous nested-in-card presentation without a second DOM owner.
+- [new] The facade adds `toggleTrack(id)`, `setTrackVolume(id, value)`, `attachLaneCanvas(id,
+  canvas)`, and `attachLaneExtra(id, node)` — the latter two mirror `attachPrimarySeekCanvas`'s
+  explicit attach/detach shape. `app.js` keeps peak generation, painting, resize, lane-canvas
+  seek, gain smoothing, the mix/stems exclusion rule, and the 0/1–6 keyboard owner.
+- [insight] Ribbon (notes) lanes were the one thing genuinely interleaved among standard lanes
+  (`el.lanes.insertBefore(lane, track.laneEl.nextSibling)`), so once standard lanes became a
+  React portal, a foreign node inserted between React's own portal children would be exactly
+  the "two owners touching one DOM region" hazard the migration rules forbid. Splitting
+  `#lanes` into two sibling `display: contents` wrappers — `#standard-lanes-root` (React) and
+  `#note-lanes-root` (`app.js`) — and letting each side set its own CSS `order` from the
+  identical, already-shared `tracks` order recovers the exact original visual interleaving
+  with zero cross-owner DOM references. Neither side ever needs to find the other's node.
+- [gotcha] A lane-name click that used to be a plain `addEventListener` write is now a React
+  `onClick`; calling a command from inside it batches the resulting `publish()` → re-render, so
+  `element.classList.contains('muted')` is not yet updated the instant `.click()` returns. Two
+  tests needed `await waitFor(...)` around the DOM class; `application.getSnapshot()` and real
+  `AudioParam` ramps remained synchronously correct throughout, same as already established
+  for every other React-owned control.
+- [test] Failing-first Chromium run recorded 3 new missing-ownership failures (no
+  `#standard-lanes-root` content) with 31 adjacent passes. After implementation: focused Node
+  facade 12/12, focused production-entry Chromium 34/34, full suite 31 files / 420 tests,
+  `npm run build` with only the existing intentional worklet warning, `git diff --check` clean.
+- [measurement] Exact commit `bf2af58` player bundle is 114,617 bytes, +1,452 (+1.28%) from
+  accepted Phase 3e; the 218,172-byte shared React chunk is unchanged.
+- [test] Exact-source local smoke (root, plus the same build served under a nested `pr-99/`
+  path) loaded a generated 3-second four-stem fixture through the real file input at both
+  origins: correct lane order/labels/kbd hints, drums tempo hint nested in its card, genuine
+  keyboard (`1`, `0`) and mouse mute toggles with correct mode-dropdown/all-toggle sync and
+  focus restoration, per-lane volume independent of mute in both directions, and clean
+  bilingual retranslation with stable canvases. Both consoles showed only the expected
+  localhost GoatCounter refusal. A simulated narrow-viewport resize did not take effect in this
+  browser-automation session; deferred to the PR-preview tier as in every prior phase. PR/
+  production acceptance evidence is recorded in
+  [react-migration-evidence.md](react-migration-evidence.md) once each step completes.
 
 ## React phase 3e — mode and routing controls (2026-09-06/07)
 

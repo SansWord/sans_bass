@@ -87,7 +87,7 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   lifecycle, tempo/chord detection, the note editor, and export/import; the edit list,
   list-export row, tempo grid, chord detection/editing, and the zoomed pane remained
   legacy-owned, deferred to Phase 6b (originally scoped as "tempo/grid/capo/chord controls")
-  and Phase 6c (selection/edit/undo/import/export controls). Phase 6b adds
+  and Phase 6c (originally scoped as "selection/edit/undo/import/export controls"). Phase 6b adds
   `components/TempoPanel.jsx`, whose `TempoPanel` owns the entire shared `<section
   id="notes-tempo">` region — the Show-grid checkbox, BPM field, ×½/×2, phase field + nudge
   buttons, beats-per-bar select, "Select BPM range" toggle, Re-detect button, and status
@@ -114,7 +114,44 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   reasoning. `notes.js` retains the Worker lifecycle, tempo/chord detection state, the note
   editor, and export/import; the edit list, list-export row, chord detection/editing, and the
   zoomed pane remain legacy-owned, deferred to that future capo/chord sub-slice and Phase 6c
-  (selection/edit/undo/import/export controls). Phase 2's DOM-independent
+  (originally scoped as "selection/edit/undo/import/export controls"). Phase 6c adds
+  `components/EditorPanel.jsx`, whose `EditListPanel` owns each melodic stem's edit list
+  (`#notes-edits-{stem}`: summary count, Undo button, per-row remove/orphan warning) and whose
+  `ListExportPanel` owns its list-export row (`#notes-list-io-{stem}`: "Bars per line", "Export
+  list") — one coherent DOM/ownership unit each, portalled into new `#notes-edits-{stem}-root`/
+  `#notes-list-io-{stem}-root` hosts nested inside their still-legacy `<section
+  id="notes-{stem}">`, matching Phase 6a's nested-portal-inside-still-legacy-section shape
+  (unlike Phase 6b's whole-section replacement, since `<section id="notes-{stem}">` itself
+  stays legacy-owned). It extends the same `detection` export Phase 5b/6a established (a new
+  `editGroups` array field per channel) rather than adding a second store, for the same reason
+  Phase 6a gave for its own interpretation-row fields: both live in the same
+  `createNotesChannel()` closure and are recomputed by the same `reinterpret()` call. **Phase
+  6c's own audit found its originally-scoped Edit-notes toggle and shared Export/Import edits
+  JSON buttons entangled with the same still-legacy, per-song-rebuilt zoomed-pane DOM container
+  Phase 6b found for the capo/chord row** — built by `app.js`'s `buildUI()` inside the zoomed
+  pane's per-song construction, torn down and rebuilt every song load. Unlike capo/chord,
+  neither is rewritten every rAF frame, but the DOM-container-teardown reason alone is
+  independently disqualifying: a stable host would relocate a control that is visually part of
+  one row (beside the zoomed pane's Notes chips) to a different DOM position, which the
+  migration rules forbid — see `docs/react-phase-6c-editor-export-controls-plan.md`'s scope
+  decision for the full reasoning. Both controls join the same future, not-yet-scheduled
+  sub-slice Phase 6b already deferred, rather than opening a second one for the same root
+  cause; note selection/editing interaction itself was never an open question, since canvas
+  pointer/keyboard ownership already stays legacy per the standing architecture rules restated
+  above. `notes.js` loses `renderEditList()`/`syncExportAvailability()` (both fully replaced by
+  the new published `editGroups` field and the already-published `count` field), the
+  `els.editUndo`/`els.listExport` click listeners, and the `document`-level outside-pointerdown-
+  closes-the-disclosure listener (moved into `EditListPanel`'s own effect); it gains
+  `undoLastEdit()`/`removeEditGroup(id)`/`exportList(barsPerLine)` command functions, and its
+  `els` parameter collapses to a single `panelEl` reference, the one legacy DOM lookup this
+  factory still needs. Moving this presentation to React also closed a pre-existing gap found
+  during the audit: the legacy edit list had no `sansbass:langchange` listener anywhere in
+  `notes.js`, so it never retranslated on a language switch until the next edit changed it;
+  render-time translation via `t()` fixes this as a natural side effect. `app.js` needed zero
+  changes for this slice, the same as Phase 6b. This completes all three originally-scheduled
+  Phase 6 sub-slices; one future, not-yet-scheduled sub-slice remains (capo control, chord
+  display/editing, the Edit-notes toggle, and the shared Export/Import edits JSON buttons — all
+  four blocked on the same zoomed-pane mount-lifecycle restructuring). Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -241,10 +278,20 @@ BPM field, ×½/×2, phase field + nudge buttons, beats-per-bar select, "Select 
 toggle, Re-detect button, status line) through a `#tempo-ui-root` portal that replaces that
 whole (never-legacy-nested) section, reflecting a new `tempoGrid` export — a distinct store
 from `detection`, since tempo/grid state is module-level/shared with no per-channel shape,
-rather than an extension of it (Phase 6b). The capo control and the zoomed pane's chord
-display/editing stay entirely legacy-owned in `app.js`, found entangled with its still-legacy,
-per-song-rebuilt zoomed-pane construction and rAF-driven chord-editor paint loop — deferred to
-a future, not-yet-scheduled sub-slice (see `docs/react-phase-6b-tempo-chord-controls-plan.md`).
+rather than an extension of it (Phase 6b). `components/EditorPanel.jsx` owns each melodic
+stem's edit list (`EditListPanel`: summary count, Undo button, per-row remove/orphan warning,
+through `#notes-edits-vocals-root`/`#notes-edits-bass-root` portals) and list-export row
+(`ListExportPanel`: "Bars per line", "Export list", through
+`#notes-list-io-vocals-root`/`#notes-list-io-bass-root` portals), both nested inside the same
+still-legacy `<section id="notes-{stem}">` sections as the tune row, extending the same
+`detection` export rather than a second store (Phase 6c) — completing all three
+originally-scheduled Phase 6 sub-slices. The capo control, the zoomed pane's chord
+display/editing, the Edit-notes toggle, and the shared Export/Import edits JSON buttons stay
+entirely legacy-owned in `app.js`, found entangled with its still-legacy, per-song-rebuilt
+zoomed-pane construction (the capo/chord row additionally with its rAF-driven paint loop) —
+deferred to one future, not-yet-scheduled sub-slice (see
+`docs/react-phase-6b-tempo-chord-controls-plan.md` and
+`docs/react-phase-6c-editor-export-controls-plan.md`).
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -291,6 +338,7 @@ components/SeparationPanel.jsx     React separation-panel presentation (Phase 5a
 components/DetectionPanel.jsx      React detection-controls presentation (Phase 5b)
 components/InterpretationPanel.jsx React interpretation-controls presentation (Phase 6a)
 components/TempoPanel.jsx          React tempo/grid-panel presentation (Phase 6b)
+components/EditorPanel.jsx         React edit-list/list-export-row presentation (Phase 6c)
 components/useLocale.js            cleaned React locale subscription
 demos.jsx                          demo React mount plus legacy title/count localization
 scripts/build-demos.js             generates the ignored demos/index.html before dev/build
@@ -309,9 +357,12 @@ notes.js  notes.worker.js          ESM — notes panel and the analysis worker; 
                                    components/DetectionPanel.jsx, each channel's
                                    interpretation-row presentation is
                                    components/InterpretationPanel.jsx, and the shared
-                                   tempo/grid-panel presentation is components/TempoPanel.jsx.
-                                   The capo control and chord display/editing remain
-                                   app.js-owned (deferred, see docs/react-migration.md)
+                                   tempo/grid-panel presentation is components/TempoPanel.jsx,
+                                   and each channel's edit-list/list-export-row presentation is
+                                   components/EditorPanel.jsx. The capo control, chord
+                                   display/editing, the Edit-notes toggle, and the shared
+                                   Export/Import edits JSON buttons remain app.js-owned
+                                   (deferred, see docs/react-migration.md)
 tests/*.test.js                    units      → `npm test` (Vitest; see vitest.config.js)
 tests/parity.html                  accuracy   → window.__parity
 tests/notes.html                   notes+key  → window.__notes

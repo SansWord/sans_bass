@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 6c](#react-phase-6c--edit-list-undo-and-list-export-controls-2026-09-07) | React now owns each melodic stem's edit list (summary/rows/Undo) and list-export row (Bars-per-line/Export list), completing all three originally-scheduled Phase 6 sub-slices; the audit found the Edit-notes toggle and shared Export/Import-edits buttons entangled with the same still-legacy zoomed-pane construction Phase 6b found for capo/chord, joining that same deferred future sub-slice. Accepted in production at `2aa9cdc`. |
 | [React phase 6b](#react-phase-6b--tempogrid-controls-2026-09-07) | React now owns the shared tempo/grid panel (BPM/phase/beats-per-bar/range-toggle/redetect); the audit found the capo control and zoomed-pane chord editor entangled with still-legacy rAF-driven, per-song-rebuilt rendering, so they stay legacy-owned, narrowing this slice from its originally-scoped "tempo/grid/capo/chord". Accepted in production at `65a8ae6`. |
 | [React phase 6a](#react-phase-6a--interpretation-controls-2026-09-07) | React now owns each melodic stem's shortest-note slider and Advanced disclosure (clip/hmm/fold + fold tolerance/stats), the first of Phase 6's sub-slices; `notes.js` extends the existing `detection` export rather than adding a second store. Accepted in production at `61e2b29`. |
 | [React phase 5b](#react-phase-5b--detection-controls-2026-09-07) | React now owns the shared Find-notes button/spinner/busy-channel status and each melodic stem's count/Show-Hide/簡譜/key controls, completing Phase 5; `notes.js` keeps the Worker/tempo/chord/editor state and exposes detection through a new `detection` export instead of writing DOM. Accepted in production at `3e241da`. |
@@ -88,6 +89,73 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## React phase 6c — edit list, undo, and list-export controls (2026-09-07)
+
+- [new] React (`components/EditorPanel.jsx`) solely authors each melodic stem's edit list
+  (`#notes-edits-{stem}`: summary count, Undo button, per-row remove/orphan warning) and
+  list-export row (`#notes-list-io-{stem}`: "Bars per line", "Export list") through new
+  `#notes-edits-{stem}-root`/`#notes-list-io-{stem}-root` portals nested inside their
+  still-legacy `<section id="notes-{stem}">`, matching Phase 6a's nested-portal shape. This
+  completes all three originally-scheduled Phase 6 sub-slices (interpretation/key/display,
+  then tempo/grid, then this one); a fourth, still-unscheduled sub-slice remains.
+- [note] Extends the `detection` store Phase 5b/6a already established, rather than adding a
+  second one — the edit-list/list-export state lives in the same `createNotesChannel()`
+  closure, recomputed by the same `reinterpret()` call, gated on the same `!!frames` fact.
+- `[insight]` This slice's own audit found its originally-scoped "selection/edit/undo/import/
+  export controls" was not entirely deliverable either: the Edit-notes toggle and the shared
+  Export/Import edits JSON buttons are built by `app.js`'s `buildUI()` inside the same
+  per-song-rebuilt zoomed-pane container (`el.noteLanesRoot.innerHTML = ''`) Phase 6b found
+  for the capo/chord row. Unlike capo/chord, neither is rewritten every rAF frame — but the
+  DOM-container-teardown reason alone was independently disqualifying: a stable host would
+  relocate a control that is visually part of one row (beside the zoomed pane's Notes chips)
+  to a different DOM position, which the migration rules forbid. Both controls joined the
+  same still-unscheduled future sub-slice Phase 6b already deferred, rather than opening a
+  second one for the same root cause. "Selection" itself was never an open question — canvas
+  pointer/keyboard ownership already stays legacy per standing architecture rules.
+- `[note]` Moving this presentation to React closed a pre-existing gap found during the audit,
+  not preserved as a feature: **there was no `sansbass:langchange` listener anywhere in
+  `notes.js`**, so the legacy edit list's rendered text never retranslated on a language
+  switch until the next edit changed it — a gap against LANG-001's "all visible copy
+  rerenders" promise. `editTypeLabel()`/`groupLabel()` now return a plain i18n key instead of
+  calling `tr()` directly, resolved via `t()` at render time, closing the gap as a natural
+  side effect.
+- `[note]` `notes.js`'s `els` parameter collapsed from a seven-field object to a single
+  `panelEl` reference — the last remaining legacy DOM lookup this factory needs, now that
+  count/toggle/tune/edit-list/list-export have all moved to React across Phase 5b/6a/6c.
+- `[test]` One of four new Chromium cases in `tests/player.test.js` — the retranslation
+  case — genuinely **failed** against the legacy owner before implementation, confirming the
+  pre-existing langchange gap above rather than a test bug (the other three passed
+  unmodified, validating already-correct legacy behavior, the same acknowledgment prior
+  phases made for some of their own new cases). After implementation: focused Chromium 51/51
+  (47 baseline + 4 new), full suite 31 files / 445 tests, `npm run build` with only the
+  existing intentional worklet warning, `git diff --check` clean. `tests/i18n.test.js`'s
+  annotated-key sanity floor needed lowering from 5 to 4 — removing the edit-list/list-export
+  markup dropped `index.html`'s count from 7 to 4, the second time any React phase's
+  shrinkage has crossed this floor (the first was Phase 6b, 15 → 5).
+- `[measurement]` Exact commit `0835bd6` player bundle is 121,658 bytes, +1,061 (+0.88%) from
+  accepted Phase 6b; the 218,172-byte shared React chunk and 13,274-byte CSS chunk are both
+  unchanged — no new dependency was added.
+- `[note]` An independent fresh-context review (a `general-purpose` subagent, given the plan
+  doc and the full diff) ran before opening the PR, per this repo's Review Protocol; it found
+  no correctness bugs, regressions, or scope violations, and independently re-ran the test
+  suite and build to confirm.
+- `[test]` Exact-source local smoke (root, plus the same build served under a nested `pr-101/`
+  path) booted cleanly at both origins with no first-party console errors; a language switch
+  retranslated the list-export row's label correctly. Interactive edit-list/undo/remove/
+  list-export behavior was exercised exhaustively by the Chromium suite rather than repeated
+  manually here.
+- [note] PR #91's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `a14e436` before the affected-boundary check (a generated synthetic WAV loaded through
+  the real file input, the edit-list/list-export hosts and their React-rendered children
+  present, clean first-party console at `/pr-91/`). PR #91 squash-merged as
+  `2aa9cdcf07f8ed5cb1d04119b93f2a55a121bafe`; its exact-SHA deploy and test workflows passed,
+  production displayed `2aa9cdc`, and the production canary confirmed the edit-list/list-export
+  hosts' presence with an empty first-party console. This full SHA is the Phase 6c rollback
+  anchor, the third of Phase 6's four ordered sub-slices in practice — see the `[insight]`
+  above. Full details in [react-migration-evidence.md](react-migration-evidence.md).
 
 ---
 

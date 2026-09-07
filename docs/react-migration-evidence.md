@@ -1,5 +1,190 @@
 # React migration evidence
 
+## Phase 5a — React separation panel controls
+
+Status: accepted in production at rollback anchor
+`ffe5ed511ffbceeb5871cc4c45bbec8570a50c51`. Evidence collected 2026-09-07
+America/Los_Angeles. Branch `feat/react-phase-5a-separation-panel`; starting source
+`28b026a2dc576f1ff2e5a3e893c50fd4ab0bf5df`; plan and implementation committed together as
+`66dd686eba298db0274711ce194dd6c5130136f5` (squash-merged as the PR's single commit — this
+slice's plan and code were authored and reviewed in one pass rather than as separate commits,
+unlike Phase 4b's two-commit branch). Previous accepted implementation rollback anchor: Phase 4b at
+`d961db76a8404a2aef1f544dfe9f9746a397aa74`, documented through
+[PR #82](https://github.com/SansWord/sans_bass/pull/82).
+
+Detection controls (`notes.js`) are untouched — out of scope per `docs/react-migration.md`'s
+Phase 5 increment boundary, which calls out separation and detection as separate PR-sized
+slices.
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-5a-separation-panel-plan.md](react-phase-5a-separation-panel-plan.md), including
+the decision not to extend `lib/player-application.js`. `components/SeparationPanel.jsx` owns
+the entire `#sep` subtree — the handheld explanation, Go button and status line, progress bar,
+and Save/Cancel row — using the exact element ids and classes the legacy markup used
+(`sep-go`, `sep-status`, `sep-bar`, `sep-fill`, `sep-save`, `sep-cancel`, `sep-handheld`, `.sep`,
+`.sep-row`), so `styles.css` (class-selector only) and every pre-existing Chromium assertion
+referencing these ids kept working unmodified as regression proof.
+
+`separate.js` gains a small `separation` export (`subscribe`, `getSnapshot`,
+`commands: { start, cancel, save }`) — the same shape `lib/player-application.js` already
+established, scoped to separation's own state, which has no other owner (the same reasoning
+that already applies to `notes.js`'s detection state). No `lib/player-application.js` commands
+or `applicationSnapshot()` fields were added: nothing in the migrated presentation needs a new
+fact from the player/song/transport model that `separate.js` doesn't already reach through the
+existing temporary `window.sansBass` bridge (`currentMix()`, `isSingleTrack()`) it already
+depended on before this phase. `separate.js` remains loaded as its own
+`<script type="module" src="separate.js">` entry in `index.html` *and* is now also imported
+directly by `SeparationPanel.jsx` — the same "both a script-tag entry and an import target"
+pattern `app.js` and every `lib/*.js` file already use (CLAUDE.md's ESM-modules rule,
+v1.21.0/v1.21.1 devlog). The local build smoke below confirms this produces exactly one Worker
+instance per separation run, i.e. no duplicate module evaluation.
+
+`lib/separation-state.js` gains one more pure export, `resolveStatusParams(params)` — the
+existing `resolve()` helper lifted out of `separate.js` unchanged (calls function-valued
+params, passes everything else through), letting the panel resolve a status line's params at
+**render** time rather than publish time. This is what lets a language switch mid-run
+retranslate correctly, including the one status whose param is itself a translated-string
+thunk (`w.onerror`'s OOM fallback) — the same ownership-transfer side effect Phase 4b got for
+the Overview lane's stuck-language label, now applied to a case the old code had already
+special-cased with an explicit `sansbass:langchange` listener; that listener and its
+`lastStatus`/`retranslateStatus` machinery are deleted, since React's own locale-driven
+re-render already covers it.
+
+`separate.js` retains: `HANDHELD` detection (read once, exactly like
+`components/PlayerShell.jsx`'s own existing `const HANDHELD = isHandheld();`), the Worker
+lifecycle (`getWorker`, `onmessage`/`onerror` handling), analytics tracking, the `confirm()`
+long-track guard, WAV/ZIP encoding for save, and the `playerApplication.subscribe(refresh)`/
+`registerCleanup` wiring for song-token invalidation. It loses the `el` DOM-element map and
+every direct DOM write (`renderControls`, `setProgress`, `status`'s `textContent` write). A new
+module-scoped `saving` boolean (independent of `phase`, which stays `'success'` throughout a
+save so the Save button itself stays visible while temporarily disabled) reproduces the one
+DOM write that had no equivalent in `separationView()`'s existing derivation
+(`el.save.disabled = true` during encode).
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+The two pre-existing Chromium separation cases in `tests/player.test.js` passed against the
+legacy DOM-writing owner beforehand (the regression baseline this slice had to keep green).
+Once `separate.js`/`SeparationPanel.jsx` were in place, running the focused Chromium suite
+surfaced one genuine failure worth recording: the pre-existing "drives separation running and
+success controls" case's synchronous `expect(go.disabled).toBe(true)` immediately after
+`go.click()` failed (`expected false`), because React's commit is no longer synchronous with a
+native `.click()` the way the legacy DOM write was — the fix was `await waitFor(...)`, matching
+this suite's own established pattern elsewhere (e.g. the `all-toggle` remount case already
+awaits `all.textContent`). The new `resolveStatusParams` Node cases and the three new Chromium
+cases below were authored alongside the implementation that makes them pass, rather than
+against a pre-existing failing baseline, since the underlying pure derivation
+(`separationView`) and the ownership-transfer pattern were already established and verified in
+Phase 4a/4b.
+
+After implementation:
+
+- focused Node `tests/separation-state.test.js`: 1 file, 9 tests passed (3 new
+  `resolveStatusParams` cases: plain values pass through, function-valued params are called at
+  resolve time — twice, proving no caching — and `null`/`undefined` pass through unchanged);
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 38 tests passed — the two
+  pre-existing separation cases kept their assertions but two synchronous DOM reads
+  immediately after a `.click()` became `await waitFor(...)` (React's commit is no longer
+  synchronous with a native `.click()` call, matching this suite's own established pattern
+  elsewhere, e.g. the `all-toggle` remount case's `await waitFor(() => all.textContent === ...)`)
+  — plus 3 new cases: mid-run locale retranslation of the status line (including a second
+  message proving the panel reads the *live* locale, not one captured when the message
+  arrived), recovery to a reusable idle state after cancellation, and recovery after a worker
+  failure whose status line resolves the OOM thunk at render time and retranslates correctly,
+  with a follow-up retry proving `onerror` (unlike a `'cancelled'` result message) actually
+  nulls the cached Worker so a retry creates a fresh instance;
+- full `npm test`: 31 files, 429 tests passed;
+- `npm run build`: 57 modules transformed (56 in Phase 4b); existing intentional
+  unresolved-at-build-time `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+The exact-source build emits **116,313 bytes** in the player entry (`dist/assets/main-*.js`)
+versus Phase 4b's 115,543: **+770 bytes (+0.67%)**. The shared React/header chunk is unchanged
+at exactly 218,172 bytes and the CSS chunk unchanged at exactly 13,274 bytes — no new
+dependency was added; `separate.js` moved from its own discovered entry chunk into the main
+player bundle now that it is reachable from the main entry's own import graph (the same
+`notes.js`-shaped chunk it used to be is unaffected, since `notes.js` is not yet imported from
+that graph — Phase 6).
+
+### Exact-source local smoke
+
+Local production build served via `npm run preview` (root) and a second static server with the
+same build copied under `pr-999/` (nested-route smoke, since Vite's asset paths are relative).
+A generated whole-song WAV fixture, built with the repository's own
+`tests/helpers/audio-fixtures.js#wavFile`/`sine` run directly under Node (the real encoder,
+since the built site does not serve `/tests/` or `/lib/` source paths), loaded through the real
+`#file-input` at both origins. A fake `window.Worker` (installed via `javascript_tool` before
+upload, matching `tests/helpers/player-harness.js#installFakeWorker`'s shape) drove the
+separation flow — no real model or deployed Worker was exercised.
+
+At root: `#build-sha` read `28b026a` (the exact pre-merge source under test). Clicking
+"Separate into 6 stems" disabled it, showed Cancel, and a `progress` message produced
+"segment 1/4 — about 12s left" at a 25% filled bar. Switching to 繁體中文 retranslated the
+status to "第 1/4 段 — 大約還要 12 秒" without losing the in-flight run; a `result` message then
+replaced the single lane with six, hid Go, and showed Save with an empty status line. Exactly
+one fake Worker instance existed throughout. The nested route repeated the load and a
+worker-failure path: `onerror` with no message produced "worker failed: out of memory? — try a
+shorter track", retranslating to "worker 失敗：記憶體不足？ — 試試比較短的歌" on a language
+switch, then recovered to a usable, enabled Go button. No first-party console error appeared at
+either origin.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | A generated whole-song WAV fixture and a deterministic fake Worker cover start/progress/backend/cancel/error/success/save through the production-entry Chromium suite and a local exact-source smoke. |
+| Malformed input | Unchanged; no separation-ownership-affecting code path touched. |
+| Storage/locale | Both languages pass in Chromium and in exact-source local smoke; the status line (including the OOM thunk case) now retranslates correctly at render time rather than through the deleted explicit listener. |
+| Handheld | Not re-verified with a real or emulated handheld device in Chromium; `separationView({handheld: true})`'s pure derivation is unchanged and already covered in `tests/separation-state.test.js`, and the React panel is a direct, logic-free pass-through of that same derivation — matching this codebase's existing precedent of not maintaining a dedicated Chromium device-emulation test for `PlayerShell.jsx`'s own `HANDHELD`-gated `DropAffordance` text either. Physical-handheld acceptance remains separate, deployment-level evidence per `docs/testing.md`. |
+| Worker protocol | Fully covered by the deterministic fake-Worker cases above; the real `separate.worker.js` module and ONNX Runtime session are unchanged and not re-exercised, per `docs/testing.md`'s rule that a fake Worker proves UI protocol handling only. |
+| Visual | Exact-source local smoke reviewed panel layout, progress bar fill, and button visibility at desktop width; no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine command/state evidence was collected, not subjective listening. |
+| Real song / cached model | Not run against `examples/nov_you.zip` or a real cached-model separation in this evidence pass; the changed boundary (panel presentation/ownership, no Worker-protocol or model change) does not plausibly affect either, matching Phase 4a/4b's own scoping of unaffected boundaries. |
+
+### PR-preview deployment evidence
+
+[PR #83](https://github.com/SansWord/sans_bass/pull/83)'s `test` and `deploy` checks both
+passed. Before any behavior assertion,
+`https://sansword.github.io/sans_bass/pr-83/` displayed exact synthetic merge
+`ac513d7fbddb0fd2184d7963bdc7037b223b54bc` (`ac513d7`), matching
+`gh api repos/SansWord/sans_bass/pulls/83 --jq '{merge_commit_sha}'`.
+
+A generated whole-song WAV fixture loaded through the real `#file-input`, with a fake
+`window.Worker` installed beforehand. Clicking "Separate into 6 stems" produced a `progress`
+message status ("segment 3/5 — about 20s left") with Go disabled and Cancel shown; a `result`
+message then replaced the lane with six, hid Go, and showed Save. Exactly one fake Worker
+instance was created. The first-party console carried no errors.
+
+### Production acceptance evidence
+
+PR #83 squash-merged as exact production source
+`ffe5ed511ffbceeb5871cc4c45bbec8570a50c51`. Its exact-SHA
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34115787846) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34115787920) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/?phase5a=ffe5ed5`
+displayed exact `ffe5ed5`.
+
+The production delivery canary repeated the affected boundary: a generated whole-song WAV
+fixture loaded through the real file input, and a fake-Worker-driven `result` message replaced
+the lane with six, hid Go, and showed Save. Exactly one fake Worker instance was created. The
+first-party console carried no errors.
+
+The complete synthetic, malformed-input, storage-fault, and narrow-viewport matrices were not
+repeated in production because the canary agreed with the exact-source and preview evidence
+above. No real-song (`examples/nov_you.zip`), real/cached-model, physical-handheld, subjective
+auditory, or background-tab check is claimed for this increment, for the same reasons given in
+the omissions table above.
+
+Phase 5a is accepted at the full SHA above. Detection controls (`notes.js`), the zoomed pane,
+and the `window.sansBass` bridge's remaining `currentMix`/`isSingleTrack`/`stemBuffer` members
+stay untouched and deferred to Phase 6 (or later narrowing, not required by this slice). This
+separate documentation-only PR records the immutable rollback anchor.
+
 ## Phase 4b — React shared overview lane integration
 
 Status: accepted in production at rollback anchor

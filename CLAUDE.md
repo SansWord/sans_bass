@@ -41,7 +41,16 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   range-select caption, while `app.js` retains `overviewStems()`, peak combination, and
   painting. `app.js`'s own `#note-lanes-root` (ribbon/zoomed pane, still legacy — Phase 6)
   sits alongside both inside `#lanes`; all three are `display: contents` so `order` alone
-  recovers the original interleaved visual order with no cross-owner DOM references. Phase
+  recovers the original interleaved visual order with no cross-owner DOM references. Phase 5a
+  adds `components/SeparationPanel.jsx`, owning the entire `#sep` subtree (availability/gating
+  including the handheld explanation, start button, progress/backend status, cancel, error
+  display, and save controls) through a `#separation-ui-root` portal, using the same element
+  ids/classes the legacy markup used. It reflects `separate.js`'s existing state machine
+  through a new `separation` export (`subscribe`/`getSnapshot`/`commands`) — not through
+  `lib/player-application.js`, since separation state has no owner other than `separate.js`,
+  the same way `notes.js` owns its own detection state — while `separate.js` retains the
+  Worker lifecycle, model/session, and every command (`start`/`cancel`/`save`); detection
+  controls (`notes.js`) remain legacy-owned, deferred to Phase 5b. Phase
   2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
@@ -113,8 +122,12 @@ A-B repeat / routing / input).
   Idle and active versions are pre-rendered offscreen, so a frame is a blit plus a clip.
 - **In-browser separation** (`separate.js`, `separate.worker.js`) is additive and optional.
   The worker owns ONNX Runtime and `htdemucs_6s`; `lib/overlap.js` plans the segments;
-  `lib/wav.js` and `lib/zip.js` handle saving. It loads as a plain
-  `<script type="module">`; the conditional injection that guarded `file://` went with
+  `lib/wav.js` and `lib/zip.js` handle saving. `separate.js` loads as a plain
+  `<script type="module">` **and**, since Phase 5a, is also imported directly by
+  `components/SeparationPanel.jsx` for its `separation` export (`subscribe`/`getSnapshot`/
+  `commands`) — the same "both a script-tag entry and an import target" pattern `app.js` and
+  every `lib/*.js` file already use, with no duplicate module evaluation (verified by the
+  Phase 5a build/smoke evidence). The conditional injection that guarded `file://` went with
   `file://` support in v1.5.0. `app.js` and `lib/stems.js`/`lib/i18n.js`/`lib/platform.js`
   are real ES modules too (since v1.21.0), imported directly by app.js and the tests alike.
   Since v1.8.0 the whole panel is **gated to desktop** — see the handheld gotcha below.
@@ -144,7 +157,11 @@ legacy tempo-range hint) through a `#standard-lanes-root` portal inside `#lanes`
 the shared Overview lane (label, master-volume-mirroring slider, waveform canvas host, and an
 extra-content host for its legacy range-select caption) through a separate `#overview-lane-root`
 portal, kept apart from `#standard-lanes-root` so that root's children stay exactly
-`song.tracks[]`'s standard lanes.
+`song.tracks[]`'s standard lanes. `components/SeparationPanel.jsx` owns the entire separation
+panel (availability/gating including the handheld explanation, start button, progress/backend
+status, cancel, error display, and save controls) through a `#separation-ui-root` portal,
+reflecting `separate.js`'s state machine through its own `separation` export rather than
+through `lib/player-application.js` — separation state has no owner other than `separate.js`.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -187,6 +204,7 @@ lib/unzip.js                       zip reading — ESM, no window bridge
 lib/player-application.js          DOM-independent player commands, snapshots and lifecycle
 lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
 components/{SiteHeader,DemoHeader,PlayerShell}.jsx  React headers + player loading shell
+components/SeparationPanel.jsx     React separation-panel presentation (Phase 5a)
 components/useLocale.js            cleaned React locale subscription
 demos.jsx                          demo React mount plus legacy title/count localization
 scripts/build-demos.js             generates the ignored demos/index.html before dev/build
@@ -198,7 +216,8 @@ lib/pitch.js                       ESM — YIN, candidates, Viterbi decoding, se
 lib/sonify.js                      ESM — plays detected notes back as tones
 lib/ribbon.js                      ribbon geometry — ESM, no window bridge
 lib/jianpu.js                      簡譜 degrees — ESM, no window bridge
-separate.js  separate.worker.js    ESM — separation panel and the ORT inference loop
+separate.js  separate.worker.js    ESM — separation service/Worker lifecycle and the ORT
+                                   inference loop; presentation is components/SeparationPanel.jsx
 notes.js  notes.worker.js          ESM — notes panel and the analysis worker
 tests/*.test.js                    units      → `npm test` (Vitest; see vitest.config.js)
 tests/parity.html                  accuracy   → window.__parity

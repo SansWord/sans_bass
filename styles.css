@@ -356,6 +356,12 @@ input[type=range] { width: 110px; }
 /* ---------- lanes ---------- */
 
 .lanes { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+/* React owns #standard-lanes-root (see .react-portal-host); app.js owns #note-lanes-root
+   (ribbon/overview/zoom, still legacy — deferred to Phase 6/4b). Both stay `display: contents`
+   so their children — not these wrappers — are the actual flex items of .lanes, positioned
+   purely with the `order` each owner sets independently from the shared track order. Neither
+   owner ever inserts into the other's DOM subtree. */
+#note-lanes-root { display: contents; }
 
 .lane {
   display: grid;
@@ -379,6 +385,12 @@ input[type=range] { width: 110px; }
   cursor: pointer;
   user-select: none;
   overflow: hidden;
+  /* Every standard lane's name is a real <button> (see PlayerShell.jsx) so muting is
+     keyboard-operable; reset the UA chrome that isn't already overridden below. The
+     overview lane keeps the plain, non-interactive <div> it always had. */
+  border: none;
+  text-align: left;
+  color: inherit;
   /* The grid centres its items, which left this only as tall as the text — a ~14px strip
      in a ~56px lane. Stretch to the full lane height and swallow the lane's left/top/bottom
      padding, so the whole block up to the number badge toggles the track. The waveform is

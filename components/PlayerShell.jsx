@@ -149,6 +149,54 @@ function ModeRoutingControls({ application, routing, song }) {
   </>;
 }
 
+const laneLabel = (track) => (track.stem ? t(`stem.${track.stem}`) : track.label);
+
+function Lane({ application, track, index }) {
+  const canvasRef = useRef(null);
+  const extraRef = useRef(null);
+  const isDrums = track.stem === 'drums';
+  useLayoutEffect(() => application.attachLaneCanvas(track.id, canvasRef.current),
+    [application, track.id]);
+  // Only the drums lane ever gets a host here (see attachLaneExtra's own doc comment); the
+  // effect still runs unconditionally so its cleanup fires on unmount/id change like any
+  // other attach hook.
+  useLayoutEffect(() => application.attachLaneExtra(track.id, isDrums ? extraRef.current : null),
+    [application, track.id, isDrums]);
+
+  const onMuteClick = (event) => {
+    ignoreReportedError(application.commands.toggleTrack(track.id));
+    event.currentTarget.blur();
+  };
+  const onVolumeInput = (event) => {
+    ignoreReportedError(application.commands.setTrackVolume(
+      track.id, Number(event.currentTarget.value),
+    ));
+  };
+
+  return <div className={`lane${track.muted ? ' muted' : ''}`} data-react-lane
+    style={{ order: index * 2 }}>
+    <button type="button" className="lane-name" style={{ color: track.color }}
+      title={t('lane.tip')} onClick={onMuteClick}>
+      <span className="dot" />
+      <span className="txt">{laneLabel(track)}</span>
+      {index < 10 && <span className="kbd">{(index + 1) % 10}</span>}
+    </button>
+    <canvas className="wave" ref={canvasRef} />
+    <div className="lane-vol">
+      <input type="range" min="0" max="1.5" step="0.01" value={track.volume}
+        aria-label={laneLabel(track)} onChange={onVolumeInput} />
+    </div>
+    {isDrums && <div className="tempo-range-hint" ref={extraRef} />}
+  </div>;
+}
+
+function StemLanes({ application, tracks, hosts }) {
+  return createPortal(<>
+    {tracks.map((track, index) => <Lane key={track.id} application={application}
+      track={track} index={index} />)}
+  </>, hosts.standardLanes);
+}
+
 function PrimarySeekControls({ application, hosts }) {
   const transport = useSyncExternalStore(
     application.subscribeTransport,
@@ -302,6 +350,8 @@ function PlayerShell({ application, hosts }) {
     {createPortal(<ModeRoutingControls application={application}
       routing={snapshot.routing} song={snapshot.song} />, hosts.modeRouting)}
     <PrimarySeekControls application={application} hosts={hosts} />
+    {snapshot.song && <StemLanes application={application}
+      tracks={snapshot.song.tracks} hosts={hosts} />}
   </>;
 }
 
@@ -320,6 +370,7 @@ export function mountPlayerShell(application, doc = document) {
     modeRouting: doc.getElementById('mode-routing-ui-root'),
     primarySeek: doc.getElementById('primary-seek-ui-root'),
     primaryTime: doc.getElementById('primary-time-ui-root'),
+    standardLanes: doc.getElementById('standard-lanes-root'),
   };
   if (Object.values(hosts).some((host) => !host)) {
     console.warn('sans_bass: player React shell host missing — skipped');

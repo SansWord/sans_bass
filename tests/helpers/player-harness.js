@@ -83,7 +83,7 @@ export async function loadZip(player, stems, options = {}) {
     + (options.mix === undefined ? 0 : 1)
     + Object.keys(options.unknown || {}).length;
   try {
-    await waitFor(() => player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === expectedLanes,
+    await waitFor(() => player.doc.querySelectorAll('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === expectedLanes,
       'decoded player lanes');
   } catch (error) {
     const status = player.doc.getElementById('status')?.textContent;
@@ -100,7 +100,7 @@ export async function loadSong(player, { frequency = 220, seconds = 0.05, filena
   const input = player.doc.getElementById('file-input');
   Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
   input.dispatchEvent(new player.win.Event('change', { bubbles: true }));
-  await waitFor(() => player.doc.querySelectorAll('#lanes > .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === 1,
+  await waitFor(() => player.doc.querySelectorAll('#lanes .lane:not(.ribbon):not(.ribbon-zoom):not(.overview)').length === 1,
     'decoded song lane');
 }
 

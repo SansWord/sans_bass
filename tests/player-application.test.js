@@ -29,11 +29,15 @@ function adapter(overrides = {}) {
       clearLoop: vi.fn(),
       setMode: vi.fn(),
       toggleAllTracks: vi.fn(),
+      toggleTrack: vi.fn(),
+      setTrackVolume: vi.fn(),
       replaceSong: vi.fn(),
       ...overrides.commands,
     },
     getTransportSnapshot: () => state.transport,
     attachPrimarySeekCanvas: vi.fn(() => vi.fn()),
+    attachLaneCanvas: vi.fn(() => vi.fn()),
+    attachLaneExtra: vi.fn(() => vi.fn()),
     reportCommandError: vi.fn(),
     dispose: vi.fn(),
     ...overrides,
@@ -102,6 +106,8 @@ describe('player application command/subscription facade', () => {
     application.commands.clearLoop();
     application.commands.setMode('bass');
     application.commands.toggleAllTracks();
+    application.commands.toggleTrack('bass');
+    application.commands.setTrackVolume('bass', 0.6);
     application.commands.replaceSong({ name: 'song.wav' }, { vocals: {} });
 
     expect(owner.commands.load).toHaveBeenCalledWith(file, 1);
@@ -116,6 +122,8 @@ describe('player application command/subscription facade', () => {
     expect(owner.commands.clearLoop).toHaveBeenCalledOnce();
     expect(owner.commands.setMode).toHaveBeenCalledWith('bass');
     expect(owner.commands.toggleAllTracks).toHaveBeenCalledOnce();
+    expect(owner.commands.toggleTrack).toHaveBeenCalledWith('bass');
+    expect(owner.commands.setTrackVolume).toHaveBeenCalledWith('bass', 0.6);
     expect(owner.commands.replaceSong).toHaveBeenCalledWith(
       { name: 'song.wav' }, { vocals: {} }, 2,
     );
@@ -124,6 +132,10 @@ describe('player application command/subscription facade', () => {
     expect(() => application.commands.setMasterVolume(Number.NaN)).toThrow(PlayerCommandError);
     expect(() => application.commands.setMode('')).toThrow(PlayerCommandError);
     expect(() => application.commands.setMode(1)).toThrow(PlayerCommandError);
+    expect(() => application.commands.toggleTrack('')).toThrow(PlayerCommandError);
+    expect(() => application.commands.toggleTrack(3)).toThrow(PlayerCommandError);
+    expect(() => application.commands.setTrackVolume('bass', Number.NaN)).toThrow(PlayerCommandError);
+    expect(() => application.commands.setTrackVolume('', 0.5)).toThrow(PlayerCommandError);
   });
 
   it('publishes a deduplicated transport clock and cleans its subscription independently', () => {
@@ -157,6 +169,36 @@ describe('player application command/subscription facade', () => {
 
     const detach = application.attachPrimarySeekCanvas(canvas);
     expect(owner.attachPrimarySeekCanvas).toHaveBeenCalledWith(canvas);
+    detach();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(owner.dispose).not.toHaveBeenCalled();
+    expect(application.getSnapshot().lifecycle).toBe('ready');
+  });
+
+  it('attaches and detaches a lane renderer by id without disposing the application', () => {
+    const application = createPlayerApplication();
+    const cleanup = vi.fn();
+    const owner = adapter({ attachLaneCanvas: vi.fn(() => cleanup) });
+    application.initialize(owner);
+    const canvas = {};
+
+    const detach = application.attachLaneCanvas('bass', canvas);
+    expect(owner.attachLaneCanvas).toHaveBeenCalledWith('bass', canvas);
+    detach();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(owner.dispose).not.toHaveBeenCalled();
+    expect(application.getSnapshot().lifecycle).toBe('ready');
+  });
+
+  it('attaches and detaches a lane extra-content host by id without disposing the application', () => {
+    const application = createPlayerApplication();
+    const cleanup = vi.fn();
+    const owner = adapter({ attachLaneExtra: vi.fn(() => cleanup) });
+    application.initialize(owner);
+    const node = {};
+
+    const detach = application.attachLaneExtra('drums', node);
+    expect(owner.attachLaneExtra).toHaveBeenCalledWith('drums', node);
     detach();
     expect(cleanup).toHaveBeenCalledOnce();
     expect(owner.dispose).not.toHaveBeenCalled();

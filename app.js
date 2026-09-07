@@ -149,7 +149,7 @@ let primarySeekCanvas = null; // React-owned DOM; app.js retains only imperative
 const $ = (id) => document.getElementById(id);
 const el = {
   player: $('player'), title: $('title'), lanes: $('lanes'),
-  buildSha: $('build-sha'),
+  noteLanesRoot: $('note-lanes-root'), buildSha: $('build-sha'),
 };
 
 const BUILD_SHA = typeof __COMMIT_SHA__ === 'undefined' ? 'dev' : __COMMIT_SHA__;
@@ -457,7 +457,7 @@ function buildTracks(items, title, token) {
     buffer: t.buffer,
     muted: false,
     volume: 1,
-    gain: null, peaks: null, canvas: null, laneEl: null, layers: null, nameEl: null,
+    gain: null, peaks: null, canvas: null, layers: null,
   }));
 
   tracks.sort((a, b) => a.order - b.order);
@@ -588,75 +588,23 @@ function buildUI(title) {
   tempoHintEl = null;
   tempoClearBtn = null;
   tempoDrumsCanvas = null;
-  el.lanes.innerHTML = '';
-  tracks.forEach((t, i) => {
-    const lane = document.createElement('div');
-    lane.className = 'lane';
+  /* Standard lanes (name/canvas/volume) are React's — see components/PlayerShell.jsx's
+   * StemLanes/Lane — rendered from the `tracks` snapshot published below. This module only
+   * clears/rebuilds its OWN #note-lanes-root subtree (ribbon/zoom/overview), never touching
+   * #standard-lanes-root: two owners of one DOM region is exactly what this migration's
+   * architecture rules forbid. Visual order between the two subtrees is recovered purely
+   * with CSS `order` (see styles.css), computed independently on each side from the same
+   * `tracks` order — no cross-owner DOM references remain. */
+  el.noteLanesRoot.innerHTML = '';
+  // The drums lane's tempo-range hint nests INSIDE that lane's own card (grid-column: 1/-1
+  // spans its React-owned grid), so it cannot live in #note-lanes-root as a sibling card —
+  // it is built lazily by attachLaneExtra() into a host `<Lane>` renders just for the drums
+  // track, the same "React owns the stable host, app.js owns its content" split as
+  // attachLaneCanvas. tempoHintEl/tempoClearBtn/tempoDrumsCanvas are populated there.
 
-    const name = document.createElement('div');
-    name.className = 'lane-name';
-    name.style.color = t.color;
-    /* Built from nodes rather than innerHTML: t.label can be a filename, and a filename
-     * with markup in it used to be interpolated straight into the DOM. */
-    name.title = tr('lane.tip');
-    const dot = document.createElement('span');
-    dot.className = 'dot';
-    const txt = document.createElement('span');
-    txt.className = 'txt';
-    txt.textContent = laneLabel(t);
-    name.append(dot, txt);
-    if (i < 10) {
-      const kbd = document.createElement('span');
-      kbd.className = 'kbd';
-      kbd.textContent = String((i + 1) % 10);
-      name.appendChild(kbd);
-    }
-    name.addEventListener('click', () => toggleTrack(t));
-
-    const canvas = document.createElement('canvas');
-    canvas.className = 'wave';
-
-    const vol = document.createElement('div');
-    vol.className = 'lane-vol';
-    const slider = document.createElement('input');
-    Object.assign(slider, { type: 'range', min: 0, max: 1.5, step: 0.01, value: 1 });
-    slider.addEventListener('input', () => { t.volume = parseFloat(slider.value); applyGains(); });
-    vol.appendChild(slider);
-
-    lane.append(name, canvas, vol);
-    if (t.stem === 'drums') {
-      const hint = document.createElement('div');
-      hint.className = 'tempo-range-hint';
-      const hintTxt = document.createElement('span');
-      hintTxt.className = 'txt';
-      const hintClear = document.createElement('button');
-      hintClear.className = 'mini';
-      hintClear.type = 'button';
-      hintClear.textContent = tr('notes.tempoRangeClear');
-      hintClear.addEventListener('click', () => {
-        tempoRange = null;
-        syncTempoRangeHint();
-        window.dispatchEvent(new CustomEvent('sansbass:temporange', { detail: null }));
-        draw();
-      });
-      hint.append(hintTxt, hintClear);
-      lane.appendChild(hint);
-      tempoHintEl = hintTxt;
-      tempoClearBtn = hintClear;
-      tempoDrumsCanvas = canvas;
-      syncTempoRangeHint();
-    }
-    el.lanes.appendChild(lane);
-
-    t.canvas = canvas;
-    t.nameEl = name;
-    t.laneEl = lane;
-    attachSeek(canvas, { tempoLane: t.stem === 'drums' });
-  });
-
-  /* Built here rather than parked in index.html: el.lanes.innerHTML = '' above destroys
-   * anything inside #lanes, so a static element would vanish on the second song. Built
-   * with the lanes it survives by construction, and lands directly under vocals. */
+  /* Built here rather than parked in index.html: el.noteLanesRoot.innerHTML = '' above
+   * destroys anything inside it, so a static element would vanish on the second song. Built
+   * with the lanes it survives by construction, and lands directly under vocals via `order`. */
   noteLanes = {};
   /* zoomNotesStem must reset here too, not just noteLanes — it is module-level state that
    * otherwise survives across buildUI() calls (song loads). Left stale (e.g. still 'bass'
@@ -734,7 +682,12 @@ function buildUI(title) {
     rHint.hidden = true;
 
     lane.append(name, canvas, rHint, vol, grip);
-    el.lanes.insertBefore(lane, track.laneEl.nextSibling);
+    // Visual position (immediately after its own stem's standard lane) comes from `order`
+    // alone — both owners derive it from the same shared `tracks` order, so no reference to
+    // the other owner's DOM node is needed. See the ownership note above buildUI()'s
+    // `el.noteLanesRoot.innerHTML = ''`.
+    lane.style.order = String(2 * tracks.indexOf(track) + 1);
+    el.noteLanesRoot.appendChild(lane);
     attachSeek(canvas, { rangeBand: true, stem });
 
     noteLanes[stem] = {
@@ -1175,7 +1128,9 @@ function buildUI(title) {
                      fieldPitchOctave, applyBtn };
 
     zLane.append(zName, zCanvas, zRangeHint, zToolbar, zFields, zSpacer, zGrip);
-    el.lanes.insertBefore(zLane, anchorTrack.laneEl);
+    // Always pinned above every standard/ribbon lane (order 0, 1, 2, … above), same as before.
+    zLane.style.order = '-1';
+    el.noteLanesRoot.appendChild(zLane);
     attachZoom(zCanvas);
     zoomEl = { lane: zLane, canvas: zCanvas, out: zOut, time: zTime };
 
@@ -1223,7 +1178,9 @@ function buildUI(title) {
     oRangeHint.hidden = true;
 
     oLane.append(oName, oCanvas, oRangeHint, oVol);
-    el.lanes.insertBefore(oLane, zLane);
+    // Pinned above the zoomed pane, same as before (Phase 4b moves this lane's ownership).
+    oLane.style.order = '-2';
+    el.noteLanesRoot.appendChild(oLane);
     attachSeek(oCanvas, { rangeBand: true, overview: true });
     overviewEl = { lane: oLane, canvas: oCanvas, time: oTime, rangeHint: oRangeHint };
   }
@@ -1296,6 +1253,10 @@ function renderAll() {
                Math.min(1, laneScale(mp)));
   }
   tracks.forEach(t => {
+    // t.canvas is null until React mounts the lane and calls attachLaneCanvas (which
+    // performs this exact same render for that one lane) — same race as primarySeekCanvas
+    // above, since this synchronous pass runs before the song publication React reacts to.
+    if (!t.canvas) return;
     t.layers = renderWave(t.canvas, t.peaks, t.color, t.canvas.clientWidth, 'lane', laneScale(t.peaks));
   });
   for (const stem of NOTE_STEMS) {
@@ -1317,6 +1278,63 @@ function attachPrimarySeekCanvas(canvas) {
   }
   return () => {
     if (primarySeekCanvas === canvas) primarySeekCanvas = null;
+  };
+}
+
+/** Stable-id lookup into `tracks`, shared by the id-addressed commands and attach hook below —
+ *  React never holds a track object or DOM reference, only the same `laneKey` id the snapshot
+ *  already publishes. */
+function trackById(id) {
+  return tracks.find((t, i) => laneKey(t, i) === id);
+}
+
+/** React owns each standard lane's DOM (name/canvas/volume host); this is the explicit
+ *  imperative-renderer attachment allowed by the migration architecture, one per lane,
+ *  mirroring attachPrimarySeekCanvas. Peak generation, painting, resize, and lane-canvas
+ *  seek/scrub (attachSeek) remain entirely app.js's. */
+function attachLaneCanvas(trackId, canvas) {
+  const t = trackById(trackId);
+  if (!t) return () => {};
+  t.canvas = canvas;
+  if (t.stem === 'drums') tempoDrumsCanvas = canvas;
+  attachSeek(canvas, { tempoLane: t.stem === 'drums' });
+  if (t.peaks) {
+    t.layers = renderWave(canvas, t.peaks, t.color, canvas.clientWidth, 'lane', laneScale(t.peaks));
+    paint(canvas, duration ? Math.min(1, currentTime() / duration) : 0);
+  }
+  return () => {
+    if (t.canvas === canvas) t.canvas = null;
+    if (tempoDrumsCanvas === canvas) tempoDrumsCanvas = null;
+  };
+}
+
+/** The drums lane's tempo-range hint (caption + Clear button) is notes/tempo feature UI, not
+ *  lane presentation — explicitly deferred, same as the rest of notes/tempo (Phase 6) — but
+ *  its host div is only ever rendered by React for the drums `<Lane>` (see PlayerShell.jsx),
+ *  so it is populated the same explicit-attach way as attachLaneCanvas rather than being
+ *  built inside buildUI() the way it used to be. A no-op for any other lane. */
+function attachLaneExtra(trackId, node) {
+  const t = trackById(trackId);
+  if (!t || t.stem !== 'drums' || !node) return () => {};
+  const hintTxt = document.createElement('span');
+  hintTxt.className = 'txt';
+  const hintClear = document.createElement('button');
+  hintClear.className = 'mini';
+  hintClear.type = 'button';
+  hintClear.textContent = tr('notes.tempoRangeClear');
+  hintClear.addEventListener('click', () => {
+    tempoRange = null;
+    syncTempoRangeHint();
+    window.dispatchEvent(new CustomEvent('sansbass:temporange', { detail: null }));
+    draw();
+  });
+  node.append(hintTxt, hintClear);
+  tempoHintEl = hintTxt;
+  tempoClearBtn = hintClear;
+  syncTempoRangeHint();
+  return () => {
+    if (tempoHintEl === hintTxt) tempoHintEl = null;
+    if (tempoClearBtn === hintClear) tempoClearBtn = null;
   };
 }
 
@@ -1914,7 +1932,7 @@ function draw() {
   const t = currentTime();
   const frac = duration ? Math.min(1, t / duration) : 0;
   if (primarySeekCanvas) paint(primarySeekCanvas, frac);
-  tracks.forEach(tr => paint(tr.canvas, frac));
+  tracks.forEach(tr => { if (tr.canvas) paint(tr.canvas, frac); });
   for (const stem of NOTE_STEMS) {
     const lane = noteLanes[stem];
     if (lane && lane.ribbon) paint(lane.el.canvas, frac);
@@ -2557,17 +2575,22 @@ function syncTempoRangeHint() {
   if (tempoClearBtn) tempoClearBtn.disabled = !tempoRange;
 }
 
+/** Whether a track is actually audible right now — mute state plus the explicit Full-mix/
+ *  stems mutual-exclusion rule. The single computation both applyGains() and the published
+ *  snapshot's per-lane `muted` field read, so React's lane presentation and the real gain
+ *  ramp can never disagree about which lanes are "on". */
+function trackAudible(t) {
+  // Never let a full-mix file play on top of its own stems.
+  if (window.__hasStems && t.stem === 'mix' && routingState.mode !== 'mix') return false;
+  return !t.muted;
+}
+
 function applyGains() {
   if (!audio) return;
   const now = audio.currentTime;
-  const hasStems = window.__hasStems;
   tracks.forEach(t => {
-    let on = !t.muted;
-    // Never let a full-mix file play on top of its own stems.
-    if (hasStems && t.stem === 'mix' && routingState.mode !== 'mix') on = false;
-    const g = on ? t.volume : 0;
+    const g = trackAudible(t) ? t.volume : 0;
     t.gain.gain.setTargetAtTime(g, now, 0.012);
-    t.laneEl?.classList.toggle('muted', !on);
   });
   syncZoomChips();
 }
@@ -2577,18 +2600,12 @@ function applyGains() {
  *
  * It must NOT rebuild the lanes. Rebuilding would drop every canvas and force a full
  * waveform re-render, and it must not touch `tracks`, `sources`, gain nodes or the
- * playhead — switching language mid-practice has to be completely inaudible. The lane
- * name's text node is mutated in place for exactly that reason.
+ * playhead — switching language mid-practice has to be completely inaudible.
+ *
+ * Standard lane labels need no line here at all: React re-renders them from `useLocale()`
+ * the same way every other React-owned control already does (see PlayerShell.jsx).
  */
 function retranslate() {
-  if (tracks.length) {
-    tracks.forEach((t) => {
-      if (!t.nameEl) return;
-      t.nameEl.title = tr('lane.tip');
-      const txt = t.nameEl.querySelector('.txt');
-      if (txt) txt.textContent = laneLabel(t);
-    });
-  }
   // Lane labels translate; the note NAMES drawn inside a ribbon never do. Same i18n key/
   // pattern as the zoomed pane's two Notes chips — see buildUI().
   for (const stem of NOTE_STEMS) {
@@ -2673,12 +2690,31 @@ function setMode(mode, publish = true) {
   if (publish) playerApplication.publish();
 }
 
-function toggleTrack(t) {
+/** `publish` is `false` when called from the facade command (setMode/toggleAllTracks use the
+ *  same shape), which publishes once itself after the command returns; the keyboard shortcut
+ *  below bypasses the facade entirely and keeps publishing directly, as before. */
+function toggleTrack(t, publish = true) {
   gcBump('toggle');
   if (t.stem) gcOnce(`toggle-${t.stem}`);   // stem ids, never labels — never a filename
   const index = tracks.indexOf(t);
   syncRoutingState(route(routingState, { type: 'toggle', key: laneKey(t, index) }));
-  playerApplication.publish();
+  if (publish) playerApplication.publish();
+}
+
+/** React addresses a lane only by its stable snapshot id, never a track object or DOM node —
+ *  these two resolve that id back to the real track for the `toggleTrack`/`setTrackVolume`
+ *  facade commands. */
+function toggleTrackById(id) {
+  const t = trackById(id);
+  if (!t) throw new Error(`unknown lane "${id}"`);
+  toggleTrack(t, false);
+}
+
+function setTrackVolumeById(id, value) {
+  const t = trackById(id);
+  if (!t) throw new Error(`unknown lane "${id}"`);
+  t.volume = Math.max(0, Math.min(1.5, value));
+  applyGains();
 }
 
 /** Apply one authoritative master-volume value without changing any routing state. */
@@ -3456,7 +3492,7 @@ function applicationSnapshot() {
     duration,
     tracks: tracks.map((track, index) => ({
       id: laneKey(track, index), stem: track.stem || null, name: track.name,
-      label: track.label,
+      label: track.label, color: track.color, muted: !trackAudible(track), volume: track.volume,
     })),
   } : null;
   return {
@@ -3473,6 +3509,8 @@ playerApplication.initialize({
   getSnapshot: applicationSnapshot,
   getTransportSnapshot: applicationTransportSnapshot,
   attachPrimarySeekCanvas,
+  attachLaneCanvas,
+  attachLaneExtra,
   commands: {
     load: loadAny,
     play,
@@ -3485,6 +3523,8 @@ playerApplication.initialize({
     clearLoop,
     setMode: (mode) => setMode(mode, false),
     toggleAllTracks: () => toggleAllTracks(false),
+    toggleTrack: toggleTrackById,
+    setTrackVolume: setTrackVolumeById,
     replaceSong: loadSeparated,
     rejectLoad: (reason, details) => {
       if (reason === 'folder') {

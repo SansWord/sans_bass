@@ -30,7 +30,14 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   control and A/B badge/Clear presentation while `app.js` retains gain smoothing and loop
   timing. Phase 3e adds the top-level mode selector and all-toggle presentation while
   `app.js` retains routing transitions, gain smoothing, lane toggles, and 0/1–6 shortcuts.
-  Phase 2's DOM-independent
+  Phase 4a adds one React lane component per standard track (mix/stems/unknown) — label,
+  keyboard-operable mute button, per-lane volume, and the waveform canvas host — through a
+  `#standard-lanes-root` portal, plus an explicit extra-content host for the drums lane's
+  tempo-range hint, while `app.js` retains peak generation, painting, resize, lane-canvas
+  seek, and the drums-hint content itself. `app.js`'s own `#note-lanes-root` (ribbon/zoom/
+  overview, still legacy — Phase 6/4b) sits alongside it inside `#lanes`; both are
+  `display: contents` so `order` alone recovers the original interleaved visual order with no
+  cross-owner DOM references. Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -126,6 +133,9 @@ affordance, status/error presentation, global drag overlay, primary play/pause b
 playback-speed, primary seek/time, master-volume, and A/B presentation controls through one
 root with explicit portal hosts. It also owns the top-level translated mode selector and
 all-toggle button; stable routing identity and state come from the application projection.
+It also owns one lane component per standard track (label, keyboard-operable mute, per-lane
+volume, waveform canvas host, and — for the drums lane only — an extra-content host for the
+legacy tempo-range hint) through a `#standard-lanes-root` portal inside `#lanes`.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -134,11 +144,18 @@ colocated when needed; these components reuse the established shared classes in 
 
 `app.js` remains authoritative for decoded tracks, song/transport/routing state, audio,
 master gain smoothing, loop timing, and all legacy player regions after loading. It publishes
-stable status keys, master volume, a narrow routing projection, and a deduplicated
-transport-frame projection rather than writing the React-owned status, volume, loop,
-routing-control, or transport presentation. It still paints
+stable status keys, master volume, a narrow routing projection, a deduplicated
+transport-frame projection, and per-lane `muted`/`volume` fields rather than writing the
+React-owned status, volume, loop, routing-control, lane, or transport presentation. It still
+paints
 pixels and intrinsic dimensions on the React-owned
-primary canvas through an explicit lifecycle attachment. `sansbass:transport` remains a temporary exact-clock adapter for the
+primary and per-lane canvases through explicit lifecycle attachments (`attachPrimarySeekCanvas`,
+`attachLaneCanvas`), and populates the drums lane's React-owned extra-content host
+(`attachLaneExtra`) with its legacy tempo-range hint. Its own `#note-lanes-root` (ribbon/zoom/
+overview lanes, still legacy — Phase 6/4b) sits beside `#standard-lanes-root` inside `#lanes`;
+both are `display: contents`, so `order` alone — computed independently on each side from the
+same track order — recovers the original interleaved visual order with no cross-owner DOM
+references. `sansbass:transport` remains a temporary exact-clock adapter for the
 two notes sonifiers. The lowercase `window.sansBass` bridge remains only for named
 notes/separation service operations and browser-harness application/shell
 lifecycle checks; it is migration debt, not the public ESM API.

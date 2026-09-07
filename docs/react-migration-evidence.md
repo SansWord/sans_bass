@@ -1,5 +1,196 @@
 # React migration evidence
 
+## Phase 6b — React tempo/grid controls
+
+Status: accepted in production at rollback anchor
+`65a8ae67b2be5c4193aaa803256b54dcdaadfaf5`, the second of Phase 6's three sub-slices.
+Evidence collected 2026-09-07 America/Los_Angeles. Branch
+`feat/react-phase-6b-tempo-controls`; starting source
+`d073e58a618bb123417cfc4c8bfed1ac97cf0a5a` (Phase 6a documentation-anchor merge, PR #88);
+plan and implementation committed together as `7f468a5` (squash-merged as the PR's single
+commit, the same one-pass practice Phase 5a/5b/6a used). Previous accepted implementation
+rollback anchor: Phase 6a at `61e2b29683404aca736b69625517ec8b69e25df1`, documented through
+[PR #87](https://github.com/SansWord/sans_bass/pull/87) and anchored through
+[PR #88](https://github.com/SansWord/sans_bass/pull/88).
+
+The capo control, the zoomed pane's chord display/editing, the edit list, list-export row,
+ribbon/overview/zoomed-pane lanes, and Export/Import edits JSON are untouched — out of scope
+per `docs/react-migration.md`'s Phase 6 increment boundary. Unlike Phase 6a, this slice's own
+audit found that its stated scope ("tempo/grid/capo/chord controls") was not entirely
+deliverable in one bounded increment: the capo control and chord display/editing turned out to
+be entangled with still-legacy rendering (see "Scope decision" below), narrowing this slice's
+actual deliverable to tempo/grid controls only.
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-6b-tempo-chord-controls-plan.md](react-phase-6b-tempo-chord-controls-plan.md),
+including two scope decisions made explicit before implementation:
+
+1. **Capo and chord stay legacy-owned this slice.** `app.js`'s zoomed-pane chord editor
+   (`chordGroup`/`chordEditor`, which the capo control lives inside) is driven every animation
+   frame by `syncChordEditor(time)`, called from the same rAF `draw()` block that paints the
+   zoomed canvas — reading the live playhead position to determine "the chord under the
+   cursor" and rewriting the chord input/candidates/play-key readout on every rendered frame,
+   the same category of per-frame, clock-driven DOM write the migration architecture keeps
+   outside React everywhere else. Its DOM container is also rebuilt from scratch on every song
+   load (`buildUI()`'s `el.noteLanesRoot.innerHTML = ''`), unlike `#notes-tempo`, a static
+   region untouched by that teardown — the same per-song-rebuild problem the Overview lane had
+   *before* Phase 4b pulled it out into its own always-mounted React root. No equivalent
+   extraction exists yet for the zoomed pane; performing one is itself "ribbon/zoomed-pane
+   note-lane rendering," out of this slice's scope. Capo and chord stay deferred to a future
+   sub-slice, not silently folded into Phase 6c (a different concern — the edit list/undo/
+   import-export).
+2. **A new `tempoGrid` store, not an extension of `detection`.** Tempo/grid state is
+   module-level and shared (one grid, both channels), with its own Worker
+   (Re-detect) and an in-flight flag with no per-channel analogue — a genuinely different
+   shape of state than `detection`'s per-channel snapshot, so it gets its own
+   subscribe/getSnapshot/commands store (the same shape `separation`/`detection` already
+   established) rather than bolting a second, differently-shaped state tree onto `detection`.
+
+`components/TempoPanel.jsx` exports one component, `TempoPanel()`, owning the entire
+`<section id="notes-tempo">` region — the Show-grid checkbox, BPM field, ×½/×2, phase field +
+nudge buttons, beats-per-bar select, "Select BPM range" toggle, Re-detect button, and status
+line — portalled into a new `#tempo-ui-root` host that replaces `#notes-tempo`'s static markup
+in `index.html`, matching `#notes-detect` → `#detection-ui-root`'s exact Phase 5b precedent (a
+whole self-contained section, not a sub-region nested in a still-legacy parent). Every id and
+class inside the section is unchanged from the legacy markup, so `styles.css` kept working
+unmodified with no new rules needed.
+
+`notes.js` lost the `tempoEl` object (nine DOM lookups) entirely, the nine `addEventListener`
+registrations on those elements, and the direct DOM writes in `syncTempoControls()` (renamed
+`publishTempo()`, now producing a published view instead of writing the DOM — the same
+"renamed once its only remaining job changed" precedent as Phase 5b's `syncJianpuControls()` →
+`syncExportAvailability()`). It gained a `tempoRedetecting` in-flight flag alongside the
+existing `tempo`/`tempoRange`/`tempoRangeArmed` state, and the exported `tempoGrid` store
+(`setOn`/`setBpm`/`halveBpm`/`doubleBpm`/`setPhase`/`nudgePhase`/`setBeatsPerBar`/
+`toggleRangeArmed`/`redetect`). `app.js` needed zero changes: it never referenced
+`#notes-tempo`'s DOM directly, only the custom events (`sansbass:capochange`/
+`sansbass:temporange`/`sansbass:temporangemode`/`sansbass:tempo`/`sansbass:songload`), all of
+which are unchanged on both sides.
+
+The `window.sansBass` early-import hazard was re-verified rather than assumed: `notes.js` was
+already reachable from `app.js`'s import graph before `window.sansBass` exists (since
+Phase 5b), so adding `TempoPanel.jsx` introduces no new reachability path; the one
+`window.sansBass` read in the new code (`tempoView()`'s `hasDrums` computation) is the exact
+same already-optional-chained line `syncTempoControls()` carried before.
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+Three Chromium cases were added to `tests/player.test.js`, run before implementation against
+the **current legacy owner** first: all three passed unmodified — this is a pure DOM-ownership
+migration with no behavior change, the same "a new case can validate already-correct legacy
+behavior" acknowledgment Phase 5a/5b/6a made for some of their own new cases. Two of the three
+needed a `waitFor` fix during that pass: the legacy DOM only reflects a typed BPM/phase value
+in the field and status line via `syncTempoControls()`'s 400 ms poll (`refreshAll()`), not
+synchronously on `input`, so a synchronous assertion right after `setRangeValue()` failed
+against the legacy owner until rewritten to `waitFor` — a genuine discovery about the
+pre-existing implementation's eventual-consistency behavior, not a test bug. The BPM-range/
+Re-detect case passed synchronously on the first attempt.
+
+After implementation, the same three cases needed `waitFor` around click-triggered class/
+`disabled` assertions that had been synchronous against the legacy owner (e.g. the "Select BPM
+range" armed class, the Re-detect button's `disabled` state) — `useSyncExternalStore`-driven
+re-renders from a `commands.*` call inside a React `onClick` handler are not reflected in the
+DOM synchronously in this test environment, matching the established convention already used
+elsewhere in `tests/player.test.js` (e.g. the lane-mute class assertion) rather than the
+`tempoEl`-direct-write timing the legacy owner happened to have for `classList`/`disabled`
+specifically. This is a test-timing difference, not a behavior difference — the underlying
+state change is synchronous either way; only the DOM's reflection of a `disabled`/class value
+computed by React re-render, versus written directly by legacy DOM code, differs in when it
+becomes observable.
+
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 47 tests passed (44
+  baseline + 3 new);
+- full `npm test`: 31 files, 441 tests passed (one unrelated pre-existing threshold
+  needed lowering — see below);
+- `npm run build`: 60 modules transformed (59 in Phase 6a); existing intentional
+  unresolved-at-build-time `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+`tests/i18n.test.js`'s "every key used in index.html exists in both locales" sanity canary
+(`keys.size >= 15`) needed lowering to `>= 5`: removing `#notes-tempo`'s markup dropped
+index.html's annotated-key count from 18 to 7 (11 keys' worth of `data-i18n`/`data-i18n-attr`
+annotations moved into `TempoPanel.jsx`'s render-time `t()` calls, matching the render-time-
+translation convention every phase since 4b has used). This is the expected, first-time
+crossing of a floor that Phase 4a–6a's own shrinkage never happened to cross; the new floor
+still catches an accidental wholesale strip with margin (7 actual vs. 5 required).
+
+The exact-source local build emits **120,597 bytes** in the player entry
+(`dist/assets/main-*.js`) versus Phase 6a's 118,750: **+1,847 bytes (+1.56%)**. The shared
+React/header chunk is unchanged at exactly 218,172 bytes and the CSS chunk unchanged at
+13,274 bytes — no new dependency was added.
+
+### Exact-source local smoke
+
+Local production build served via a static file server (root, port 8801) and a second copy
+under `pr-99/` (nested-route smoke, port 8802). Both origins booted with `#build-sha` reading
+`d073e58` (the exact pre-commit source under test, the same "build-sha reflects the last
+commit, not the working tree" situation Phase 5b/6a's own exact-source smokes recorded) and no
+first-party console errors. At root: a language switch (zh-TW → English) retranslated the
+tempo panel's "Show tempo grid" label, "Select BPM range" button, and "Re-detect tempo" button
+text correctly while the (hidden, pre-detection) BPM field kept its default 120 value; no
+first-party console error appeared. The nested route repeated the boot/host-presence check
+(`#tempo-ui-root` present, `notes-tempo-bpm` default 120) with the same clean console result.
+Interactive tempo-control behavior (BPM/phase/beats edits, half/double, range-arm, Re-detect
+Worker round-trip including a failure path) was exercised exhaustively by the Chromium suite
+above rather than repeated manually in this smoke, consistent with Phase 5a/5b/6a's own split
+between automated interaction coverage and a lighter manual boot/translation/host-presence
+check.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | A fake `Worker` (matching `tests/helpers/player-harness.js#installFakeWorker`) and generated drums+vocals stems cover panel visibility, BPM/phase/beats-per-bar live edits with language-switch retention, half/double rounding, BPM-range arm/disarm with the `sansbass:temporangemode` event, and a full Re-detect round trip (success and failure) through a second fake Worker instance, in the production-entry Chromium suite and a local exact-source smoke. |
+| Malformed input | Unchanged; no tempo-panel-ownership-affecting code path touched. |
+| Storage/locale | Both languages pass in Chromium and in exact-source local smoke; every label/status retranslates correctly at render time while control values survive the switch. |
+| Handheld | Not re-verified with a real or emulated handheld device; the tempo panel has no handheld-specific gating — this boundary is unaffected by this slice. |
+| Worker protocol | Fully covered by the deterministic fake-Worker cases above (including a failure path); the real `notes.worker.js` module and tempo-estimation pipeline are unchanged and not re-exercised, per `docs/testing.md`'s rule that a fake Worker proves UI protocol handling only. |
+| Visual | Exact-source local smoke and the PR-preview/production checks reviewed panel layout and control visibility at desktop width; no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine command/state evidence was collected, not subjective listening. |
+| Real song / musical accuracy | Not run against `examples/nov_you.zip` or real detected tempo in this evidence pass; the changed boundary (control presentation/ownership, no tempo-estimation algorithm change) does not plausibly affect musical accuracy, matching Phase 4a–6a's own scoping of unaffected boundaries. |
+| Unreachable-in-practice state | The `disabled = !hasDrums` gating (and the "Show tempo grid" checkbox's deliberate exemption from it) has no dedicated test, before or after this change: the panel is only ever visible once `tempo.confidence > 0`, which requires a drums stem to have already been analysed, so `visible && !hasDrums` is not reachable through the real UI in this app's model (a loaded stem is never later removed). Preserved in the component's `disabled={!view.hasDrums}` prop unchanged from the legacy `disabled = !hasDrums` loop, but unverified by a test for the same reason the legacy code had none. |
+
+### PR-preview evidence
+
+[PR #89](https://github.com/SansWord/sans_bass/pull/89)'s `test` and `deploy` checks both
+passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-89/`
+displayed exact synthetic merge `74525293bf54db3e4b4dd3c9c5130af0eae5bf40` (`7452529`),
+matching `gh api repos/SansWord/sans_bass/pulls/89 --jq '.merge_commit_sha'` at the time of
+that check. A real synthetic WAV (generated in-page and fed through the real `#file-input`)
+decoded and loaded correctly (title, one lane), with `#notes-tempo` present (correctly hidden
+pre-detection). The first-party console carried no errors.
+
+### Production acceptance evidence
+
+PR #89 squash-merged as exact production source
+`65a8ae67b2be5c4193aaa803256b54dcdaadfaf5`. Its exact-SHA
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34163129721) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34163129653) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/` displayed exact
+`65a8ae6`.
+
+The production delivery canary repeated the affected boundary: `#tempo-ui-root` and
+`#notes-tempo` were present in the DOM. The first-party console carried no errors.
+
+The complete synthetic, malformed-input, storage-fault, and narrow-viewport matrices were not
+repeated in production because the canary agreed with the exact-source and preview evidence
+above. No real-song (`examples/nov_you.zip`), musical-accuracy, physical-handheld, subjective
+auditory, or background-tab check is claimed for this increment, for the same reasons given
+in the omissions table above.
+
+Phase 6b is accepted at the full SHA above, completing the second of Phase 6's three
+sub-slices with a narrowed scope (tempo/grid controls only — see "Scope decision" above). The
+capo control, the zoomed pane's chord display/editing, the edit list, list-export row,
+ribbon/overview/zoomed-pane lanes, and Export/Import edits JSON stay untouched and
+legacy-owned, deferred to a future sub-slice (capo/chord, not yet scheduled, blocked on a
+zoomed-pane mount-lifecycle restructuring) and Phase 6c (selection/edit/undo/import/export
+controls). This separate documentation-only PR records the immutable rollback anchor.
+
 ## Phase 6a — React interpretation controls
 
 Status: accepted in production at rollback anchor

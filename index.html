@@ -23,7 +23,7 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/main-Bbi-IMIp.js"></script>
+  <script type="module" crossorigin src="./assets/main-E_JcUzKi.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/SiteHeader-2gf44vNM.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/sonify-DfBfGpzd.js">
@@ -149,47 +149,8 @@
 
     <!-- Shared: tempo is derived from the drums stem and has never depended on which melodic
          stem is being read, so it lives once regardless of how many note panels exist above.
-         Ids are unchanged from the single-panel version. -->
-    <section id="notes-tempo" class="notes" hidden>
-      <div class="notes-row">
-        <label class="notes-ctl">
-          <input id="notes-tempo-on" type="checkbox" checked>
-          <span data-i18n="notes.tempoOn">Show tempo grid</span>
-        </label>
-        <label class="notes-ctl">
-          <span data-i18n="notes.tempoBpm">BPM</span>
-          <input id="notes-tempo-bpm" type="number" min="20" max="400" step="0.1" value="120" disabled>
-        </label>
-        <span class="notes-ctl">
-          <button id="notes-tempo-half" class="mini" type="button" disabled
-                  data-i18n-attr="title:notes.tempoHalfTip">&times;&#189;</button>
-          <button id="notes-tempo-double" class="mini" type="button" disabled
-                  data-i18n-attr="title:notes.tempoDoubleTip">&times;2</button>
-        </span>
-        <label class="notes-ctl">
-          <span data-i18n="notes.tempoPhase">Phase</span>
-          <button id="notes-tempo-phase-back" class="mini" type="button" disabled
-                  data-i18n-attr="title:notes.tempoPhaseBackTip">&#9664;</button>
-          <input id="notes-tempo-phase" type="number" step="1" value="0" disabled>
-          <button id="notes-tempo-phase-fwd" class="mini" type="button" disabled
-                  data-i18n-attr="title:notes.tempoPhaseFwdTip">&#9654;</button>
-        </label>
-        <label class="notes-ctl">
-          <span data-i18n="notes.tempoBeats">Beats/bar</span>
-          <select id="notes-tempo-beats" disabled>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4" selected>4</option>
-            <option value="6">6</option>
-          </select>
-        </label>
-        <button id="notes-tempo-range" class="mini" type="button" disabled
-                data-i18n="notes.tempoRange" data-i18n-attr="title:notes.tempoRangeTip">Select BPM range</button>
-        <button id="notes-tempo-redetect" class="mini" type="button" disabled
-                data-i18n="notes.tempoRedetect">Re-detect tempo</button>
-        <span id="notes-tempo-status" class="notes-stats"></span>
-      </div>
-    </section>
+         React-owned since Phase 6b — see components/TempoPanel.jsx. -->
+    <div id="tempo-ui-root" class="react-portal-host"></div>
 
     <div id="lanes" class="lanes">
       <div id="standard-lanes-root" class="react-portal-host"></div>

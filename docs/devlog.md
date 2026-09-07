@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 4b](#react-phase-4b--shared-overview-integration-2026-09-07) | React now owns the shared Overview lane's label, master-volume-mirroring slider, and canvas host, completing Phase 4; ribbon/zoomed-pane lanes stay legacy. Accepted in production at `d961db7`. |
 | [React phase 4a](#react-phase-4a--standard-stem-lane-components-2026-09-07) | React now owns each standard stem lane's label, keyboard-operable mute, per-lane volume, and canvas host; ribbon/zoom/overview lanes stay legacy, positioned purely by CSS `order`. Accepted in production at `fcf2770`. |
 | [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; accepted at `41ff22c`, completing Phase 3. |
 | [React phase 3d](#react-phase-3d--volume-and-ab-loop-controls-2026-09-06) | React now owns the primary master-volume and A/B presentation controls; accepted in production at `4b14667`. |
@@ -85,6 +86,62 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## React phase 4b — shared overview integration (2026-09-07)
+
+- [new] React solely authors the shared Overview lane through a new `#overview-lane-root`
+  portal — a sibling of Phase 4a's `#standard-lanes-root`, not a child of it, so
+  `#standard-lanes-root > .lane` keeps meaning exactly "one per `song.tracks[]` entry" for
+  every existing selector. It owns the translated label, a live time-code readout
+  self-subscribed to the transport snapshot the same way `PrimarySeekControls` already is,
+  the master-volume-mirroring slider (reusing the existing `setMasterVolume` command and
+  `masterVolume` snapshot field — no new command), a stable canvas host, and an empty
+  extra-content host for its Phase-6-deferred range-select caption. `app.js` keeps
+  `overviewStems()`, peak combination, and painting.
+- [new] The facade adds `attachOverviewCanvas(canvas)` and `attachOverviewExtra(node)`, thin
+  delegations mirroring Phase 4a's `attachLaneCanvas`/`attachLaneExtra` exactly.
+- [insight] The Overview lane is a single **unkeyed** component, unlike a per-track `<Lane>`
+  in a keyed list — whenever a reloaded song keeps a vocals/bass stem (the common case),
+  React has no reason to unmount/remount it, so its canvas DOM node persists across the
+  reload by construction. The legacy code safely reset its DOM reference on every `buildUI()`
+  call because the whole subtree was torn down and rebuilt synchronously in the same call;
+  under React ownership nothing would ever call `attachOverviewCanvas` again to repopulate a
+  reset reference, so painting would have silently stopped after the very first song if that
+  reset had simply been carried over. `overviewEl` is now a small persistent object whose
+  fields are owned entirely by the attach/detach hooks' own lifecycle, never touched by
+  `buildUI()`.
+- [note] Moving the label and both tooltips to React fixed a pre-existing defect recorded in
+  the Phase 4a evidence log: `retranslate()` never touched the Overview lane's text, so it
+  stayed stuck in whatever language was active when the current song loaded. It now
+  retranslates like every other React-owned label, as a side effect of ownership transfer.
+- [test] Failing-first Node facade run recorded 2 new missing-method failures
+  (`attachOverviewCanvas`/`attachOverviewExtra` not functions) against 10 adjacent passes.
+  After implementation: focused Node facade 12/12, focused production-entry Chromium 35/35
+  (1 new case proving canvas identity/repaint across a song replacement via `__layers`
+  identity, plus two pre-existing tests extended to the new host — no assertion weakened),
+  full suite 31 files / 423 tests, `npm run build` with only the existing intentional
+  worklet warning, `git diff --check` clean.
+- [measurement] Exact commit `ea7bdfd` player bundle is 115,543 bytes, +926 (+0.81%) from
+  accepted Phase 4a; the 218,172-byte shared React chunk and 13,274-byte CSS chunk are both
+  unchanged.
+- [test] Exact-source local smoke (root, plus the same build served under a nested `pr-99/`
+  path) loaded a generated four-stem fixture (built directly under Node with the real
+  `lib/wav.js`/`lib/zip.js` encoders, since the built site doesn't serve `/tests/`/`/lib/`
+  source paths) through the real file input at both origins: correct label/tooltips, volume
+  mirroring in both directions, correct retranslation on language switch with the mirrored
+  value preserved, and — loading a second vocals/bass fixture — the same canvas DOM node
+  persisting while its `__layers` reference changed, proving the repaint-after-replacement
+  fix works at the exact build. Both consoles showed only the expected localhost GoatCounter
+  refusal.
+- [note] PR #81's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `b021fa2` (confirmed via the REST API's `merge_commit_sha`, since `gh pr view --json
+  mergeCommit` returned null pre-merge) before the affected-boundary check (Overview lane
+  present, volume mirroring both directions, clean first-party console at `/pr-81/`). PR #81
+  squash-merged as `d961db76a8404a2aef1f544dfe9f9746a397aa74`; its exact-SHA deploy and test
+  workflows passed, production displayed `d961db7`, and the production canary repeated the
+  Overview-lane load and volume-mirroring behavior with an empty first-party console. This
+  full SHA is the Phase 4b rollback anchor, completing Phase 4. Full details in
+  [react-migration-evidence.md](react-migration-evidence.md).
 
 ## React phase 4a — standard stem lane components (2026-09-07)
 

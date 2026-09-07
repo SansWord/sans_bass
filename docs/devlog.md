@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 4a](#react-phase-4a--standard-stem-lane-components-2026-09-07) | React now owns each standard stem lane's label, keyboard-operable mute, per-lane volume, and canvas host; ribbon/zoom/overview lanes stay legacy, positioned purely by CSS `order`. Implementation complete; PR/production acceptance pending. |
+| [React phase 4a](#react-phase-4a--standard-stem-lane-components-2026-09-07) | React now owns each standard stem lane's label, keyboard-operable mute, per-lane volume, and canvas host; ribbon/zoom/overview lanes stay legacy, positioned purely by CSS `order`. Accepted in production at `fcf2770`. |
 | [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; accepted at `41ff22c`, completing Phase 3. |
 | [React phase 3d](#react-phase-3d--volume-and-ab-loop-controls-2026-09-06) | React now owns the primary master-volume and A/B presentation controls; accepted in production at `4b14667`. |
 | [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; accepted in production at `20a55bb`. |
@@ -125,9 +125,16 @@ Running log of what was built and what was learned building it.
   focus restoration, per-lane volume independent of mute in both directions, and clean
   bilingual retranslation with stable canvases. Both consoles showed only the expected
   localhost GoatCounter refusal. A simulated narrow-viewport resize did not take effect in this
-  browser-automation session; deferred to the PR-preview tier as in every prior phase. PR/
-  production acceptance evidence is recorded in
-  [react-migration-evidence.md](react-migration-evidence.md) once each step completes.
+  browser-automation session; deferred to the PR-preview tier as in every prior phase.
+- [note] PR #79's 51-second test and 18-second deploy checks passed; the preview displayed
+  exact synthetic merge `5cff888` before the affected-boundary check (four lanes, genuine mute/
+  volume/focus behavior, clean first-party console at both `/pr-79/` and `/pr-79/demos/`). A
+  docs-only evidence refresh produced final synthetic merge `2c4d102`, confirmed before merge.
+  PR #79 squash-merged as `fcf27706c77267e269203b62fd40eae86be03380`; its exact-SHA deploy and
+  test workflows passed, production displayed `fcf2770`, and the production canary repeated
+  the four-lane load and genuine mute/focus/routing behavior with an empty first-party console.
+  This full SHA is the Phase 4a rollback anchor. Full details in
+  [react-migration-evidence.md](react-migration-evidence.md).
 
 ## React phase 3e — mode and routing controls (2026-09-06/07)
 

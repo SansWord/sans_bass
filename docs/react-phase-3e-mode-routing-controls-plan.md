@@ -1,7 +1,8 @@
 # React migration Phase 3e — mode and routing controls plan
 
-Status: implementation committed at
-`385e8ab38e982988a4c19d14e5a5428d7c52200c`; review and deployment acceptance pending.
+Status: [PR #77](https://github.com/SansWord/sans_bass/pull/77) preview verified;
+production acceptance pending. Implementation committed at
+`385e8ab38e982988a4c19d14e5a5428d7c52200c`.
 Planned from `82b6ac3f5897e34204c3549dd7506b863f7dbe61` on 2026-09-06. Previous
 accepted implementation rollback anchor: Phase 3d at
 `4b14667a935f1faef4af1f8ba8df8acb37d6ab5f`; its separate documentation anchor

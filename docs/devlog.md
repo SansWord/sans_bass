@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; implementation committed, with review and deployment acceptance pending. |
+| [React phase 3e](#react-phase-3e--mode-and-routing-controls-2026-09-0607) | React now owns the top-level mode selector and all-toggle presentation; PR #77 preview verified, with production acceptance pending. |
 | [React phase 3d](#react-phase-3d--volume-and-ab-loop-controls-2026-09-06) | React now owns the primary master-volume and A/B presentation controls; accepted in production at `4b14667`. |
 | [React phase 3c](#react-phase-3c--primary-seek-controls-2026-09-06) | React now owns the primary seek canvas and accessible master clock presentation; accepted in production at `20a55bb`. |
 | [React phase 3b](#react-phase-3b--primary-playback-controls-2026-09-06) | React now solely owns primary play/pause and speed in the existing player root; accepted in production at `99ac653`. |
@@ -105,9 +105,15 @@ Running log of what was built and what was learned building it.
 - [measurement] Exact commit `385e8ab` builds successfully with the existing intentional
   worklet URL warning. Its player bundle is 113,165 bytes, +681 (+0.61%) from accepted main;
   the 218,172-byte shared React chunk is unchanged (+0.21% across the pair).
-- [note] The interactive local root/nested smoke is pending: the Codex browser control hit
-  its usage cap before localhost opened. Preview, production, and rollback-anchor acceptance
-  remain gated; Phase 3 is not complete.
+- [test] After the browser quota reset, the exact `385e8ab` built root/nested smoke passed
+  generated explicit-mix/unknown routing, the 4:23 six-stem real song, genuine routing,
+  playback and A/B keys, 47% volume mirroring, locale/focus/ownership, clean first-party
+  console, and simulated 390×844 layout without horizontal overflow.
+- [test] PR #77's 16-second preview and 46-second test workflows passed. Hosted root and
+  nested routes displayed exact synthetic merge `b83d821`; generated and real-song cases
+  retained routing/focus/ownership, genuine 3/0/Space/A–B behavior, 55% volume mirroring,
+  saved locale, responsive 390px layout, and empty consoles. Production and the separate
+  rollback-anchor acceptance remain gated; Phase 3 is not complete.
 
 ## React phase 3d — volume and A/B loop controls (2026-09-06)
 

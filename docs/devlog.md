@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 6d](#react-phase-6d--zoomed-pane-mount-lifecycle-refactor-2026-09-07) | The zoomed pane (capo/chord row, Edit-notes toggle, shared Export/Import buttons, and everything else inside it) now survives a song replacement that keeps a vocals/bass stem, moved into its own `#zoom-lane-root` — the same fix Phase 4b applied to the Overview lane. A pure, ownership-neutral refactor: nothing moved to React. Unblocks Phase 6e, the actual ownership handoff. Accepted in production at `6a49bb4`. |
 | [React phase 6c](#react-phase-6c--edit-list-undo-and-list-export-controls-2026-09-07) | React now owns each melodic stem's edit list (summary/rows/Undo) and list-export row (Bars-per-line/Export list), completing all three originally-scheduled Phase 6 sub-slices; the audit found the Edit-notes toggle and shared Export/Import-edits buttons entangled with the same still-legacy zoomed-pane construction Phase 6b found for capo/chord, joining that same deferred future sub-slice. Accepted in production at `2aa9cdc`. |
 | [React phase 6b](#react-phase-6b--tempogrid-controls-2026-09-07) | React now owns the shared tempo/grid panel (BPM/phase/beats-per-bar/range-toggle/redetect); the audit found the capo control and zoomed-pane chord editor entangled with still-legacy rAF-driven, per-song-rebuilt rendering, so they stay legacy-owned, narrowing this slice from its originally-scoped "tempo/grid/capo/chord". Accepted in production at `65a8ae6`. |
 | [React phase 6a](#react-phase-6a--interpretation-controls-2026-09-07) | React now owns each melodic stem's shortest-note slider and Advanced disclosure (clip/hmm/fold + fold tolerance/stats), the first of Phase 6's sub-slices; `notes.js` extends the existing `detection` export rather than adding a second store. Accepted in production at `61e2b29`. |
@@ -89,6 +90,71 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## React phase 6d — zoomed-pane mount-lifecycle refactor (2026-09-07)
+
+- [note] Pure, ownership-neutral refactor: nothing moved to React this slice. The zoomed pane
+  (capo/chord row, Edit-notes toggle, shared Export/Import buttons, canvas, toolbar, fields,
+  stem/Notes chip lists — everything `app.js`'s `buildUI()` builds inside `if (anchorTrack)`)
+  is now built once and reused across a song replacement that keeps a vocals/bass stem,
+  instead of being destroyed and rebuilt on every song load — the same fix Phase 4b applied to
+  the Overview lane, applied here to a much larger region. Moved into a new `#zoom-lane-root`
+  sibling of `#note-lanes-root` so the per-song ribbon-lane teardown
+  (`el.noteLanesRoot.innerHTML = ''`) no longer reaches it.
+- `[insight]` This slice's own audit found the still-unscheduled future sub-slice 6b and 6c
+  both deferred to (capo/chord/Edit-toggle/Export-Import ownership) itself needed splitting
+  into two PRs, the same shape of finding 6b's and 6c's own audits made for their own scope:
+  the blocking mount-lifecycle restructuring is not a DOM-ownership handoff of separable
+  markup, and is large and risky enough (~200 lines of `buildUI()`, plus two new hazards with
+  no analogue in Phase 4b's much smaller extraction) to need its own bounded, ownership-neutral
+  PR — verified against the existing test suite staying green — before any control's ownership
+  actually moves. That PR is this one (6d); the ownership handoff it unblocks is 6e.
+- `[insight]` Two lifecycle hazards had no analogue in Phase 4b's simpler Overview extraction:
+  (1) **listener duplication** — `attachZoom`/`attachResize` register listeners directly on
+  DOM nodes; once those nodes persist across song loads instead of being recreated, calling
+  the attach functions again would stack a second set of listeners and double-fire every
+  wheel/drag gesture. Fixed by registering each exactly once, only at first construction.
+  (2) **stale visibility/value state** — the Edit-notes toggle's `hidden`/`disabled`, the
+  Export/Import group's `hidden`, and the capo select's `.value` were previously correct only
+  because construction reset them fresh every song; once reused, a completed previous song's
+  state would otherwise leak into a new song that hasn't run detection yet. Fixed by explicitly
+  calling `syncNotesChipsVisibility()`/`syncZoomChips()`/`syncEditToggle()` at the end of every
+  `buildUI()` call and resetting `capoSelect.value = '0'` on reuse.
+- `[note]` A new `rebuildZoomChipHost(chipHost)` function rebuilds only the genuinely per-song
+  stem/Notes chip lists (nested in their own `zChipHost` span, kept `display: contents` in
+  `styles.css`), called from both the first-time-construction and reuse paths — so that rebuild
+  can never reach the permanent Edit-notes-toggle/Export-Import-button siblings appended once.
+- `[test]` Five new focused Chromium cases in `tests/player.test.js`: only the node-identity
+  case genuinely failed against the legacy owner first (today's implementation always
+  recreates the nodes); the other four (chip-rebuild correctness, clean teardown/remount, no
+  double-registered wheel listeners) already passed against the legacy owner, serving as a
+  regression safety net rather than new failing-first proof. After implementation: focused
+  Chromium 55/55 (50 baseline + 5 new), full suite 31 files / 449 tests, `npm run build` with
+  only the existing intentional worklet warning, `git diff --check` clean.
+- `[measurement]` Exact commit `6a49bb4` player bundle is 121,946 bytes, +288 (+0.24%) from
+  accepted Phase 6c; the CSS chunk grows 13,274 → 13,323 bytes (+49, two new `display: contents`
+  rules); the 218,172-byte shared React chunk is unchanged — no `components/*.jsx` file changed.
+- `[note]` An independent fresh-context review (a `general-purpose` subagent, given the plan
+  doc and the full diff) ran before opening the PR, per this repo's Review Protocol; it found
+  no correctness bugs — only two stale comments (a `buildUI()` comment naming the wrong branch
+  condition, and a pre-existing test's comment describing the zoom canvas as still living in
+  `#note-lanes-root`) — both fixed in a follow-up commit before the PR opened.
+- [note] Exact-source local smoke (root, plus the same build served under a nested `pr-999/`
+  path) loaded a real generated four-stem ZIP through the real file input, ran a real "Find
+  notes" detection to completion, set a nonzero capo, then replaced with a second fixture with
+  a different stem set — confirmed the zoomed pane's key node references (`===`) survived
+  identically while capo/visibility state correctly reset and chip labels correctly rebuilt.
+  Repeated identically at the nested route with no first-party console errors.
+- [note] PR #93's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `e59d1ac` before the affected-boundary check (same identity/reset/chip-rebuild
+  assertions as the local smoke, repeated live). PR #93 squash-merged as
+  `6a49bb47d9cfb2f6eb43c2059a97694e1d00c331`; its exact-SHA deploy and test workflows passed,
+  production displayed `6a49bb4`, and the production canary confirmed the same boundary with an
+  empty first-party console. This full SHA is the Phase 6d rollback anchor, the fourth of
+  Phase 6's now-five ordered sub-slices — see the `[insight]` above. Full details in
+  [react-migration-evidence.md](react-migration-evidence.md).
 
 ---
 

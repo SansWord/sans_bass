@@ -11,9 +11,12 @@ the separation-panel slice (5a) is accepted in production at
 accepted in production: interpretation and key/display controls (6a) at
 `61e2b29683404aca736b69625517ec8b69e25df1`, tempo/grid controls (6b) at
 `65a8ae67b2be5c4193aaa803256b54dcdaadfaf5`, and edit list/undo/list-export controls (6c) at
-`2aa9cdcf07f8ed5cb1d04119b93f2a55a121bafe` — 6b and 6c each a narrower deliverable than
-originally scoped, both narrowings converging on the same still-unscheduled future sub-slice;
-see the Phase 6 section below. Created 2026-09-05.
+`2aa9cdcf07f8ed5cb1d04119b93f2a55a121bafe`. The still-unscheduled future sub-slice both 6b and
+6c deferred to (capo/chord/Edit-toggle/Export-Import controls) is now two ordered, scheduled
+sub-slices: 6d, the zoomed-pane mount-lifecycle refactor those two audits found necessary
+first, accepted in production at `6a49bb47d9cfb2f6eb43c2059a97694e1d00c331` — and 6e, the
+actual ownership handoff it unblocks, not yet started. See the Phase 6 section below.
+Created 2026-09-05.
 
 ## Goal and scope
 
@@ -234,11 +237,24 @@ or losing user edits.
   there is no stable child slot inside a container destroyed and rebuilt every song. These two
   controls join the same still-unscheduled future sub-slice 6b deferred, rather than opening a
   second separately-tracked deferred item for the same root cause. 6c's actual deliverable
-  narrowed to the edit list and list-export row only. Phase 6 is four ordered sub-slices in
-  practice: 6a (interpretation/key/display, accepted), 6b (tempo/grid, accepted), 6c (edit
-  list/undo/list-export, accepted), and an unscheduled future sub-slice (capo control, chord
-  display/editing, the Edit-notes toggle, and the shared Export/Import edits JSON buttons — all
-  four blocked on the same zoomed-pane mount-lifecycle restructuring).
+  narrowed to the edit list and list-export row only.
+- **Revised again after this slice's own audit (6d):** the still-unscheduled future sub-slice
+  6b and 6c both deferred to (capo control, chord display/editing, the Edit-notes toggle, and
+  the shared Export/Import edits JSON buttons — all blocked on the zoomed pane's DOM having no
+  identity that survives a song load) turned out to need its own two-PR split, the same shape
+  of finding 6b's and 6c's own audits already made for their scope: the blocking mount-lifecycle
+  restructuring — giving the zoomed pane's outer container the same "built once, reused across
+  a song replacement" fix Phase 4b applied to the Overview lane — is not itself a DOM-ownership
+  handoff of separable markup, and is large and risky enough (roughly 200 lines of `buildUI()`,
+  plus new listener-duplication and stale-visibility hazards with no analogue in Phase 4b's much
+  smaller extraction) to warrant its own bounded, ownership-neutral PR, verified against the
+  existing test suite staying green, before any control's ownership actually moves. That PR is
+  6d ([plan](react-phase-6d-zoomed-pane-mount-refactor-plan.md), accepted — see below); the
+  ownership handoff it unblocks is 6e (not yet started). Phase 6 is now five ordered sub-slices
+  in practice: 6a (interpretation/key/display, accepted), 6b (tempo/grid, accepted), 6c (edit
+  list/undo/list-export, accepted), 6d (zoomed-pane mount-lifecycle refactor, accepted), and 6e
+  (capo control, chord display/editing, the Edit-notes toggle, and the shared Export/Import
+  edits JSON buttons — not yet started, now unblocked by 6d).
 - Host the existing ribbon/overview/zoom renderers with stable identities. Assign pointer,
   keyboard, focus, and selection ownership explicitly so a gesture invokes one operation.
 - Retain edit identities, ordering, time precision, undo grouping, uncertainty handling,
@@ -249,16 +265,19 @@ or losing user edits.
 **Exit gate:** NOTE, TEMPO, EDIT, EXPORT, and relevant LOOP/SPD/LANG scenarios pass. Include
 overlapping notes, exact duplicates, range versus note selection, both note channels,
 reinterpreting existing edits, accompaniment-only chord bars, capo changes, Unicode filenames,
-and loading a new song. Compare final visuals and note-tone alignment with the baseline. The
-still-unscheduled future sub-slice above means Phase 6's own exit gate is not yet fully met —
-capo/chord/Edit-notes-toggle/Export-Import-buttons evidence remains pending that work.
+and loading a new song. Compare final visuals and note-tone alignment with the baseline. 6e
+above means Phase 6's own exit gate is not yet fully met — capo/chord/Edit-notes-toggle/
+Export-Import-buttons evidence remains pending that work.
 
 **Increment boundary:** interpretation, tempo/grid, capo/chord, and editing/persistence each
 receive their own acceptance evidence; do not bundle this phase into one rewrite PR. Tempo/grid
 and capo/chord split into two sub-slices rather than one (see 6b's revision note above) once
 6b's own audit found them not separable within one bounded increment; 6c's own audit found the
 Edit-notes toggle and Export/Import edits JSON buttons belonged with that same deferred capo/
-chord sub-slice rather than with 6c's own edit-list/list-export deliverable.
+chord sub-slice rather than with 6c's own edit-list/list-export deliverable; 6d's own audit
+found that deferred sub-slice itself split into a pure mount-lifecycle refactor (6d) and the
+actual ownership handoff (6e), for the same reason — a structural change too large to safely
+bundle with the ownership move it exists to unblock.
 
 ## Phase 7 — Retire legacy UI and accept the migration
 
@@ -330,6 +349,7 @@ Use a revert PR on shared `main` rather than resetting published history.
 | Phase 6a interpretation controls accepted in production | `61e2b29683404aca736b69625517ec8b69e25df1` | Known-good React interpretation/key/display presentation (each melodic stem's shortest-note slider and Advanced disclosure — fit-to-melody/clip, whole-phrase/hmm, fix-octave-outliers/fold + its tolerance slider and folded/muted stats) increment from [PR #87](https://github.com/SansWord/sans_bass/pull/87), the first of Phase 6's sub-slices. Restore to this boundary to retain the complete Phase 5 ownership plus React-owned interpretation-control presentation while backing out the later tempo/grid (Phase 6b), edit list/undo/list-export (Phase 6c), or capo/chord/Edit-notes-toggle/Export-Import-buttons (unscheduled) sub-slices. |
 | Phase 6b tempo/grid controls accepted in production | `65a8ae67b2be5c4193aaa803256b54dcdaadfaf5` | Known-good React tempo/grid-panel presentation (the shared `#notes-tempo` panel: Show-grid checkbox, BPM field, ×½/×2, phase field + nudge buttons, beats-per-bar select, "Select BPM range" toggle, Re-detect button, status line) increment from [PR #89](https://github.com/SansWord/sans_bass/pull/89), the second of Phase 6's sub-slices — narrower than originally scoped ("tempo/grid/capo/chord controls"): the capo control and the zoomed pane's chord display/editing were found entangled with still-legacy rendering and deferred to a future, not-yet-scheduled sub-slice — see [the plan doc](react-phase-6b-tempo-chord-controls-plan.md)'s scope decision. Restore to this boundary to retain the complete Phase 6a ownership plus React-owned tempo/grid-panel presentation while backing out a later capo/chord sub-slice or edit list/undo/list-export (Phase 6c). |
 | Phase 6c edit list/undo/list-export controls accepted in production | `2aa9cdcf07f8ed5cb1d04119b93f2a55a121bafe` | Known-good React edit-list and list-export-row presentation (each melodic stem's edit-group summary/rows/Undo, and "Bars per line"/"Export list") increment from [PR #91](https://github.com/SansWord/sans_bass/pull/91), the third of Phase 6's sub-slices, completing all three originally-scheduled sub-slices — narrower than originally scoped ("selection/edit/undo/import/export controls"): the Edit-notes toggle and the shared Export/Import edits JSON buttons were found entangled with the same still-legacy, per-song-rebuilt zoomed-pane DOM container Phase 6b found for capo/chord, and joined that same future, not-yet-scheduled sub-slice rather than opening a second one — see [the plan doc](react-phase-6c-editor-export-controls-plan.md)'s scope decision. Restore to this boundary to retain the complete Phase 6b ownership plus React-owned edit-list/list-export presentation while backing out the future capo/chord/Edit-notes-toggle/Export-Import-buttons sub-slice. |
+| Phase 6d zoomed-pane mount-lifecycle refactor accepted in production | `6a49bb47d9cfb2f6eb43c2059a97694e1d00c331` | Known-good pure refactor (zero ownership change) from [PR #93](https://github.com/SansWord/sans_bass/pull/93): the zoomed pane (capo/chord row, Edit-notes toggle, shared Export/Import buttons, and everything else inside it) is built once and reused across a song replacement that keeps a vocals/bass stem, moved into its own `#zoom-lane-root` so the per-song ribbon-lane teardown no longer reaches it — the same fix Phase 4b applied to the Overview lane, applied here to the much larger zoomed pane. This slice's own audit found the still-unscheduled future sub-slice 6b/6c deferred (capo/chord/Edit-toggle/Export-Import) itself needed splitting into this bounded, ownership-neutral restructuring PR and a separate ownership-handoff PR (6e, not yet started) — see [the plan doc](react-phase-6d-zoomed-pane-mount-refactor-plan.md)'s scope decision. Restore to this boundary to retain the complete Phase 6c ownership plus the stable zoomed-pane DOM lifecycle while backing out 6e's ownership handoff once it ships. |
 
 Add one row after each phase is accepted in production. The target SHA is a restoration and
 comparison anchor, not permission to `git reset` a shared branch; revert the commits after the
@@ -364,7 +384,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 3 | Complete; final Phase 3e boundary accepted at `41ff22c` | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Phase 3c plan](react-phase-3c-seek-controls-plan.md) · [Phase 3d plan](react-phase-3d-volume-loop-controls-plan.md) · [Phase 3e plan](react-phase-3e-mode-routing-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) · [PR #73](https://github.com/SansWord/sans_bass/pull/73) · [PR #75](https://github.com/SansWord/sans_bass/pull/75) · [PR #77](https://github.com/SansWord/sans_bass/pull/77) | Complete; Phase 4 may begin |
 | 4 | Complete; Phase 4b accepted in production at `d961db7` | [Phase 4a plan](react-phase-4a-stem-lanes-plan.md) · [Phase 4b plan](react-phase-4b-shared-overview-plan.md) · [Evidence](react-migration-evidence.md#phase-4b--react-shared-overview-lane-integration) · [PR #79](https://github.com/SansWord/sans_bass/pull/79) · [PR #81](https://github.com/SansWord/sans_bass/pull/81) | Complete; Phase 5 may begin |
 | 5 | Complete; Phase 5b (detection controls) accepted in production at `3e241da` | [Phase 5a plan](react-phase-5a-separation-panel-plan.md) · [Phase 5b plan](react-phase-5b-detection-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-5b--react-detection-controls) · [PR #83](https://github.com/SansWord/sans_bass/pull/83) · [PR #85](https://github.com/SansWord/sans_bass/pull/85) | Complete; Phase 6 may begin |
-| 6 | In progress; Phase 6a (interpretation/key/display controls) accepted in production at `61e2b29`, Phase 6b (tempo/grid controls) accepted at `65a8ae6`, Phase 6c (edit list/undo/list-export controls) accepted at `2aa9cdc` | [Phase 6a plan](react-phase-6a-interpretation-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6a--react-interpretation-controls) · [PR #87](https://github.com/SansWord/sans_bass/pull/87) · [Phase 6b plan](react-phase-6b-tempo-chord-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6b--react-tempogrid-controls) · [PR #89](https://github.com/SansWord/sans_bass/pull/89) · [Phase 6c plan](react-phase-6c-editor-export-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6c--react-edit-list-undo-and-list-export-controls) · [PR #91](https://github.com/SansWord/sans_bass/pull/91) | All three originally-scheduled sub-slices are complete; only a still-unscheduled future sub-slice remains (capo control, chord display/editing, the Edit-notes toggle, and the shared Export/Import edits JSON buttons — all four blocked on the same zoomed-pane mount-lifecycle restructuring, see 6b's and 6c's plan docs) |
+| 6 | In progress; Phase 6a (interpretation/key/display controls) accepted in production at `61e2b29`, Phase 6b (tempo/grid controls) accepted at `65a8ae6`, Phase 6c (edit list/undo/list-export controls) accepted at `2aa9cdc`, Phase 6d (zoomed-pane mount-lifecycle refactor) accepted at `6a49bb4` | [Phase 6a plan](react-phase-6a-interpretation-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6a--react-interpretation-controls) · [PR #87](https://github.com/SansWord/sans_bass/pull/87) · [Phase 6b plan](react-phase-6b-tempo-chord-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6b--react-tempogrid-controls) · [PR #89](https://github.com/SansWord/sans_bass/pull/89) · [Phase 6c plan](react-phase-6c-editor-export-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6c--react-edit-list-undo-and-list-export-controls) · [PR #91](https://github.com/SansWord/sans_bass/pull/91) · [Phase 6d plan](react-phase-6d-zoomed-pane-mount-refactor-plan.md) · [Evidence](react-migration-evidence.md#phase-6d--zoomed-pane-mount-lifecycle-refactor) · [PR #93](https://github.com/SansWord/sans_bass/pull/93) | All three originally-scheduled sub-slices plus the mount-lifecycle refactor they turned out to need are complete; only Phase 6e remains (capo control, chord display/editing, the Edit-notes toggle, and the shared Export/Import edits JSON buttons — now unblocked by 6d, not yet started) |
 | 7 | Not started | — | Cleanup and acceptance |
 
 Update this table after each accepted slice. Store detailed evidence in a linked migration

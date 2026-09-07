@@ -60,14 +60,33 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   `<section id="notes-{stem}">`. It reflects `notes.js`'s existing per-channel state machine
   through a new `detection` export, the same `subscribe`/`getSnapshot`/`commands` shape
   `separation` established, while `notes.js` retains the Worker lifecycle, tempo/chord
-  detection, the note editor, and export/import; the tune/Advanced interpretation row, edit
-  list, list-export, tempo grid, chord detection/editing, and the zoomed pane remain
-  legacy-owned, deferred to Phase 6. Giving React ownership of these controls made `notes.js`
+  detection, the note editor, and export/import; at that point the tune/Advanced
+  interpretation row, edit list, list-export, tempo grid, chord detection/editing, and the
+  zoomed pane all remained legacy-owned, deferred to Phase 6 (the interpretation row moved to
+  React in Phase 6a below; the rest remain legacy). Giving React ownership of these controls
+  made `notes.js`
   reachable from `app.js`'s own static import graph (via `PlayerShell.jsx` →
   `DetectionPanel.jsx`), which resolves before `app.js`'s body sets `window.sansBass` — the
   same hazard `separate.js` already guarded against in Phase 5a; `notes.js`'s
   `syncTempoControls()` and the new `view()` needed the same optional-chaining guard
-  `hasStem()` already had. Phase 2's DOM-independent
+  `hasStem()` already had. Phase 6a (the first of Phase 6's three sub-slices) adds
+  `components/InterpretationPanel.jsx`, whose `InterpretationPanel` owns each melodic stem's
+  interpretation row — the shortest-note slider and the Advanced disclosure (fit-to-melody/
+  clip, whole-phrase/hmm, fix-octave-outliers/fold plus its tolerance slider and the
+  folded/muted stats) — through `#notes-tune-vocals-root`/`#notes-tune-bass-root` portals
+  nested inside their still-legacy-owned `<section id="notes-{stem}">`, matching Phase 5b's
+  `#notes-meta-{stem}-root` pattern exactly. It extends the same `detection` export Phase 5b
+  established (five new per-channel view fields plus `foldedCount`/`mutedCount`, and five new
+  commands) rather than adding a second store, since both rows live in the same
+  `createNotesChannel()` closure and are recomputed by the same `reinterpret()` call;
+  `notes.js` gains a plain per-channel `interp` state object (the same shape `jianpu` already
+  had) that `currentParams()`/`exportEntry()`/`importEntry()` read and write instead of the
+  DOM, and a new `lib/pitch.js#foldStats()` pure export replaces the inline folded/muted
+  counting loop `syncFoldControls()` used to do. `notes.js` retains the Worker lifecycle,
+  tempo/chord detection, the note editor, and export/import; the edit list, list-export row,
+  tempo grid, chord detection/editing, and the zoomed pane remain legacy-owned, deferred to
+  Phase 6b (tempo/grid/capo/chord controls) and Phase 6c (selection/edit/undo/import/export
+  controls). Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -184,6 +203,11 @@ through `lib/player-application.js` — separation state has no owner other than
 (`NotesChannelPanel`, through `#notes-meta-vocals-root`/`#notes-meta-bass-root` portals nested
 inside their still-legacy `<section id="notes-{stem}">`), reflecting `notes.js`'s per-channel
 state machine through its own `detection` export, the same shape `separation` established.
+`components/InterpretationPanel.jsx` owns each melodic stem's interpretation row — the
+shortest-note slider and the Advanced disclosure (fit-to-melody/clip, whole-phrase/hmm,
+fix-octave-outliers/fold plus its tolerance slider and folded/muted stats) — through
+`#notes-tune-vocals-root`/`#notes-tune-bass-root` portals nested inside the same still-legacy
+sections, extending that same `detection` export rather than a second store (Phase 6a).
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -228,6 +252,7 @@ lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no win
 components/{SiteHeader,DemoHeader,PlayerShell}.jsx  React headers + player loading shell
 components/SeparationPanel.jsx     React separation-panel presentation (Phase 5a)
 components/DetectionPanel.jsx      React detection-controls presentation (Phase 5b)
+components/InterpretationPanel.jsx React interpretation-controls presentation (Phase 6a)
 components/useLocale.js            cleaned React locale subscription
 demos.jsx                          demo React mount plus legacy title/count localization
 scripts/build-demos.js             generates the ignored demos/index.html before dev/build
@@ -243,7 +268,9 @@ separate.js  separate.worker.js    ESM — separation service/Worker lifecycle a
                                    inference loop; presentation is components/SeparationPanel.jsx
 notes.js  notes.worker.js          ESM — notes panel and the analysis worker; shared
                                    detect-button and per-channel meta-row presentation is
-                                   components/DetectionPanel.jsx
+                                   components/DetectionPanel.jsx, and each channel's
+                                   interpretation-row presentation is
+                                   components/InterpretationPanel.jsx
 tests/*.test.js                    units      → `npm test` (Vitest; see vitest.config.js)
 tests/parity.html                  accuracy   → window.__parity
 tests/notes.html                   notes+key  → window.__notes

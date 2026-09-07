@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 6a](#react-phase-6a--interpretation-controls-2026-09-07) | React now owns each melodic stem's shortest-note slider and Advanced disclosure (clip/hmm/fold + fold tolerance/stats), the first of Phase 6's three sub-slices; `notes.js` extends the existing `detection` export rather than adding a second store. Accepted in production at `61e2b29`. |
 | [React phase 5b](#react-phase-5b--detection-controls-2026-09-07) | React now owns the shared Find-notes button/spinner/busy-channel status and each melodic stem's count/Show-Hide/簡譜/key controls, completing Phase 5; `notes.js` keeps the Worker/tempo/chord/editor state and exposes detection through a new `detection` export instead of writing DOM. Accepted in production at `3e241da`. |
 | [React phase 5a](#react-phase-5a--separation-panel-controls-2026-09-07) | React now owns the separation panel's presentation (gating, start/progress/cancel/save); `separate.js` keeps the Worker/model and exposes its state through a new `separation` export instead of writing DOM. Accepted in production at `ffe5ed5`. |
 | [React phase 4b](#react-phase-4b--shared-overview-integration-2026-09-07) | React now owns the shared Overview lane's label, master-volume-mirroring slider, and canvas host, completing Phase 4; ribbon/zoomed-pane lanes stay legacy. Accepted in production at `d961db7`. |
@@ -88,6 +89,65 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## React phase 6a — interpretation controls (2026-09-07)
+
+- [new] React (`components/InterpretationPanel.jsx`) solely authors each melodic stem's
+  interpretation row — the shortest-note slider and the Advanced disclosure (fit-to-melody/
+  clip, whole-phrase/hmm, fix-octave-outliers/fold + its tolerance slider, and the
+  folded/muted stats) — through new `#notes-tune-vocals-root`/`#notes-tune-bass-root` portals
+  nested inside their still-legacy `<section id="notes-{stem}">`. This is the first of Phase
+  6's three sub-slices (interpretation/key/display, then tempo/grid/capo/chord, then
+  selection/edit/undo/import/export); the edit list, list-export row, tempo grid, chord
+  detection/editing, and the zoomed pane stay legacy-owned, deferred to the next two.
+- [note] Extends the `detection` store Phase 5b established, rather than adding a second one
+  — both the meta row (Phase 5b) and the interpretation row (this phase) live in the same
+  `createNotesChannel()` closure, are recomputed by the same `reinterpret()` call, and are
+  gated on the same `!!frames` fact. A second store would have meant a second
+  `useSyncExternalStore` subscription and a second `listeners`/`lastView` pair for state with
+  no independent lifecycle from what `detection` already tracks — recorded as an explicit
+  scope decision in the plan doc rather than assumed.
+- [new] `lib/pitch.js` gains a `foldStats(notes)` pure export, lifted out of `notes.js`'s
+  `syncFoldControls()` counting loop — the same "lift existing logic into a testable pure
+  function" precedent `resolveStatusParams`/`detectionView` already established. Node-tested
+  directly (folded/doubtful/no-fix/empty cases) and shared with the React component.
+- [note] Each channel closure gained a plain `interp` state object
+  (`{ minDurationMs, clip, hmm, fold, foldTol }`, defaults matching the legacy markup's own)
+  that `currentParams()`/`exportEntry()`/`importEntry()` now read and write instead of the
+  DOM — the same shape `jianpu` already had. `reset()` deliberately does **not** touch
+  `interp`, preserving a pre-existing (and easy to miss) behavior: the legacy DOM sliders and
+  checkboxes were never cleared across a song/stem change either, so these are user
+  preferences, not song-derived facts.
+- [test] Four Chromium cases in `tests/player.test.js` (one extending the pre-existing
+  stale-results case with an interpretation-row visibility assertion) and three Node cases in
+  `tests/pitch.test.js` for `foldStats()`, added before implementation. All four Chromium
+  cases passed against the **legacy** DOM-writing owner unmodified — they validate
+  already-correct behavior (the underlying `interpret()`/`foldOctaves()` derivations were
+  already correct and already tested), not a regression, the same acknowledgment Phase 5a/5b
+  made for some of their own new cases. After implementation: focused Chromium 44/44 (40
+  baseline + 4 new/extended), full suite 31 files / 438 tests, `npm run build` with only the
+  existing intentional worklet warning, `git diff --check` clean.
+- [measurement] Exact commit `16d9592` player bundle is 118,750 bytes, +1,093 (+0.93%) from
+  accepted Phase 5b; the 218,172-byte shared React chunk and 13,274-byte CSS chunk are both
+  unchanged — no new dependency was added.
+- [test] Exact-source local smoke (root, plus the same build served under a nested `pr-999/`
+  path) loaded a generated stems ZIP (vocals+bass) through the real file input at both
+  origins, with a fake `window.Worker` installed beforehand: at root, an `foldOctaves`
+  regression fixture (the same shape `tests/pitch.test.js` already proves folds exactly one
+  note) drove slider re-derivation, fold-stats/tolerance-slider enable, the risky (≥2.5)
+  styling, language-switch retranslation, and persistence of both the slider value and fold
+  checkbox across a song replacement; at the nested route, a worker-failure → retry recovery
+  path (proving the button re-enables once the 400 ms poll catches up, and a fresh Worker is
+  created on retry) drove the min-duration fixture instead. Both consoles showed no
+  first-party errors.
+- [note] PR #87's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `83855c5` before the affected-boundary check (Find-notes → 8 notes → toggle Fix
+  octave outliers → "1 corrected · 0 muted", clean first-party console at `/pr-87/`). PR #87
+  squash-merged as `61e2b29683404aca736b69625517ec8b69e25df1`; its exact-SHA deploy and test
+  workflows passed, production displayed `61e2b29`, and the production canary repeated the
+  detect/fold-stats flow with an empty first-party console. This full SHA is the Phase 6a
+  rollback anchor, the first of Phase 6's three sub-slices. Full details in
+  [react-migration-evidence.md](react-migration-evidence.md).
 
 ## React phase 5b — detection controls (2026-09-07)
 

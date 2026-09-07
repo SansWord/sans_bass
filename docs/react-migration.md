@@ -7,7 +7,9 @@ at `41ff22cdfad6221164ea7105273b24d338251c95`. Phase 4 is complete: standard ste
 overview integration (4b) at `d961db76a8404a2aef1f544dfe9f9746a397aa74`. Phase 5 is complete:
 the separation-panel slice (5a) is accepted in production at
 `ffe5ed511ffbceeb5871cc4c45bbec8570a50c51` and detection controls (5b) at
-`3e241da4a05831f49bff5d680b92474dddea28a9`. Created 2026-09-05.
+`3e241da4a05831f49bff5d680b92474dddea28a9`. Phase 6 is in progress: interpretation and
+key/display controls (6a) are accepted in production at
+`61e2b29683404aca736b69625517ec8b69e25df1`. Created 2026-09-05.
 
 ## Goal and scope
 
@@ -290,6 +292,7 @@ Use a revert PR on shared `main` rather than resetting published history.
 | Phase 4b shared overview integration accepted in production | `d961db76a8404a2aef1f544dfe9f9746a397aa74` | Known-good React shared Overview-lane presentation (label/master-volume-mirroring slider/canvas host) increment from [PR #81](https://github.com/SansWord/sans_bass/pull/81). Restore to this boundary to retain the complete Phase 4 ownership (standard lanes plus the shared overview lane) while backing out the later notes/tempo/chord slices (Phase 6) or separation/detection controls (Phase 5). |
 | Phase 5a separation panel controls accepted in production | `ffe5ed511ffbceeb5871cc4c45bbec8570a50c51` | Known-good React separation-panel presentation (availability/gating including the handheld explanation, start/progress/cancel/error/save controls) increment from [PR #83](https://github.com/SansWord/sans_bass/pull/83). Restore to this boundary to retain the complete Phase 4 ownership plus React-owned separation-panel presentation while backing out detection controls (Phase 5b) or the later notes/tempo/chord slices (Phase 6). |
 | Phase 5b detection controls accepted in production | `3e241da4a05831f49bff5d680b92474dddea28a9` | Known-good React detection-controls presentation (shared Find-notes button/spinner/busy-channel status, and each melodic stem's count/Show-Hide/簡譜/key-tonic-mode-relative-key controls) increment from [PR #85](https://github.com/SansWord/sans_bass/pull/85), completing Phase 5. Restore to this boundary to retain the complete Phase 4 ownership plus React-owned separation-panel and detection-controls presentation while backing out the later notes/tempo/chord/editor slices (Phase 6). |
+| Phase 6a interpretation controls accepted in production | `61e2b29683404aca736b69625517ec8b69e25df1` | Known-good React interpretation/key/display presentation (each melodic stem's shortest-note slider and Advanced disclosure — fit-to-melody/clip, whole-phrase/hmm, fix-octave-outliers/fold + its tolerance slider and folded/muted stats) increment from [PR #87](https://github.com/SansWord/sans_bass/pull/87), the first of Phase 6's three sub-slices. Restore to this boundary to retain the complete Phase 5 ownership plus React-owned interpretation-control presentation while backing out the later tempo/chord (Phase 6b) or selection/edit/undo/import/export (Phase 6c) sub-slices. |
 
 Add one row after each phase is accepted in production. The target SHA is a restoration and
 comparison anchor, not permission to `git reset` a shared branch; revert the commits after the
@@ -324,7 +327,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 3 | Complete; final Phase 3e boundary accepted at `41ff22c` | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Phase 3c plan](react-phase-3c-seek-controls-plan.md) · [Phase 3d plan](react-phase-3d-volume-loop-controls-plan.md) · [Phase 3e plan](react-phase-3e-mode-routing-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) · [PR #73](https://github.com/SansWord/sans_bass/pull/73) · [PR #75](https://github.com/SansWord/sans_bass/pull/75) · [PR #77](https://github.com/SansWord/sans_bass/pull/77) | Complete; Phase 4 may begin |
 | 4 | Complete; Phase 4b accepted in production at `d961db7` | [Phase 4a plan](react-phase-4a-stem-lanes-plan.md) · [Phase 4b plan](react-phase-4b-shared-overview-plan.md) · [Evidence](react-migration-evidence.md#phase-4b--react-shared-overview-lane-integration) · [PR #79](https://github.com/SansWord/sans_bass/pull/79) · [PR #81](https://github.com/SansWord/sans_bass/pull/81) | Complete; Phase 5 may begin |
 | 5 | Complete; Phase 5b (detection controls) accepted in production at `3e241da` | [Phase 5a plan](react-phase-5a-separation-panel-plan.md) · [Phase 5b plan](react-phase-5b-detection-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-5b--react-detection-controls) · [PR #83](https://github.com/SansWord/sans_bass/pull/83) · [PR #85](https://github.com/SansWord/sans_bass/pull/85) | Complete; Phase 6 may begin |
-| 6 | Not started | — | Notes/editor controls |
+| 6 | In progress; Phase 6a (interpretation/key/display controls) accepted in production at `61e2b29` | [Phase 6a plan](react-phase-6a-interpretation-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6a--react-interpretation-controls) · [PR #87](https://github.com/SansWord/sans_bass/pull/87) | Tempo/grid/capo/chord controls (6b), then selection/edit/undo/import/export controls (6c) |
 | 7 | Not started | — | Cleanup and acceptance |
 
 Update this table after each accepted slice. Store detailed evidence in a linked migration

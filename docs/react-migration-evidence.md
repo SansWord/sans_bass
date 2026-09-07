@@ -1,5 +1,178 @@
 # React migration evidence
 
+## Phase 6e — Edit-notes toggle and shared Export/Import edits JSON buttons
+
+Status: accepted in production at rollback anchor
+`130af31bd80f8cd55f5b413e8a1ce8f6563deb15`, the fifth of Phase 6's now-six ordered sub-slices
+(the sixth — 6f, the capo/chord-editor ownership handoff this slice's own audit found still
+entangled — remains not yet started). Evidence collected 2026-09-07 America/Los_Angeles.
+Branch `feat/react-phase-6e-edit-toggle-export-import`; starting source
+`afbe014301a1bdf86a779caa2a0e64683016903b` (Phase 6d documentation-anchor merge, PR #94); plan
+and implementation committed together as `130af31` (squash-merged as PR #95's single commit).
+Previous accepted implementation rollback anchor: Phase 6d at
+`6a49bb47d9cfb2f6eb43c2059a97694e1d00c331`, documented through
+[PR #93](https://github.com/SansWord/sans_bass/pull/93) and anchored through
+[PR #94](https://github.com/SansWord/sans_bass/pull/94).
+
+This slice was originally scoped to cover capo, chord display/editing, the Edit-notes toggle,
+and the shared Export/Import edits JSON buttons — everything Phase 6d's mount-lifecycle
+refactor unblocked. Its own audit found that framing does not describe one separable region:
+the Edit-notes toggle and Export/Import buttons have zero dependency on any per-frame state,
+but capo and the chord editor share one DOM container and one hidden flag recomputed every
+`draw()` call. The actual deliverable narrowed to the Edit-notes toggle and Export/Import
+buttons only; capo and the chord editor become Phase 6f.
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-6e-edit-toggle-export-import-plan.md](react-phase-6e-edit-toggle-export-import-plan.md),
+including the scope decision and a forward design sketch for Phase 6f.
+
+`lib/player-application.js` gains one new snapshot field, `notesEdit: { visible, enabled, on }`
+(mirroring today's `anyReady`/`canEdit`/`editMode`), three new commands (`setEditMode`,
+`exportEdits`, `importEdits` — each dispatching the exact same `sansbass:editmode`/
+`sansbass:exportedits`/`sansbass:importedits` custom events the removed DOM listeners used, so
+`notes.js`'s own listeners for those events are untouched), and a genuinely new plumbing
+direction: `publishEditHost(node)`/`subscribeEditHost(listener)`/`getEditHost()`. Every other
+attach hook in this migration has React create a DOM node and hand it to `app.js`
+(`attachLaneCanvas`, `attachOverviewCanvas`, …); here the reverse is required, because the
+controls' actual parent (`zLaneSel`) is legacy DOM `app.js` builds dynamically inside
+`buildUI()`, not static `index.html` markup `mountPlayerShell()` could read upfront. `app.js`
+creates one stable `<span class="zoom-edit-host">` (kept `display: contents` in `styles.css`,
+the same trick `zChipHost` uses, so React's rendered children act as direct flex items of
+`zLaneSel`) once, in `buildUI()`'s first-time-construction branch (Phase 6d already made this
+persist across song loads), and publishes it; the teardown branch publishes `null` when the
+anchor stem disappears.
+
+`components/PlayerShell.jsx` gains `EditModeToggle`/`EditIoControls` (the actual presentational
+components, added directly in this file matching the `MasterVolume`/`LoopControls`/
+`ModeRoutingControls` precedent — state exposed through `lib/player-application.js`, not a
+separate-file `notes.js`/`separate.js`-owned store) and `EditModeControls`, which subscribes to
+`subscribeEditHost`/`getEditHost` and portals the other two into the host once it exists.
+
+`app.js` loses six module-level DOM-reference variables and every write to them (their
+construction block, the teardown nulling, the DOM writes inside `syncNotesChipsVisibility()`/
+`syncEditToggle()`, the `sansbass:editmode` listener's `editToggleEl.checked = editMode` write,
+and four retranslation lines). It keeps `editMode` itself, every event dispatch/listen site
+(unchanged shape, now reached via commands instead of DOM listeners), and
+`syncNotesChipsVisibility()`/`syncEditToggle()` (now ending in `playerApplication.publish()`
+instead of DOM writes, backed by a new shared `notesEditState()` helper both they and
+`applicationSnapshot()` call, so the visibility/enablement computation has one source of truth).
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+New focused production-entry Chromium cases (`tests/player.test.js`) exercise the real
+controls end to end (checking the actual checkbox, clicking the actual buttons, dispatching a
+real `change` on the real hidden file input) rather than only the manual-event-dispatch
+shortcuts most existing edit-mode tests already used: visibility/enablement lifecycle tied to
+detection completing; real check/uncheck dispatching `sansbass:editmode` with the correct
+stem; a song replacement that clears the selected channel forcing editing off through
+`syncEditToggle()`'s end-of-`buildUI()` call; Export/Import dispatch plus the import file
+input's value reset (proving the same file can be picked twice); and language-switch
+retranslation of both the toggle's label and both buttons' text. New focused Node facade cases
+(`tests/player-application.test.js`) cover the three new commands and the new
+`publishEditHost`/`subscribeEditHost`/`getEditHost` channel's identity-based deduplication,
+mirroring `publishTransport`'s own dedup test.
+
+An independent fresh-context review (general-purpose agent, given the plan doc and the full
+diff) found no functional bugs — only one stale comment (a doc comment in `rebuildZoomChipHost`
+still naming the removed `editLabel`/`ioGroup` variables instead of their replacement,
+`zEditHost`) — fixed before this commit.
+
+After implementation:
+
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 59 tests passed (5 new
+  this slice);
+- focused Node facade `tests/player-application.test.js`: 1 file, 13 tests passed (1 new: the
+  edit-host channel's dedup case);
+- full `npm test`: 31 files, 454 tests passed (448 baseline at Phase 6d's anchor + 6 new);
+- `npm run build`: passed; existing intentional unresolved-at-build-time
+  `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+The exact-source build emits **122,717 bytes** in the player entry (`dist/assets/main-*.js`)
+versus Phase 6d's 121,946: **+771 bytes (+0.63%)**. The CSS chunk grows from 13,323 to 13,339
+bytes (**+16 bytes**, the one new `.zoom-edit-host` rule) and the shared React/header chunk is
+unchanged at exactly 218,172 bytes — no new dependency was added, and no `components/*.jsx`
+file outside `PlayerShell.jsx` changed.
+
+### Exact-source local smoke
+
+Local production build served via `npm run preview` (root, port 8779) and a second static
+server with the same build copied under `pr-998/` (nested-route smoke, port 8780). A generated
+4-second four-stem (vocals/guitar/bass/drums) ZIP fixture, built with the repository's own
+`tests/helpers/audio-fixtures.js#stemsZip` run directly under Node, loaded through the real
+`#file-input` at root via a direct file-input upload; a real "Find notes" detection run against
+the real detection Worker (not a fake) completed and enabled the real Edit-notes checkbox.
+
+At root: clicking the real checkbox twice dispatched `sansbass:editmode` with `{on:true,
+stem:'vocals'}` then `{on:false, stem:'vocals'}` and the checkbox's own `.checked` tracked each
+click correctly; a screenshot confirmed the rendered row reads "Vocals notes · Bass notes ·
+☑ Edit notes · Export edits · Import edits" — pixel-position-identical to the pre-6e legacy
+row, with the still-legacy capo/chord row (`Capo [0] Play key A Chord [_] Re-detect chords`)
+visually untouched above it. Clicking the real Export button dispatched `sansbass:exportedits`;
+dispatching a real `change` on the real (visually hidden) import file input with an attached
+`File` dispatched `sansbass:importedits` with that exact file and left the input's own
+`.value` empty afterward. Loading a second fixture with a different stem set (no detection run)
+confirmed the toggle's and io-group's DOM node identity (`===` comparison against references
+captured before the replacement) were the **same** elements, while `.checked`/`.disabled`/
+`.hidden` all correctly reset to their "nothing ready yet" state — none of the first song's
+enabled/checked state leaked into the second. The nested route repeated the initial
+load/detection/toggle sequence with identical results. Console at both origins carried no
+first-party errors.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | Generated four-stem WAV/ZIP fixtures cover ordinary stems, real detection completion, and a song replacement with a different stem set, through the production-entry Chromium suite and a local exact-source smoke using the real (not faked) detection Worker. |
+| Malformed input | Unchanged; no ownership-affecting code path touched. |
+| Storage/locale | Both languages pass in Chromium and in exact-source local smoke; the toggle's label and both buttons' text retranslate correctly. |
+| Handheld | Unaffected; no new capability-gated code. |
+| Worker | The one real "Find notes" run in the exact-source smoke used the real detection Worker to reach a populated channel state; no Worker protocol code itself changed. |
+| Visual | Exact-source local smoke and the PR-preview/production checks reviewed the row's layout, spacing, and control visibility at desktop width — a screenshot confirmed pixel-position parity with the pre-6e legacy row; no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine command/state evidence was collected, not subjective listening. |
+| Real song | Not run against `examples/nov_you.zip` in this evidence pass; the changed boundary (control ownership/presentation only, no audio-path or Worker change) does not plausibly affect it, matching prior Phase 6 sub-slices' own scoping. |
+
+### PR-preview deployment evidence
+
+[PR #95](https://github.com/SansWord/sans_bass/pull/95)'s `test` and `deploy` checks both
+passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-95/` displayed
+exact synthetic merge `9af9d8c5e93fce90531e82c9dfb286eaa5f432a6` (`9af9d8c`), matching
+`gh api repos/SansWord/sans_bass/pulls/95 --jq '.merge_commit_sha'` at the time of that check.
+The same real-checkbox/real-button/real-file-input check performed in the local smoke above
+was repeated against the live preview with the same generated fixture and produced identical
+results. The first-party console carried no errors.
+
+### Production acceptance evidence
+
+PR #95 squash-merged as exact production source
+`130af31bd80f8cd55f5b413e8a1ce8f6563deb15`. Its
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34171037693) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34171037724) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/` (fetched with a
+cache-busting query string) displayed exact `130af31`.
+
+The production delivery canary repeated the affected boundary: the real Edit-notes checkbox,
+once enabled by a real "Find notes" run, correctly dispatched `sansbass:editmode(on:true,
+stem:'vocals')` on click. The first-party console carried no errors.
+
+The complete synthetic, malformed-input, storage-fault, and narrow-viewport matrices were not
+repeated in production because the canary agreed with the exact-source and preview evidence
+above. No real-song (`examples/nov_you.zip`), musical-accuracy, physical-handheld, or
+subjective auditory check is claimed for this increment, for the same reasons given in the
+omissions table above.
+
+Phase 6e is accepted at the full SHA above, the fifth of Phase 6's now-six ordered sub-slices.
+The capo control and the chord editor stay untouched and legacy-owned, now Phase 6f — a design
+sketch for it (a dedup'd published view mirroring `publishTransport`, plus a focus-aware
+controlled input for the chord field's own live-editable text) is recorded in this slice's own
+plan doc rather than starting from nothing. This separate documentation-only PR records the
+immutable rollback anchor.
+
 ## Phase 6d — zoomed-pane mount-lifecycle refactor
 
 Status: accepted in production at rollback anchor

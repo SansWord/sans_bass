@@ -161,15 +161,39 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   that keeps a vocals/bass stem, instead of being destroyed and rebuilt every `buildUI()` call
   — mirroring the fix Phase 4b applied to the Overview lane. A new `rebuildZoomChipHost()`
   rebuilds only the genuinely per-song stem/Notes chip lists (nested in their own `zChipHost`
-  span) on both first construction and reuse, leaving the permanent Edit-notes-toggle/
-  Export-Import-button siblings untouched; `attachZoom`/`attachResize` are now registered
-  exactly once, at first construction, to avoid double-firing wheel/drag gestures on a node
-  that no longer gets recreated every song; and `buildUI()` explicitly re-syncs the pane's
-  detection-gated visibility/capo value on every reuse, since construction alone no longer
-  does that for it. This unblocks — but does not itself perform — Phase 6e, the actual
-  ownership handoff of those four controls to React. Phase 2's DOM-independent
-  command/subscription facade in `lib/player-application.js` remains the only UI-to-player
-  seam; React invokes its commands and renders its published transport snapshot.
+  span) on both first construction and reuse, leaving its permanent sibling (originally
+  `editLabel`/`ioGroup`, then Phase 6e's `zEditHost` — see below) untouched; `attachZoom`/
+  `attachResize` are now registered exactly once, at first construction, to avoid
+  double-firing wheel/drag gestures on a node that no longer gets recreated every song; and
+  `buildUI()` explicitly re-syncs the pane's detection-gated visibility/capo value on every
+  reuse, since construction alone no longer does that for it. This unblocked — but did not
+  itself perform — the ownership handoff of those four controls to React, originally scoped as
+  one further sub-slice (6e). Attempting that handoff found it split further: the Edit-notes
+  toggle and the shared Export/Import edits JSON buttons have zero dependency on any per-frame
+  state, but the capo control and the chord editor share one DOM container (`chordGroup`) and
+  one hidden flag recomputed every `draw()` call, so moving capo alone would again relocate a
+  control that is visually and functionally part of one row. Phase 6e's actual deliverable
+  narrowed to the Edit-notes toggle and Export/Import buttons; `applicationSnapshot()` gains a
+  `notesEdit: { visible, enabled, on }` field and three commands (`setEditMode`, `exportEdits`,
+  `importEdits`), each dispatching the exact same `sansbass:editmode`/`sansbass:exportedits`/
+  `sansbass:importedits` events the removed DOM listeners used, so `notes.js`'s own listeners
+  are untouched. Since these controls' actual parent (`zLaneSel`) is legacy DOM built inside
+  `buildUI()`, not static `index.html` markup `mountPlayerShell()` reads upfront,
+  `lib/player-application.js` gained `publishEditHost`/`subscribeEditHost`/`getEditHost` — the
+  *reverse* direction of every other attach hook in this migration (elsewhere React creates a
+  node and hands it to `app.js`; here `app.js` creates a stable `<span class="zoom-edit-host">`
+  inside its own tree, kept `display: contents`, and hands it to React, which portals
+  `EditModeToggle`/`EditIoControls` — added directly in `components/PlayerShell.jsx`, matching
+  the `MasterVolume`/`LoopControls` precedent since this state is `lib/player-application.js`-
+  owned, not a separate `notes.js`/`separate.js` store — into it once it exists). The capo
+  control and the chord editor remain entirely legacy-owned, now Phase 6f: 6e's own audit found
+  most of the chord editor's per-frame-recomputed fields do not actually need to stay
+  imperative the way canvas pixels do (`publishTransport()`'s existing "recomputed every frame,
+  published only on change" pattern already covers this shape of state), narrowing 6f's real
+  design problem to a focus-aware controlled input for the chord field's own live-editable
+  text. Phase 2's DOM-independent command/subscription facade in `lib/player-application.js`
+  remains the only UI-to-player seam; React invokes its commands and renders its published
+  transport snapshot.
   Audio, analysis,
   serialization, canvas renderers, Workers, and AudioWorklets stay ordinary JavaScript
   modules outside React. Vanilla JS remains the default where a component lifecycle is not
@@ -267,6 +291,11 @@ affordance, status/error presentation, global drag overlay, primary play/pause b
 playback-speed, primary seek/time, master-volume, and A/B presentation controls through one
 root with explicit portal hosts. It also owns the top-level translated mode selector and
 all-toggle button; stable routing identity and state come from the application projection.
+It also owns the zoomed pane's Edit-notes toggle and shared Export/Import edits JSON buttons
+(`EditModeToggle`/`EditIoControls`, Phase 6e), portalled — via a new `publishEditHost`/
+`subscribeEditHost` channel in `lib/player-application.js`, the reverse of every other attach
+hook (`app.js` hands React the node here, not the other way around) — into a stable host
+`app.js` creates once inside its own legacy `zLaneSel` tree.
 It also owns one lane component per standard track (label, keyboard-operable mute, per-lane
 volume, waveform canvas host, and — for the drums lane only — an extra-content host for the
 legacy tempo-range hint) through a `#standard-lanes-root` portal inside `#lanes`. It also owns
@@ -301,18 +330,27 @@ through `#notes-edits-vocals-root`/`#notes-edits-bass-root` portals) and list-ex
 `#notes-list-io-vocals-root`/`#notes-list-io-bass-root` portals), both nested inside the same
 still-legacy `<section id="notes-{stem}">` sections as the tune row, extending the same
 `detection` export rather than a second store (Phase 6c) — completing all three
-originally-scheduled Phase 6 sub-slices. The capo control, the zoomed pane's chord
-display/editing, the Edit-notes toggle, and the shared Export/Import edits JSON buttons stay
-entirely legacy-owned in `app.js` (the capo/chord row additionally with its rAF-driven paint
-loop) — originally found entangled with `app.js`'s then-per-song-rebuilt zoomed-pane
-construction and deferred to a future, not-yet-scheduled sub-slice (see
-`docs/react-phase-6b-tempo-chord-controls-plan.md` and
+originally-scheduled Phase 6 sub-slices. Capo, chord display/editing, the Edit-notes toggle,
+and the shared Export/Import edits JSON buttons were originally found entangled with
+`app.js`'s then-per-song-rebuilt zoomed-pane construction and deferred to a future,
+not-yet-scheduled sub-slice (see `docs/react-phase-6b-tempo-chord-controls-plan.md` and
 `docs/react-phase-6c-editor-export-controls-plan.md`). Phase 6d resolved that entanglement as
 a pure, ownership-neutral refactor: the zoomed pane now persists across a song replacement
 that keeps a vocals/bass stem (its own `#zoom-lane-root`, separate from `#note-lanes-root`,
 built once and reused rather than torn down every `buildUI()` call — see
-`docs/react-phase-6d-zoomed-pane-mount-refactor-plan.md`), so these four controls' ownership
-handoff is now Phase 6e, scheduled and unblocked rather than deferred indefinitely.
+`docs/react-phase-6d-zoomed-pane-mount-refactor-plan.md`). `components/PlayerShell.jsx`'s
+`EditModeToggle`/`EditIoControls` (Phase 6e) now own the Edit-notes toggle and shared
+Export/Import edits JSON buttons — portalled, via a new `publishEditHost`/`subscribeEditHost`
+channel in `lib/player-application.js`, into a stable `<span class="zoom-edit-host">`
+`app.js` creates once inside `zLaneSel` (the reverse of every other attach hook: `app.js`
+hands React the node here, not the other way around) — reading a new `notesEdit` snapshot
+field and three commands (`setEditMode`/`exportEdits`/`importEdits`) that dispatch the exact
+same events the removed DOM listeners used. The capo control and the zoomed pane's chord
+display/editing stay entirely legacy-owned in `app.js` (sharing one DOM container and one
+per-frame-recomputed hidden state with each other, which is why they could not move with the
+other two controls — see `docs/react-phase-6e-edit-toggle-export-import-plan.md`'s scope
+decision), now Phase 6f, unblocked by 6d and with 6e's own audit narrowing 6f's real design
+problem to a focus-aware controlled input for the chord field's live-editable text.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -380,10 +418,11 @@ notes.js  notes.worker.js          ESM — notes panel and the analysis worker; 
                                    components/InterpretationPanel.jsx, and the shared
                                    tempo/grid-panel presentation is components/TempoPanel.jsx,
                                    and each channel's edit-list/list-export-row presentation is
-                                   components/EditorPanel.jsx. The capo control, chord
-                                   display/editing, the Edit-notes toggle, and the shared
-                                   Export/Import edits JSON buttons remain app.js-owned
-                                   (deferred, see docs/react-migration.md)
+                                   components/EditorPanel.jsx. The Edit-notes toggle and shared
+                                   Export/Import edits JSON buttons are React-owned via
+                                   components/PlayerShell.jsx (Phase 6e). The capo control and
+                                   chord display/editing remain app.js-owned (deferred to
+                                   Phase 6f, see docs/react-migration.md)
 tests/*.test.js                    units      → `npm test` (Vitest; see vitest.config.js)
 tests/parity.html                  accuracy   → window.__parity
 tests/notes.html                   notes+key  → window.__notes

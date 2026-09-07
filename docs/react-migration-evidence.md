@@ -1,5 +1,195 @@
 # React migration evidence
 
+## Phase 6c — React edit list, undo, and list-export controls
+
+Status: accepted in production at rollback anchor
+`2aa9cdcf07f8ed5cb1d04119b93f2a55a121bafe`, the third of Phase 6's four ordered sub-slices
+(the fourth — capo/chord/Edit-notes-toggle/Export-Import-buttons — remains not yet scheduled).
+Evidence collected 2026-09-07 America/Los_Angeles. Branch
+`feat/react-phase-6c-editor-export-controls`; starting source
+`a0717e4907c5af6a20d0afae2c837a2953f791a5` (Phase 6b documentation-anchor merge, PR #90);
+plan and implementation committed together as `0835bd6` (squash-merged as PR #91's single
+commit, the same one-pass practice Phase 5a/5b/6a/6b used). Previous accepted implementation
+rollback anchor: Phase 6b at `65a8ae67b2be5c4193aaa803256b54dcdaadfaf5`, documented through
+[PR #89](https://github.com/SansWord/sans_bass/pull/89) and anchored through
+[PR #90](https://github.com/SansWord/sans_bass/pull/90).
+
+The capo control, the zoomed pane's chord display/editing, the Edit-notes toggle, the shared
+Export/Import edits JSON buttons, and the ribbon/overview/zoomed-pane lanes are untouched — out
+of scope per `docs/react-migration.md`'s Phase 6 increment boundary. Like Phase 6b, this
+slice's own audit found that its stated scope ("selection/edit/undo/import/export controls")
+was not entirely deliverable in one bounded increment: the Edit-notes toggle and the shared
+Export/Import edits JSON buttons turned out to be entangled with the same still-legacy,
+per-song-rebuilt zoomed-pane DOM container Phase 6b found for capo/chord, narrowing this
+slice's actual deliverable to the edit list and list-export row only.
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-6c-editor-export-controls-plan.md](react-phase-6c-editor-export-controls-plan.md),
+including three scope decisions made explicit before implementation:
+
+1. **The Edit-notes toggle and shared Export/Import edits JSON buttons stay legacy-owned this
+   slice.** They are built by `app.js`'s `buildUI()` inside the zoomed pane's per-song
+   construction (appended into `zLaneSel`), the same `el.noteLanesRoot.innerHTML = ''`
+   teardown-and-rebuild Phase 6b found for the chord/capo row. Unlike the chord/capo row,
+   neither control is rewritten every rAF-painted frame — but the DOM-container-teardown
+   reason alone is independently disqualifying: relocating either control to a separately
+   hosted, always-mounted React root would move a control that is visually and functionally
+   part of one row (beside the zoomed pane's Notes chips) to a different DOM position, which
+   the migration rules forbid, and there is no stable child slot to portal into inside a
+   container destroyed and rebuilt every song. Both controls join the same still-unscheduled
+   future sub-slice Phase 6b already deferred (capo/chord), rather than opening a second,
+   separately-tracked deferred item for the same root cause.
+2. **Selection and note-editing interaction itself were never an open question.** Canvas
+   pointer/keyboard ownership stays with the imperative renderer per the standing Phase 4/6
+   architecture rules — not a new finding this slice's audit could reassign.
+3. **Extend `detection`'s existing channel view, no new store.** The edit-list/list-export
+   state lives in the same `createNotesChannel()` closure as the already-React-owned meta/tune
+   rows, recomputed by the same `reinterpret()` call, gated on the same `!!frames` fact — the
+   same "reuse the established pattern" reasoning Phase 6a's own decision already used.
+
+`components/EditorPanel.jsx` exports two components: `EditListPanel({ stem })`, owning
+`#notes-edits-{stem}` (summary count, Undo button, the `<ol>` of edit-group rows with an
+orphan warning and a per-row remove button), portalled into a new
+`#notes-edits-{stem}-root` host inside the still-legacy `<section id="notes-{stem}">`; and
+`ListExportPanel({ stem })`, owning `#notes-list-io-{stem}` ("Bars per line" number input,
+component-local state, and the "Export list" 簡譜-HTML-download button), portalled into a new
+`#notes-list-io-{stem}-root` host immediately after it — matching Phase 6a's nested-portal-
+inside-still-legacy-section shape exactly (not Phase 5b/6b's whole-section-replacement shape,
+since `<section id="notes-{stem}">` itself stays legacy-owned). Every id and class inside these
+regions is unchanged from the legacy markup, so `styles.css` (class-selector only, verified)
+kept working unmodified with no new rules needed.
+
+`notes.js` lost `renderEditList()` (its DOM-writing job fully replaced by a new `editGroups`
+field on `view()`) and `syncExportAvailability()` (the list-export button's `disabled` state
+now derives from the already-published `count` field), the `els.editUndo`/`els.listExport`
+click-listener registrations, and the `document`-level outside-`pointerdown`-closes-the-
+`<details>` listener (moved entirely into `EditListPanel`'s own effect, scoped to its own ref).
+It gained `undoLastEdit()`/`removeEditGroup(id)`/`exportList(barsPerLine)` per-channel command
+functions and three new stem-dispatched `detection.commands` entries. The whole `els` object
+parameter collapsed to a single `panelEl` reference, since every other DOM lookup it carried
+moved to React across Phase 5b/6a/6c. Moving this presentation to React also closed a
+pre-existing gap found during the audit, not preserved as a feature: the legacy edit list had
+**no `sansbass:langchange` listener anywhere in `notes.js`**, so its rendered text did not
+retranslate on a language switch until the next edit changed it — a gap against
+`docs/product-contract.md`/`behaviour.md`'s LANG-001 promise ("all visible copy rerenders").
+Render-time translation via `t()` closes it as a natural side effect of the ownership move.
+
+The `window.sansBass` early-import hazard was re-verified rather than assumed: this slice's new
+code reads no `window.sansBass` member beyond what unchanged, already-guarded code (`hasStem()`,
+`view()`'s existing `ribbonVisible` read) already reads.
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+Four Chromium cases were added to `tests/player.test.js`, run before implementation against
+the **current legacy owner** first: three passed unmodified (an ownership migration with no
+behavior change for those cases, the same "a new case can validate already-correct legacy
+behavior" acknowledgment prior phases made), and one — the retranslation case — genuinely
+**failed** against the legacy owner, confirming the pre-existing langchange gap found during
+the audit rather than a test bug: the legacy edit-list label stayed in English after a
+language switch. All four passed after implementation.
+
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 51 tests passed (47
+  baseline + 4 new);
+- full `npm test`: 31 files, 445 tests passed (one unrelated pre-existing threshold
+  needed lowering — see below);
+- `npm run build`: 61 modules transformed (60 in Phase 6b); existing intentional
+  unresolved-at-build-time `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+`tests/i18n.test.js`'s "every key used in index.html exists in both locales" sanity canary
+needed lowering from `>= 5` to `>= 4`: removing the edit-list/list-export markup dropped
+`index.html`'s annotated-key count from 7 to 4 (`notes.listBars`, `notes.exportList`, and
+`notes.editUndoTip`'s `data-i18n`/`data-i18n-attr` annotations moved into
+`components/EditorPanel.jsx`'s render-time `t()` calls). The remaining four
+(`hint.click`, `hint.keys`, `stem.vocals`, `stem.bass`) are unaffected by this or any prior
+React phase, since they annotate markup no phase has migrated. This is the second time a
+React phase's shrinkage has crossed this floor (the first was Phase 6b, 15 → 5); the new floor
+still catches an accidental wholesale strip with margin (4 actual vs. 4 required — reasoned
+about explicitly rather than left as untested headroom, since there is no longer any margin).
+
+An independent fresh-context review (a `general-purpose` subagent, given the plan doc and the
+full diff) found no correctness bugs, behavior regressions, or scope violations, and
+independently re-ran the focused suite, the full suite, and the build to confirm.
+
+The exact-source local build emits **121,658 bytes** in the player entry
+(`dist/assets/main-*.js`) versus Phase 6b's 120,597: **+1,061 bytes (+0.88%)**. The shared
+React/header chunk is unchanged at exactly 218,172 bytes and the CSS chunk unchanged at
+13,274 bytes — no new dependency was added.
+
+### Exact-source local smoke
+
+Local production build served via a static file server (root, port 8801) and a second copy
+under `pr-101/` (nested-route smoke, port 8802). Both origins booted with `#build-sha` reading
+`a0717e4` (the exact pre-commit source under test, the same "build-sha reflects the last
+commit, not the working tree" situation Phase 5b/6a/6b's own exact-source smokes recorded) and
+no first-party console errors. At root: a real synthetic WAV (generated in-page and fed
+through the real `#file-input`) decoded and loaded correctly (title, one lane), with
+`#notes-edits-vocals-root`/`#notes-list-io-vocals-root` present and their React-rendered
+children (`#notes-edits-vocals`/`#notes-list-io-vocals`) mounted; a language switch (English →
+zh-TW) retranslated the list-export row's "Bars per line" label to "每行小節數" correctly. The
+nested route repeated the boot/host-presence check (`#notes-list-bars-vocals` default `4`)
+with the same clean console result. Interactive edit-list/undo/remove/list-export behavior
+(dispatched edits, Undo, per-row remove, language-switch retention) was exercised
+exhaustively by the Chromium suite above rather than repeated manually in this smoke,
+consistent with Phase 5a/5b/6a/6b's own split between automated interaction coverage and a
+lighter manual boot/translation/host-presence check.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | Dispatched `sansbass:editmode`/`sansbass:noteedit`/`sansbass:editundo` custom events (matching the existing `sansbass:tempo`/`sansbass:chords` dispatch-on-`window` precedent for input this suite cannot otherwise drive through real canvas gestures) and generated vocals+guitar stems cover edit-list appearance/undo/per-row-removal, list-export enablement, and language-switch retention, in the production-entry Chromium suite and a local exact-source smoke. |
+| Malformed input | Unchanged; no edit-list/list-export-ownership-affecting code path touched. |
+| Storage/locale | Both languages pass in Chromium and in exact-source local smoke; every label retranslates correctly at render time (closing the pre-existing gap above) while control values (bars-per-line, edit history) survive the switch. |
+| Handheld | Not re-verified with a real or emulated handheld device; the edit list/list-export row has no handheld-specific gating — this boundary is unaffected by this slice. |
+| Worker protocol | Unaffected — this slice touches no Worker-facing code; the existing detection-Worker fixtures used to reach a channel's `frames` state are unchanged. |
+| Visual | Exact-source local smoke and the PR-preview/production checks reviewed panel layout and control visibility at desktop width; no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine command/state evidence was collected, not subjective listening. |
+| Real song / musical accuracy | Not run against `examples/nov_you.zip` in this evidence pass; the changed boundary (control presentation/ownership, no note-editing algorithm change) does not plausibly affect musical accuracy, matching Phase 4a–6b's own scoping of unaffected boundaries. |
+| Export-list HTML content | Unchanged — `exportList()`'s `jianpuHtml()` call is byte-identical to the legacy `els.listExport` click handler, only its bars-per-line source moved from a DOM read to a parameter; not re-verified by a fresh content assertion in this slice (already covered by `tests/jianpu-html.test.js`). |
+
+### PR-preview evidence
+
+[PR #91](https://github.com/SansWord/sans_bass/pull/91)'s `test` and `deploy` checks both
+passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-91/`
+displayed exact synthetic merge `a14e436622cbb915646fed62dcdce62bb00696b9` (`a14e436`),
+matching `gh api repos/SansWord/sans_bass/pulls/91 --jq '.merge_commit_sha'` at the time of
+that check. A real synthetic WAV (generated in-page and fed through the real `#file-input`)
+decoded and loaded correctly (title, one lane), with the edit-list/list-export hosts and their
+React-rendered children present. The first-party console carried no errors.
+
+### Production acceptance evidence
+
+PR #91 squash-merged as exact production source
+`2aa9cdcf07f8ed5cb1d04119b93f2a55a121bafe`. Its exact-SHA
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34165173227) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34165173223) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/` (fetched with a
+cache-busting query string) displayed exact `2aa9cdc`.
+
+The production delivery canary repeated the affected boundary: `#notes-edits-vocals-root` and
+`#notes-list-io-vocals-root` were present in the DOM. The first-party console carried no
+errors.
+
+The complete synthetic, malformed-input, storage-fault, and narrow-viewport matrices were not
+repeated in production because the canary agreed with the exact-source and preview evidence
+above. No real-song (`examples/nov_you.zip`), musical-accuracy, physical-handheld, subjective
+auditory, or background-tab check is claimed for this increment, for the same reasons given
+in the omissions table above.
+
+Phase 6c is accepted at the full SHA above, completing the third of Phase 6's four ordered
+sub-slices with a narrowed scope (edit list and list-export row only — see "Scope decision"
+above), and with it, all three originally-scheduled Phase 6 sub-slices. The capo control, the
+zoomed pane's chord display/editing, the Edit-notes toggle, the shared Export/Import edits
+JSON buttons, and the ribbon/overview/zoomed-pane lanes stay untouched and legacy-owned,
+deferred to one still-unscheduled future sub-slice blocked on a zoomed-pane mount-lifecycle
+restructuring. This separate documentation-only PR records the immutable rollback anchor.
+
 ## Phase 6b — React tempo/grid controls
 
 Status: accepted in production at rollback anchor

@@ -1,5 +1,177 @@
 # React migration evidence
 
+## Phase 6a — React interpretation controls
+
+Status: accepted in production at rollback anchor
+`61e2b29683404aca736b69625517ec8b69e25df1`, the first of Phase 6's three sub-slices.
+Evidence collected 2026-09-07 America/Los_Angeles. Branch
+`feat/react-phase-6a-interpretation-controls`; starting source
+`2a1df520c19c6c6e1f0faeb64864d3027fb19a00` (Phase 5b documentation-anchor merge, PR #86);
+plan and implementation committed together as `16d95925d701389768f81edf2d363362eab38b4f`
+(squash-merged as the PR's single
+commit, the same one-pass practice Phase 5a/5b used). Previous accepted implementation
+rollback anchor: Phase 5b at `3e241da4a05831f49bff5d680b92474dddea28a9`, documented through
+[PR #85](https://github.com/SansWord/sans_bass/pull/85) and anchored through
+[PR #86](https://github.com/SansWord/sans_bass/pull/86).
+
+The edit list, list-export row, tempo grid, chord detection/editing, the ribbon/zoomed-pane
+lanes, and Export/Import edits JSON are untouched — out of scope per
+`docs/react-migration.md`'s Phase 6 increment boundary, which names three ordered sub-slices
+and explicitly asks not to bundle them into one PR. This is the first: interpretation/key/
+display controls.
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-6a-interpretation-controls-plan.md](react-phase-6a-interpretation-controls-plan.md),
+including two scope decisions made explicit before implementation: the interpretation
+controls extend the existing `detection` store Phase 5b established rather than adding a
+second store (both live in the same channel closure, recomputed by the same `reinterpret()`
+call, gated on the same `!!frames` fact), and the folded/muted counting loop is lifted out of
+`syncFoldControls()` into a new `lib/pitch.js#foldStats()` pure export rather than staying
+inline, matching the "lift existing logic into a testable pure function" precedent
+`resolveStatusParams`/`detectionView` already established.
+
+`components/InterpretationPanel.jsx` exports `InterpretationPanel({ stem })` — one channel's
+shortest-note slider and Advanced disclosure (fit-to-melody/clip, whole-phrase/hmm,
+fix-octave-outliers/fold + its tolerance slider, and the folded/muted stats), through new
+`#notes-tune-vocals-root`/`#notes-tune-bass-root` portals nested *inside* the still-legacy
+`<section id="notes-{stem}">` (which keeps its own `hidden` toggle and its edits/list-io
+siblings), matching Phase 5b's `#notes-meta-{stem}-root` pattern exactly — the new hosts
+preserve the legacy markup's own ids inside them (`notes-tune-{stem}`, `notes-min-{stem}`,
+`notes-clip-{stem}`, `notes-hmm-{stem}`, `notes-fold-{stem}`, `notes-fold-tol-{stem}`, and
+every id beneath), so `styles.css` (class-selector only) kept working unmodified with no new
+rules needed.
+
+`notes.js`'s `detection` export grows five new per-channel view fields
+(`minDurationMs`/`clip`/`hmm`/`fold`/`foldTol`) plus two derived counts
+(`foldedCount`/`mutedCount` from the new `foldStats()`), and five new `commands` entries
+(`setMinDurationMs`/`setClip`/`setHmm`/`setFold`/`setFoldTol`). Each channel closure gained a
+plain `interp` state object (`{ minDurationMs, clip, hmm, fold, foldTol }`, defaults matching
+the legacy markup's own) that `currentParams()`/`exportEntry()`/`importEntry()` now read and
+write instead of the DOM — the same shape `jianpu` already had. `reset()` deliberately does
+**not** touch `interp`, preserving the pre-existing behavior that these preferences survive a
+song/stem change (the legacy DOM never cleared them either). `syncFoldControls()` and
+`syncTips()` (the latter's four remaining tooltip lines, anticipated by the Phase 5b plan doc,
+all moved in this slice) are deleted entirely; no new `window.sansBass` read was added, so no
+new early-import guard was needed beyond the ones Phase 5b already put in place.
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+Four Chromium cases were added to `tests/player.test.js` (one extending the pre-existing
+stale-results case with an interpretation-row visibility assertion) and three Node cases to
+`tests/pitch.test.js` for `foldStats()`, run before implementation against the **current
+legacy owner** first: all four Chromium cases passed unmodified — the underlying pure
+derivations (`interpret()`, `foldOctaves()`) and DOM-writing behavior were already correct,
+the same "a new case can validate already-correct legacy behavior" acknowledgment Phase 5a/5b
+made for some of their own new cases. The min-duration and fold-stats fixtures reused shapes
+already proven by existing `tests/pitch.test.js` cases (`segmentNotes drops notes shorter
+than the floor`, `foldOctaves folds an outlier onto the octave its neighbours imply`), so the
+expected note counts were known in advance rather than empirically discovered.
+
+After implementation:
+
+- focused Node `tests/pitch.test.js`: `foldStats` cases (folded/doubtful/no-fix/empty) passed;
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 44 tests passed (40
+  baseline + 4 new/extended);
+- full `npm test`: 31 files, 438 tests passed;
+- `npm run build`: 59 modules transformed (58 in Phase 5b); existing intentional
+  unresolved-at-build-time `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+The exact-source local build emits **118,750 bytes** in the player entry
+(`dist/assets/main-*.js`) versus Phase 5b's 117,657: **+1,093 bytes (+0.93%)**. The shared
+React/header chunk is unchanged at exactly 218,172 bytes and the CSS chunk unchanged at
+13,274 bytes — no new dependency was added.
+
+### Exact-source local smoke
+
+Local production build served via `npm run preview` (root, port 8890) and a second static
+server with the same build copied under `pr-999/` (nested-route smoke, port 8891). A
+generated stems ZIP (vocals + bass, via the repository's own
+`tests/helpers/audio-fixtures.js#stemsZip` run directly under Node) loaded through the real
+`#file-input` at both origins. A fake `window.Worker` (matching
+`tests/helpers/player-harness.js#installFakeWorker`'s shape) drove the detection flow.
+
+At root: `#build-sha` read `2a1df52` (the exact pre-commit source under test, the same
+"build-sha reflects the last commit, not the working tree" situation Phase 5b's own
+exact-source smoke recorded). Completing vocals with the `foldOctaves` regression fixture
+(F2/G2/F#5×1/F2/G2/F2/G2/F2 — the same shape `tests/pitch.test.js`'s own
+"foldOctaves folds an outlier onto the octave its neighbours imply" case proves folds exactly
+one note) showed 8 notes; toggling Advanced → Fix octave outliers showed "1 corrected · 0
+muted" and enabled the previously-disabled fold-tolerance slider; raising that slider to 3
+semitones applied the `risky` (≥2.5) styling. Dragging the shortest-note slider to 250 ms
+updated the "250 ms" readout live; a language switch to English retranslated the note count,
+the Advanced/Shortest-note labels, and the fold stats/tolerance readout while the slider
+stayed at 250 and the fold checkbox stayed checked. Re-selecting the same file (a song
+replacement) hid both the meta and interpretation rows again while the slider value (250) and
+fold checkbox (checked) survived unchanged, proving the deliberate no-reset behavior. No
+first-party console error appeared.
+
+The nested route repeated the load and exercised a worker-**failure** → retry path instead:
+`onerror` on the vocals worker left it usably `pending` (Find-notes re-enabled once the
+400 ms poll caught up, status naming only the still-running channel meanwhile), and a second
+"Find notes" click created a fresh third Worker for a vocals retry; completing it with the
+min-duration fixture (a 12-frame note that survives the default 120 ms floor) showed 3 notes
+and revealed the interpretation row correctly. No first-party console error appeared at
+either origin.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | A generated stems ZIP (vocals+bass) and a deterministic fake Worker cover slider re-derivation, fold toggling/stats, tolerance-slider enable/disable, risky styling, persistence across a song replacement, and a worker-failure/retry path through the production-entry Chromium suite and a local exact-source smoke. |
+| Malformed input | Unchanged; no interpretation-ownership-affecting code path touched. |
+| Storage/locale | Both languages pass in Chromium and in exact-source local smoke; count, slider/Advanced labels, fold stats, and the fold-tolerance readout all retranslate correctly at render time while control values survive the switch. |
+| Handheld | Not re-verified with a real or emulated handheld device; interpretation controls have no handheld-specific gating — this boundary is unaffected by this slice. |
+| Worker protocol | Fully covered by the deterministic fake-Worker cases above; the real `notes.worker.js` module and YIN/tempo pipeline are unchanged and not re-exercised, per `docs/testing.md`'s rule that a fake Worker proves UI protocol handling only. |
+| Visual | Exact-source local smoke and the PR-preview/production checks reviewed panel layout, slider/checkbox/Advanced-disclosure visibility, and the risky-tolerance color at desktop width; no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine command/state evidence was collected, not subjective listening. |
+| Real song / musical accuracy | Not run against `examples/nov_you.zip` or real detected notes in this evidence pass; the changed boundary (control presentation/ownership, no `interpret()`/`foldOctaves()` algorithm change) does not plausibly affect musical accuracy, matching Phase 4a/4b/5a/5b's own scoping of unaffected boundaries. |
+
+### PR-preview deployment evidence
+
+[PR #87](https://github.com/SansWord/sans_bass/pull/87)'s `test` and `deploy` checks both
+passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-87/`
+displayed exact synthetic merge `83855c5d03f711210738cfb429dc12bd17f3f110` (`83855c5`),
+matching `gh api repos/SansWord/sans_bass/pulls/87 --jq '{merge_commit_sha}'`.
+
+A generated stems ZIP (vocals+bass) loaded through the real `#file-input`, with a fake
+`window.Worker` installed beforehand. Completing vocals with the octave-outlier fixture
+showed 8 notes; toggling Fix octave outliers showed "1 corrected · 0 muted" and enabled the
+fold-tolerance slider. The first-party console carried no errors (six third-party
+browser-extension warnings were present and are unrelated to this application).
+
+### Production acceptance evidence
+
+PR #87 squash-merged as exact production source
+`61e2b29683404aca736b69625517ec8b69e25df1`. Its exact-SHA
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34160726340) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34160726271) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/?phase6a=61e2b29`
+displayed exact `61e2b29`.
+
+The production delivery canary repeated the affected boundary: a generated stems ZIP loaded
+through the real file input, and a fake-Worker-driven detection run for vocals showed 8
+notes; toggling Fix octave outliers showed "1 corrected · 0 muted". The first-party console
+carried no errors.
+
+The complete synthetic, malformed-input, storage-fault, and narrow-viewport matrices were not
+repeated in production because the canary agreed with the exact-source and preview evidence
+above. No real-song (`examples/nov_you.zip`), musical-accuracy, physical-handheld, subjective
+auditory, or background-tab check is claimed for this increment, for the same reasons given
+in the omissions table above.
+
+Phase 6a is accepted at the full SHA above, completing the first of Phase 6's three
+sub-slices. The edit list, list-export row, tempo grid, chord detection/editing, the
+ribbon/zoomed-pane lanes, and Export/Import edits JSON stay untouched and legacy-owned,
+deferred to Phase 6b (tempo/grid/capo/chord controls) and Phase 6c (selection/edit/undo/
+import/export controls). This separate documentation-only PR records the immutable rollback
+anchor.
+
 ## Phase 5b — React detection controls
 
 Status: accepted in production at rollback anchor

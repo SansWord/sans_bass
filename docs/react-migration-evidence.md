@@ -2,7 +2,8 @@
 
 ## Phase 3e — React mode and routing controls
 
-Status: PR preview verified; production acceptance pending. Evidence
+Status: accepted in production at rollback anchor
+`41ff22cdfad6221164ea7105273b24d338251c95`. Evidence
 collected 2026-09-06–07 America/Los_Angeles. Branch
 `feat/react-phase-3e-mode-routing-controls`; starting source
 `82b6ac3f5897e34204c3549dd7506b863f7dbe61`; implementation source
@@ -97,8 +98,37 @@ Actual gain authority, repeated shell remount, and analytics-listener uniqueness
 by the exact-source Chromium gate rather than a hosted debug hook. The full synthetic
 malformed-input, storage-fault, fake-Worker, notes/editor, and transport matrices were not
 manually repeated against GitHub Pages. Physical handheld, subjective auditory,
-background-tab, and real-model checks are not claimed. Merge, exact-SHA production canary,
-and the separate rollback-anchor documentation PR remain pending; Phase 3 is not complete.
+background-tab, and real-model checks are not claimed.
+
+### Production acceptance evidence
+
+PR #77 squash-merged as exact production source
+`41ff22cdfad6221164ea7105273b24d338251c95`. Its exact-SHA
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34101048133)
+passed in 22 seconds and its
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34101048246) passed in 43
+seconds. Before behavior assertions, production root and `/demos/` both displayed exact
+`41ff22c`, and the saved English locale remained selected.
+
+The committed `examples/nov_you.zip` loaded as `9 十二月的妳`, 4:23, with six stems and the
+complete stable mode option set. Bass only updated routing, primary and overview volume
+mirrored at 47%, genuine Space advanced the AudioContext-backed clock, all-toggle produced
+Full mix/Restore previous and returned focus to `BODY`, and genuine A/Right/B presented a
+1.5-second loop. The page retained exactly one React shell/input/mode/select/all-toggle/
+volume/loop owner and six legacy lane-volume controls. The warning/error console was empty.
+
+A generated 2.4-second vocals/bass archive supplied the Phase 3 background-transport check.
+After genuine A/Right/B/Space input, its 0–1.5-second loop remained actively playing more
+than twice past the loop endpoint while a second production tab stayed foregrounded. Clearing
+the loop with genuine `c` let background playback reach the source end and reset to 0:00.
+Both production-tab warning/error consoles remained empty.
+
+Phase 3's exit gate passes: React owns the planned header, loading/status, transport, and
+top-level control regions; the affected production-entry matrix is green; and no planned
+Phase 3 control remains legacy-owned. Lanes and waveform hosts remain deliberately scoped to
+Phase 4. Physical-handheld, subjective auditory, and real-model evidence remain explicit
+omissions rather than implied passes. This separate documentation-only PR records the
+immutable rollback anchor and completes Phase 3 when merged.
 
 ## Phase 3d — React volume and A/B loop controls
 

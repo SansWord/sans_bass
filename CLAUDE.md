@@ -49,9 +49,25 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   through a new `separation` export (`subscribe`/`getSnapshot`/`commands`) — not through
   `lib/player-application.js`, since separation state has no owner other than `separate.js`,
   the same way `notes.js` owns its own detection state — while `separate.js` retains the
-  Worker lifecycle, model/session, and every command (`start`/`cancel`/`save`); detection
-  controls (`notes.js`) remain legacy-owned, deferred to Phase 5b. Phase
-  2's DOM-independent
+  Worker lifecycle, model/session, and every command (`start`/`cancel`/`save`). Phase 5b adds
+  `components/DetectionPanel.jsx`, whose `DetectionControls` owns the shared `#notes-detect`
+  subtree (Find-notes button, spinner, busy-channel status) through a `#detection-ui-root`
+  portal, and whose `NotesChannelPanel` owns each melodic stem's meta row (count, Show/Hide,
+  簡譜 checkbox, and the key tonic/mode/relative-key span — one coherent DOM/ownership unit,
+  since the relative-key button shares the two selects' disabled condition and has no
+  legacy-only behavior left once they move) through `#notes-meta-vocals-root`/
+  `#notes-meta-bass-root` portals nested inside their still-legacy-owned
+  `<section id="notes-{stem}">`. It reflects `notes.js`'s existing per-channel state machine
+  through a new `detection` export, the same `subscribe`/`getSnapshot`/`commands` shape
+  `separation` established, while `notes.js` retains the Worker lifecycle, tempo/chord
+  detection, the note editor, and export/import; the tune/Advanced interpretation row, edit
+  list, list-export, tempo grid, chord detection/editing, and the zoomed pane remain
+  legacy-owned, deferred to Phase 6. Giving React ownership of these controls made `notes.js`
+  reachable from `app.js`'s own static import graph (via `PlayerShell.jsx` →
+  `DetectionPanel.jsx`), which resolves before `app.js`'s body sets `window.sansBass` — the
+  same hazard `separate.js` already guarded against in Phase 5a; `notes.js`'s
+  `syncTempoControls()` and the new `view()` needed the same optional-chaining guard
+  `hasStem()` already had. Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -162,6 +178,12 @@ panel (availability/gating including the handheld explanation, start button, pro
 status, cancel, error display, and save controls) through a `#separation-ui-root` portal,
 reflecting `separate.js`'s state machine through its own `separation` export rather than
 through `lib/player-application.js` — separation state has no owner other than `separate.js`.
+`components/DetectionPanel.jsx` owns the shared Find-notes button/spinner/busy-channel status
+(`DetectionControls`, through a `#detection-ui-root` portal) and each melodic stem's meta row
+— count, Show/Hide, 簡譜 checkbox, and the key tonic/mode/relative-key span
+(`NotesChannelPanel`, through `#notes-meta-vocals-root`/`#notes-meta-bass-root` portals nested
+inside their still-legacy `<section id="notes-{stem}">`), reflecting `notes.js`'s per-channel
+state machine through its own `detection` export, the same shape `separation` established.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -205,6 +227,7 @@ lib/player-application.js          DOM-independent player commands, snapshots an
 lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
 components/{SiteHeader,DemoHeader,PlayerShell}.jsx  React headers + player loading shell
 components/SeparationPanel.jsx     React separation-panel presentation (Phase 5a)
+components/DetectionPanel.jsx      React detection-controls presentation (Phase 5b)
 components/useLocale.js            cleaned React locale subscription
 demos.jsx                          demo React mount plus legacy title/count localization
 scripts/build-demos.js             generates the ignored demos/index.html before dev/build
@@ -218,7 +241,9 @@ lib/ribbon.js                      ribbon geometry — ESM, no window bridge
 lib/jianpu.js                      簡譜 degrees — ESM, no window bridge
 separate.js  separate.worker.js    ESM — separation service/Worker lifecycle and the ORT
                                    inference loop; presentation is components/SeparationPanel.jsx
-notes.js  notes.worker.js          ESM — notes panel and the analysis worker
+notes.js  notes.worker.js          ESM — notes panel and the analysis worker; shared
+                                   detect-button and per-channel meta-row presentation is
+                                   components/DetectionPanel.jsx
 tests/*.test.js                    units      → `npm test` (Vitest; see vitest.config.js)
 tests/parity.html                  accuracy   → window.__parity
 tests/notes.html                   notes+key  → window.__notes

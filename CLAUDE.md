@@ -68,8 +68,9 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   reachable from `app.js`'s own static import graph (via `PlayerShell.jsx` →
   `DetectionPanel.jsx`), which resolves before `app.js`'s body sets `window.sansBass` — the
   same hazard `separate.js` already guarded against in Phase 5a; `notes.js`'s
-  `syncTempoControls()` and the new `view()` needed the same optional-chaining guard
-  `hasStem()` already had. Phase 6a (the first of Phase 6's three sub-slices) adds
+  `syncTempoControls()` (renamed `publishTempo()` in Phase 6b, below) and the new `view()`
+  needed the same optional-chaining guard `hasStem()` already had. Phase 6a (the first of
+  Phase 6's sub-slices) adds
   `components/InterpretationPanel.jsx`, whose `InterpretationPanel` owns each melodic stem's
   interpretation row — the shortest-note slider and the Advanced disclosure (fit-to-melody/
   clip, whole-phrase/hmm, fix-octave-outliers/fold plus its tolerance slider and the
@@ -82,11 +83,38 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   `notes.js` gains a plain per-channel `interp` state object (the same shape `jianpu` already
   had) that `currentParams()`/`exportEntry()`/`importEntry()` read and write instead of the
   DOM, and a new `lib/pitch.js#foldStats()` pure export replaces the inline folded/muted
-  counting loop `syncFoldControls()` used to do. `notes.js` retains the Worker lifecycle,
-  tempo/chord detection, the note editor, and export/import; the edit list, list-export row,
-  tempo grid, chord detection/editing, and the zoomed pane remain legacy-owned, deferred to
-  Phase 6b (tempo/grid/capo/chord controls) and Phase 6c (selection/edit/undo/import/export
-  controls). Phase 2's DOM-independent
+  counting loop `syncFoldControls()` used to do. At that point `notes.js` retained the Worker
+  lifecycle, tempo/chord detection, the note editor, and export/import; the edit list,
+  list-export row, tempo grid, chord detection/editing, and the zoomed pane remained
+  legacy-owned, deferred to Phase 6b (originally scoped as "tempo/grid/capo/chord controls")
+  and Phase 6c (selection/edit/undo/import/export controls). Phase 6b adds
+  `components/TempoPanel.jsx`, whose `TempoPanel` owns the entire shared `<section
+  id="notes-tempo">` region — the Show-grid checkbox, BPM field, ×½/×2, phase field + nudge
+  buttons, beats-per-bar select, "Select BPM range" toggle, Re-detect button, and status
+  line — through a `#tempo-ui-root` portal that replaces that section's static markup
+  entirely, matching Phase 5b's `#detection-ui-root` whole-section pattern rather than 6a's
+  nested-sub-region one (`#notes-tempo` was never nested inside another still-legacy section
+  the way `#notes-tune-{stem}` was). It reflects a new `tempoGrid` export — the same
+  `subscribe`/`getSnapshot`/`commands` shape `separation`/`detection` established, but a
+  distinct store from `detection` rather than an extension of it, since tempo/grid state is
+  module-level and shared (one grid, both channels, its own Re-detect Worker and in-flight
+  flag) with no per-channel shape to extend. `notes.js` loses the `tempoEl` object (nine DOM
+  lookups) and their `addEventListener` registrations entirely, and its `syncTempoControls()`
+  is renamed `publishTempo()`, now producing a published view instead of writing the DOM.
+  **Phase 6b's own audit found its originally-scoped capo control and chord display/editing
+  entangled with still-legacy rendering** — both are driven every animation frame by the same
+  rAF-driven function (`syncChordEditor`) that paints the zoomed canvas, and their DOM
+  container (`app.js`'s `chordGroup`, built inside `buildUI()`'s zoomed-pane construction) is
+  torn down and rebuilt on every song load, unlike `#notes-tempo` — the same per-song-rebuild
+  problem the Overview lane had before Phase 4b pulled it out of that rebuild so React could
+  own it stably; no equivalent extraction exists yet for the zoomed pane. Capo and chord
+  controls stay entirely legacy-owned in `app.js` (zero changes needed there for Phase 6b),
+  deferred to a future, not-yet-scheduled sub-slice rather than bundled into 6b or folded into
+  6c — see `docs/react-phase-6b-tempo-chord-controls-plan.md`'s scope decision for the full
+  reasoning. `notes.js` retains the Worker lifecycle, tempo/chord detection state, the note
+  editor, and export/import; the edit list, list-export row, chord detection/editing, and the
+  zoomed pane remain legacy-owned, deferred to that future capo/chord sub-slice and Phase 6c
+  (selection/edit/undo/import/export controls). Phase 2's DOM-independent
   command/subscription facade in `lib/player-application.js` remains the only UI-to-player
   seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
@@ -208,6 +236,15 @@ shortest-note slider and the Advanced disclosure (fit-to-melody/clip, whole-phra
 fix-octave-outliers/fold plus its tolerance slider and folded/muted stats) — through
 `#notes-tune-vocals-root`/`#notes-tune-bass-root` portals nested inside the same still-legacy
 sections, extending that same `detection` export rather than a second store (Phase 6a).
+`components/TempoPanel.jsx` owns the entire shared `#notes-tempo` panel (Show-grid checkbox,
+BPM field, ×½/×2, phase field + nudge buttons, beats-per-bar select, "Select BPM range"
+toggle, Re-detect button, status line) through a `#tempo-ui-root` portal that replaces that
+whole (never-legacy-nested) section, reflecting a new `tempoGrid` export — a distinct store
+from `detection`, since tempo/grid state is module-level/shared with no per-channel shape,
+rather than an extension of it (Phase 6b). The capo control and the zoomed pane's chord
+display/editing stay entirely legacy-owned in `app.js`, found entangled with its still-legacy,
+per-song-rebuilt zoomed-pane construction and rAF-driven chord-editor paint loop — deferred to
+a future, not-yet-scheduled sub-slice (see `docs/react-phase-6b-tempo-chord-controls-plan.md`).
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -253,6 +290,7 @@ components/{SiteHeader,DemoHeader,PlayerShell}.jsx  React headers + player loadi
 components/SeparationPanel.jsx     React separation-panel presentation (Phase 5a)
 components/DetectionPanel.jsx      React detection-controls presentation (Phase 5b)
 components/InterpretationPanel.jsx React interpretation-controls presentation (Phase 6a)
+components/TempoPanel.jsx          React tempo/grid-panel presentation (Phase 6b)
 components/useLocale.js            cleaned React locale subscription
 demos.jsx                          demo React mount plus legacy title/count localization
 scripts/build-demos.js             generates the ignored demos/index.html before dev/build
@@ -268,9 +306,12 @@ separate.js  separate.worker.js    ESM — separation service/Worker lifecycle a
                                    inference loop; presentation is components/SeparationPanel.jsx
 notes.js  notes.worker.js          ESM — notes panel and the analysis worker; shared
                                    detect-button and per-channel meta-row presentation is
-                                   components/DetectionPanel.jsx, and each channel's
+                                   components/DetectionPanel.jsx, each channel's
                                    interpretation-row presentation is
-                                   components/InterpretationPanel.jsx
+                                   components/InterpretationPanel.jsx, and the shared
+                                   tempo/grid-panel presentation is components/TempoPanel.jsx.
+                                   The capo control and chord display/editing remain
+                                   app.js-owned (deferred, see docs/react-migration.md)
 tests/*.test.js                    units      → `npm test` (Vitest; see vitest.config.js)
 tests/parity.html                  accuracy   → window.__parity
 tests/notes.html                   notes+key  → window.__notes

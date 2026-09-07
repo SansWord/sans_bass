@@ -14,7 +14,8 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [React phase 6a](#react-phase-6a--interpretation-controls-2026-09-07) | React now owns each melodic stem's shortest-note slider and Advanced disclosure (clip/hmm/fold + fold tolerance/stats), the first of Phase 6's three sub-slices; `notes.js` extends the existing `detection` export rather than adding a second store. Accepted in production at `61e2b29`. |
+| [React phase 6b](#react-phase-6b--tempogrid-controls-2026-09-07) | React now owns the shared tempo/grid panel (BPM/phase/beats-per-bar/range-toggle/redetect); the audit found the capo control and zoomed-pane chord editor entangled with still-legacy rAF-driven, per-song-rebuilt rendering, so they stay legacy-owned, narrowing this slice from its originally-scoped "tempo/grid/capo/chord". Accepted in production at `65a8ae6`. |
+| [React phase 6a](#react-phase-6a--interpretation-controls-2026-09-07) | React now owns each melodic stem's shortest-note slider and Advanced disclosure (clip/hmm/fold + fold tolerance/stats), the first of Phase 6's sub-slices; `notes.js` extends the existing `detection` export rather than adding a second store. Accepted in production at `61e2b29`. |
 | [React phase 5b](#react-phase-5b--detection-controls-2026-09-07) | React now owns the shared Find-notes button/spinner/busy-channel status and each melodic stem's count/Show-Hide/簡譜/key controls, completing Phase 5; `notes.js` keeps the Worker/tempo/chord/editor state and exposes detection through a new `detection` export instead of writing DOM. Accepted in production at `3e241da`. |
 | [React phase 5a](#react-phase-5a--separation-panel-controls-2026-09-07) | React now owns the separation panel's presentation (gating, start/progress/cancel/save); `separate.js` keeps the Worker/model and exposes its state through a new `separation` export instead of writing DOM. Accepted in production at `ffe5ed5`. |
 | [React phase 4b](#react-phase-4b--shared-overview-integration-2026-09-07) | React now owns the shared Overview lane's label, master-volume-mirroring slider, and canvas host, completing Phase 4; ribbon/zoomed-pane lanes stay legacy. Accepted in production at `d961db7`. |
@@ -89,6 +90,74 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## React phase 6b — tempo/grid controls (2026-09-07)
+
+- [new] React (`components/TempoPanel.jsx`) solely authors the shared `#notes-tempo` panel —
+  Show-grid checkbox, BPM field, ×½/×2, phase field + nudge buttons, beats-per-bar select,
+  "Select BPM range" toggle, Re-detect button, and status line — through a new
+  `#tempo-ui-root` portal that replaces the whole section's static markup (never nested inside
+  another still-legacy section, unlike Phase 6a's tune row), matching Phase 5b's whole-section
+  `#detection-ui-root` pattern.
+- `[insight]` This slice's own audit found its originally-scoped capo control and zoomed-pane
+  chord display/editing genuinely inseparable from still-legacy rendering: `app.js`'s
+  `syncChordEditor(time)` rewrites the chord input/candidates/play-key readout on **every
+  rAF-painted frame** (called from the same `draw()` block that paints the zoomed canvas), the
+  same category of clock-driven DOM write this migration keeps outside React everywhere else;
+  and their DOM container (`chordGroup`, built inside `buildUI()`'s zoomed-pane construction)
+  is torn down and rebuilt on every song load, the same per-song-rebuild problem the Overview
+  lane had *before* Phase 4b extracted it into its own always-mounted React root so it could
+  stop being destroyed each song. No equivalent extraction exists yet for the zoomed pane.
+  Capo/chord stay entirely legacy-owned (zero `app.js` changes needed for this slice),
+  deferred to a future, not-yet-scheduled sub-slice — recorded as an explicit scope-boundary
+  finding in the plan doc rather than assumed away, and Phase 6 in `react-migration.md` was
+  revised from three sub-slices to four in practice as a result.
+- `[note]` A new `tempoGrid` store (the same `subscribe`/`getSnapshot`/`commands` shape
+  `separation`/`detection` established), not an extension of `detection`: tempo/grid state is
+  module-level and shared across both channels, with its own Re-detect Worker and in-flight
+  flag — a different shape of state than `detection`'s per-channel snapshot, so bolting it on
+  would have meant a second differently-shaped state tree on a store named for something else.
+- [note] `notes.js` loses the `tempoEl` object (nine DOM lookups) and their
+  `addEventListener` registrations entirely; `syncTempoControls()` is renamed `publishTempo()`,
+  now producing a published view instead of writing the DOM (the same "rename once the only
+  remaining job changes" precedent as Phase 5b's `syncJianpuControls()` →
+  `syncExportAvailability()`).
+- `[gotcha]` The legacy DOM only reflected a typed BPM/phase value and the status line via
+  `syncTempoControls()`'s 400 ms poll (`refreshAll()`), not synchronously on `input`/`click` —
+  a synchronous test assertion right after simulating a keystroke failed against the
+  **pre-migration legacy owner**, not just the new React code, until rewritten to `waitFor`.
+  Separately, after migration, click-triggered `disabled`/class assertions that had been
+  synchronous against the legacy owner needed the same `waitFor` treatment, since a
+  `useSyncExternalStore`-driven re-render from a command called inside a React `onClick`
+  handler is not reflected in the DOM synchronously in this test environment — matching the
+  convention already used elsewhere in `tests/player.test.js` (e.g. the lane-mute class
+  assertion), not a new problem this slice introduced.
+- [test] Three Chromium cases in `tests/player.test.js`, added before implementation: all
+  three passed against the **legacy** DOM-writing owner unmodified (after the `waitFor` fix
+  above) — a pure ownership migration with no behavior change, the same "a new case can
+  validate already-correct legacy behavior" acknowledgment prior phases made. After
+  implementation: focused Chromium 47/47 (44 baseline + 3 new), full suite 31 files / 441
+  tests, `npm run build` with only the existing intentional worklet warning, `git diff --check`
+  clean. `tests/i18n.test.js`'s annotated-key sanity floor needed lowering from 15 to 5 —
+  removing `#notes-tempo`'s markup dropped index.html's count from 18 to 7, the first time any
+  React phase's shrinkage crossed that floor.
+- [measurement] Exact commit `7f468a5` player bundle is 120,597 bytes, +1,847 (+1.56%) from
+  accepted Phase 6a; the 218,172-byte shared React chunk and 13,274-byte CSS chunk are both
+  unchanged — no new dependency was added.
+- [test] Exact-source local smoke (root, plus the same build served under a nested `pr-99/`
+  path) booted cleanly at both origins with no first-party console errors; a language switch
+  retranslated the panel's labels correctly. Interactive tempo-control behavior (BPM/phase/
+  beats edits, half/double, range-arm, Re-detect Worker round trip including a failure path)
+  was exercised exhaustively by the Chromium suite rather than repeated manually here.
+- [note] PR #89's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `7452529` before the affected-boundary check (a generated synthetic WAV loaded through
+  the real file input, `#notes-tempo` present and correctly hidden pre-detection, clean
+  first-party console at `/pr-89/`). PR #89 squash-merged as
+  `65a8ae67b2be5c4193aaa803256b54dcdaadfaf5`; its exact-SHA deploy and test workflows passed,
+  production displayed `65a8ae6`, and the production canary confirmed `#tempo-ui-root`/
+  `#notes-tempo` presence with an empty first-party console. This full SHA is the Phase 6b
+  rollback anchor, the second of Phase 6's sub-slices (now four in practice — see the
+  `[insight]` above). Full details in [react-migration-evidence.md](react-migration-evidence.md).
 
 ## React phase 6a — interpretation controls (2026-09-07)
 

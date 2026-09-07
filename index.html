@@ -100,36 +100,11 @@ init();
            See components/DetectionPanel.jsx's NotesChannelPanel. The tune/edits/list-io
            siblings below stay legacy-owned (Phase 6). -->
       <div id="notes-meta-vocals-root" class="react-portal-host"></div>
-      <div id="notes-tune-vocals" class="notes-row" hidden>
-        <label class="notes-ctl">
-          <span data-i18n="notes.shortest">Shortest note</span>
-          <input id="notes-min-vocals" type="range" min="20" max="300" step="5" value="120">
-          <output id="notes-min-out-vocals" class="notes-val">120 ms</output>
-        </label>
-        <details class="notes-adv">
-          <summary data-i18n="notes.advanced">Advanced</summary>
-          <label class="notes-ctl">
-            <input id="notes-clip-vocals" type="checkbox">
-            <span data-i18n="notes.clip">Fit the lane to the melody</span>
-          </label>
-          <label class="notes-ctl">
-            <input id="notes-hmm-vocals" type="checkbox" checked>
-            <span data-i18n="notes.hmm">Whole-phrase detection</span>
-          </label>
-          <div class="notes-ctl">
-            <label class="notes-ctl">
-              <input id="notes-fold-vocals" type="checkbox">
-              <span data-i18n="notes.fold">Fix octave outliers</span>
-            </label>
-            <span id="notes-fold-stats-vocals" class="notes-stats" hidden></span>
-          </div>
-          <label class="notes-ctl notes-sub">
-            <span data-i18n="notes.foldTol">Fold tolerance</span>
-            <input id="notes-fold-tol-vocals" type="range" min="0.5" max="8" step="0.25" value="1.5" disabled>
-            <output id="notes-fold-tol-out-vocals" class="notes-val">1.5 semitones</output>
-          </label>
-        </details>
-      </div>
+      <!-- React-owned (Phase 6a): shortest-note slider and the Advanced disclosure
+           (clip/hmm/fold + fold tolerance/stats). See
+           components/InterpretationPanel.jsx. The edits/list-io siblings below stay
+           legacy-owned (a later Phase 6 sub-slice). -->
+      <div id="notes-tune-vocals-root" class="react-portal-host"></div>
       <details id="notes-edits-vocals" class="notes-edit-list" hidden>
         <summary id="notes-edits-summary-vocals"></summary>
         <div class="notes-row notes-edit-panel">
@@ -153,36 +128,8 @@ init();
       </div>
       <!-- React-owned (Phase 5b): see the vocals section's equivalent comment above. -->
       <div id="notes-meta-bass-root" class="react-portal-host"></div>
-      <div id="notes-tune-bass" class="notes-row" hidden>
-        <label class="notes-ctl">
-          <span data-i18n="notes.shortest">Shortest note</span>
-          <input id="notes-min-bass" type="range" min="20" max="300" step="5" value="120">
-          <output id="notes-min-out-bass" class="notes-val">120 ms</output>
-        </label>
-        <details class="notes-adv">
-          <summary data-i18n="notes.advanced">Advanced</summary>
-          <label class="notes-ctl">
-            <input id="notes-clip-bass" type="checkbox">
-            <span data-i18n="notes.clip">Fit the lane to the melody</span>
-          </label>
-          <label class="notes-ctl">
-            <input id="notes-hmm-bass" type="checkbox" checked>
-            <span data-i18n="notes.hmm">Whole-phrase detection</span>
-          </label>
-          <div class="notes-ctl">
-            <label class="notes-ctl">
-              <input id="notes-fold-bass" type="checkbox">
-              <span data-i18n="notes.fold">Fix octave outliers</span>
-            </label>
-            <span id="notes-fold-stats-bass" class="notes-stats" hidden></span>
-          </div>
-          <label class="notes-ctl notes-sub">
-            <span data-i18n="notes.foldTol">Fold tolerance</span>
-            <input id="notes-fold-tol-bass" type="range" min="0.5" max="8" step="0.25" value="1.5" disabled>
-            <output id="notes-fold-tol-out-bass" class="notes-val">1.5 semitones</output>
-          </label>
-        </details>
-      </div>
+      <!-- React-owned (Phase 6a): see the vocals section's equivalent comment above. -->
+      <div id="notes-tune-bass-root" class="react-portal-host"></div>
       <details id="notes-edits-bass" class="notes-edit-list" hidden>
         <summary id="notes-edits-summary-bass"></summary>
         <div class="notes-row notes-edit-panel">

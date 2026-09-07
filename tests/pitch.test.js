@@ -692,7 +692,7 @@ test('pitch: pitchBand opts override the defaults', () => {
   assertEq(bare[1] - bare[0], 12, 'with the floor removed, 3 x MAD sets the width');
 });
 
-import { foldOctaves } from '../lib/pitch.js';
+import { foldOctaves, foldStats } from '../lib/pitch.js';
 
 test('pitch: foldOctaves folds an outlier onto the octave its neighbours imply', () => {
   // F#5 between F2 and G2 — the exact shape measured on ng_kipin, an 8th-harmonic error.
@@ -814,6 +814,34 @@ test('pitch: foldOctaves declines a fold whose residual only just exceeds the th
   assertEq(foldOctaves(notes)[2].fix.state, 'doubt', 'at the shipped 1.5 it is marked');
   assertEq(foldOctaves(notes, { confidentWithin: 3 })[2].fix.state, 'folded',
     'and a looser threshold would fold it — so this test is what pins the setting');
+});
+
+test('pitch: foldStats counts folded and doubtful notes separately', () => {
+  const folded = notesAt([41, 43, 78, 41, 43, 41, 43, 41]);   // index 2 folds, per the test above
+  const foldedStats = foldStats(foldOctaves(folded));
+  assertEq(foldedStats.folded, 1, 'one clean fold');
+  assertEq(foldedStats.muted, 0, 'and nothing muted');
+
+  const doubtful = notesAt([55, 50, 71, 55, 50, 55, 50, 55]);   // index 2 doubts, per the test above
+  const doubtfulStats = foldStats(foldOctaves(doubtful));
+  assertEq(doubtfulStats.folded, 0, 'nothing folded');
+  assertEq(doubtfulStats.muted, 1, 'and one doubt');
+});
+
+test('pitch: foldStats counts zero on notes with no fix field at all', () => {
+  const notes = notesAt([48, 50, 52, 53, 55, 52, 50, 48]);   // in-band: foldOctaves leaves no fix field
+  assertEq(foldStats(notes).folded, 0, 'unfolded input has nothing to count');
+  assertEq(foldStats(notes).muted, 0, 'nothing muted either');
+  const afterFold = foldStats(foldOctaves(notes));
+  assertEq(afterFold.folded, 0, 'folding an all-in-band list adds nothing folded');
+  assertEq(afterFold.muted, 0, 'nor anything muted');
+});
+
+test('pitch: foldStats survives an empty or missing list', () => {
+  assertEq(foldStats([]).folded, 0, 'empty list, folded');
+  assertEq(foldStats([]).muted, 0, 'empty list, muted');
+  assertEq(foldStats(undefined).folded, 0, 'missing list, folded');
+  assertEq(foldStats(undefined).muted, 0, 'missing list, muted');
 });
 
 test('pitch: interpret folds only when asked', () => {

@@ -953,6 +953,9 @@ describe('production player integration', () => {
     // The row itself stays hidden (the discarded result never set frames), which is what
     // actually matters — the count text underneath a hidden row is not asserted further.
     expect(player.win.getComputedStyle(player.doc.getElementById('notes-meta-vocals')).display).toBe('none');
+    // The interpretation row (Phase 6a) hides in lockstep with the meta row — both derived
+    // from the same `!!frames` fact, at different DOM nodes.
+    expect(player.win.getComputedStyle(player.doc.getElementById('notes-tune-vocals')).display).toBe('none');
     expect(player.win.sansBass.application.getSnapshot().song.title).toBe('replacement');
 
     player.doc.getElementById('sep-go').click();
@@ -964,6 +967,93 @@ describe('production player integration', () => {
     ) });
     expect(player.win.sansBass.application.getSnapshot().lifecycle).toBe('disposed');
     expect(player.doc.querySelectorAll('#file-input')).toHaveLength(1);
+  });
+
+  it('re-derives the note count live from the shortest-note slider and retranslates the count on a language switch', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    // A 12-frame (~139ms) note sits between two 5-frame unvoiced gaps and two long notes —
+    // above the slider's initial 120ms floor (survives, 3 notes) but below a raised 200ms
+    // floor (dropped, 2 notes). Mirrors tests/pitch.test.js's own
+    // "segmentNotes drops notes shorter than the floor" fixture shape.
+    const frameSeconds = 128 / 11025;
+    const spec = [[6000, 40], [0, 5], [6400, 12], [0, 5], [6000, 40]];
+    const cents = [];
+    for (const [c, n] of spec) for (let i = 0; i < n; i++) cents.push(c);
+    const t = cents.map((_, i) => i * frameSeconds);
+    const conf = cents.map((c) => (c ? 0.9 : 0));
+    workers[0].emit({ type: 'result', frames: { t, f0: cents.map(() => 0), conf, cents, frameSeconds } });
+
+    const count = await waitFor(() => player.doc.getElementById('notes-count-vocals'), 'count readout');
+    await waitFor(() => count.textContent === '3 notes', 'initial 120ms floor keeps all three notes');
+
+    const slider = player.doc.getElementById('notes-min-vocals');
+    setRangeValue(player, slider, 200);
+    await waitFor(() => count.textContent === '2 notes', 'raising the floor to 200ms drops the short note');
+    expect(player.doc.getElementById('notes-min-out-vocals').textContent).toBe('200 ms');
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => count.textContent === '2 個音符', 'count retranslates without losing the slider change');
+    expect(slider.value).toBe('200');
+  });
+
+  it('shows folded/muted stats and enables the fold-tolerance slider when Fix octave outliers is toggled', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    // F2, G2, F#5 (an 8th-harmonic outlier), F2, G2, F2, G2, F2 — the exact shape
+    // tests/pitch.test.js's "foldOctaves folds an outlier onto the octave its neighbours
+    // imply" already proves folds note index 2 down to F#2 and leaves the rest untouched.
+    const frameSeconds = 128 / 11025;
+    const spec = [[4100, 40], [4300, 40], [7800, 40], [4100, 40], [4300, 40], [4100, 40], [4300, 40], [4100, 40]];
+    const cents = [];
+    for (const [c, n] of spec) for (let i = 0; i < n; i++) cents.push(c);
+    const t = cents.map((_, i) => i * frameSeconds);
+    const conf = cents.map(() => 0.9);
+    workers[0].emit({ type: 'result', frames: { t, f0: cents.map(() => 0), conf, cents, frameSeconds } });
+
+    const fold = await waitFor(() => player.doc.getElementById('notes-fold-vocals'), 'fold checkbox');
+    const foldTol = player.doc.getElementById('notes-fold-tol-vocals');
+    const stats = player.doc.getElementById('notes-fold-stats-vocals');
+    expect(foldTol.disabled).toBe(true);
+    expect(player.win.getComputedStyle(stats).display).toBe('none');
+
+    fold.click();
+    await waitFor(() => !foldTol.disabled, 'tolerance slider enabled once folding is on');
+    expect(player.win.getComputedStyle(stats).display).not.toBe('none');
+    expect(stats.textContent).toBe('1 corrected · 0 muted');
+
+    fold.click();
+    await waitFor(() => foldTol.disabled, 'tolerance slider disabled again once folding is off');
+    expect(player.win.getComputedStyle(stats).display).toBe('none');
+  });
+
+  it('keeps interpretation control values across a song replacement, matching today\'s DOM-persistence behavior', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 }, { folder: 'First song' });
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+    await waitFor(() => player.doc.getElementById('notes-min-vocals'), 'interpretation controls rendered');
+
+    const slider = player.doc.getElementById('notes-min-vocals');
+    setRangeValue(player, slider, 200);
+    const fold = player.doc.getElementById('notes-fold-vocals');
+    fold.click();
+    await waitFor(() => fold.checked, 'fold checkbox applied');
+
+    await loadSong(player, { filename: 'replacement.wav' });
+    expect(player.doc.getElementById('notes-min-vocals').value).toBe('200');
+    expect(player.doc.getElementById('notes-fold-vocals').checked).toBe(true);
   });
 
   it('retranslates the shared detection status and per-channel count after a language switch mid-run', async () => {

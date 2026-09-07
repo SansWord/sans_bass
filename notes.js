@@ -16,7 +16,7 @@
  * so its state and DOM wiring stay shared, module-level code below the channel factory.
  * See docs/superpowers/specs/2026-09-01-bass-notes-design.md. */
 
-import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, BASS_RANGE, PITCH_CLASS_NAMES }
+import { interpret, applyEdits, detectKey, notesToChroma, relativeKey, BASS_RANGE, PITCH_CLASS_NAMES, foldStats }
   from './lib/pitch.js';
 import { scheduleNotes } from './lib/sonify.js';
 import * as SansI18n from './lib/i18n.js';
@@ -330,17 +330,10 @@ function createNotesChannel(stem, els) {
   const timbre = STEM_TIMBRE[stem];
   const range = STEM_RANGE[stem];
 
-  /* The key tonic/mode selects, the 簡譜 checkbox, count, Show/Hide, and the relative-key
-   * button are React-owned (Phase 5b, components/DetectionPanel.jsx) — this factory keeps
-   * only the state (`jianpu`) and the tooltips for the interpretation controls that remain
-   * legacy-owned. */
-  const syncTips = () => {
-    els.hmm.parentElement.title = tr('notes.hmmTip');
-    els.clip.parentElement.title = tr('notes.clipTip');
-    els.fold.parentElement.title = tr('notes.foldTip');
-    els.foldTol.parentElement.title = tr('notes.foldTolTip');
-  };
-  syncTips();
+  /* The key tonic/mode selects, the 簡譜 checkbox, count, Show/Hide, the relative-key button
+   * (Phase 5b), and the shortest-note/Advanced interpretation controls (Phase 6a) are all
+   * React-owned — see components/DetectionPanel.jsx and components/InterpretationPanel.jsx.
+   * This factory keeps only the underlying state. */
 
   let worker = null;
   let frames = null;           // the immutable analysis result
@@ -353,6 +346,12 @@ function createNotesChannel(stem, els) {
    * on a newly loaded song adopts its key — but never overrides a choice already made. */
   let jianpu = { on: false, tonic: 0, mode: 'major', auto: true };
 
+  /* Interpretation-tuning preferences. Not song state — reset() deliberately never touches
+   * this (see docs/react-phase-6a-interpretation-controls-plan.md's "Persistence across
+   * song/stem changes"), matching the legacy DOM elements these replace, which likewise
+   * never got cleared across a song/stem change. Defaults match the legacy markup's own. */
+  let interp = { minDurationMs: 120, clip: false, hmm: true, fold: false, foldTol: 1.5 };
+
   /* The edit list, as GROUPS — see docs/superpowers/specs/2026-08-31-note-editing-design.md. */
   let editGroups = [];
   let orphaned = [];
@@ -360,40 +359,13 @@ function createNotesChannel(stem, els) {
 
   function currentParams() {
     return {
-      interpreter: els.hmm.checked ? 'hmm-v1' : 'threshold-v1',
+      interpreter: interp.hmm ? 'hmm-v1' : 'threshold-v1',
       params: {
-        minDurationMs: Number(els.min.value),
-        fold: els.fold.checked,
-        confidentWithin: Number(els.foldTol.value),
+        minDurationMs: interp.minDurationMs,
+        fold: interp.fold,
+        confidentWithin: interp.foldTol,
       },
     };
-  }
-
-  function syncFoldControls() {
-    const on = els.fold.checked;
-    els.foldTol.disabled = !on;
-    els.foldTolOut.textContent = tr('notes.foldTolVal', { n: els.foldTol.value });
-    els.foldTolOut.classList.toggle('risky', Number(els.foldTol.value) >= 2.5);
-    els.foldStats.hidden = !on;
-    if (!on) return;
-    let folded = 0;
-    let muted = 0;
-    for (const n of notes) {
-      if (!n.fix) continue;
-      if (n.fix.state === 'folded') folded++;
-      else if (n.fix.state === 'doubt') muted++;
-    }
-    const frag = (key, n, cls) => {
-      const span = document.createElement('span');
-      span.className = cls;
-      span.textContent = tr(key, { n });
-      return span;
-    };
-    els.foldStats.replaceChildren(
-      frag('notes.foldStatsFolded', folded, 'n-fold'),
-      document.createTextNode(' · '),
-      frag('notes.foldStatsMuted', muted, 'n-mute'),
-    );
   }
 
   function editTypeLabel(edit) {
@@ -476,8 +448,6 @@ function createNotesChannel(stem, els) {
     const applied = applyEdits(notes, editGroups.flatMap((g) => g.edits));
     notes = applied.notes;
     orphaned = applied.orphaned;
-    els.minOut.textContent = `${els.min.value} ms`;
-    syncFoldControls();
     if (jianpu.auto && notes.length) {
       const k = detectKey(notesToChroma(notes));
       jianpu.tonic = k.tonic;
@@ -485,7 +455,7 @@ function createNotesChannel(stem, els) {
     }
     syncExportAvailability();
     window.sansBass.setNotes(stem, {
-      notes, frames, params: p, clip: els.clip.checked,
+      notes, frames, params: p, clip: interp.clip,
       jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
       tempo: { on: tempo.on, bpmValue: tempo.bpmValue, phaseMs: tempo.phaseMs, beatsPerBar: tempo.beatsPerBar },
     });
@@ -514,10 +484,9 @@ function createNotesChannel(stem, els) {
     frames = null;
     notes = [];
     analysedBuffer = null;
-    // The tune row is meaningless before this channel has notes — hidden as a whole rather
-    // than looking individually inert. The meta row (count/show/簡譜/key), now React-owned,
-    // gets the same treatment from its own published `visible` field (see view() below).
-    els.tune.hidden = true;
+    // The tune row (React-owned, Phase 6a) and the meta row (React-owned, Phase 5b) are both
+    // meaningless before this channel has notes — both hide from the same published
+    // `visible` field (see view() below), so nothing to write here directly any more.
     jianpu.auto = true;
     editGroups = [];
     orphaned = [];
@@ -567,7 +536,6 @@ function createNotesChannel(stem, els) {
       // (tempo.auto === false) — otherwise running analysis on the second channel silently
       // discards a manual BPM/phase tweak made between the two runs.
       if (m.tempo && tempo.auto) { applyTempoResult(m.tempo); syncTempoControls(); }
-      els.tune.hidden = false;
       // Not just reinterpret(): a tempo result above belongs to BOTH channels, so the other
       // channel (if it already has frames) must also pick up the fresh grid.
       reinterpretAll();
@@ -621,6 +589,11 @@ function createNotesChannel(stem, els) {
    *  dedicated langchange listener — the same render-time-translation principle Phase 4b/5a
    *  established for the Overview label and the separation status line. */
   function view() {
+    // Interpretation/Advanced fold stats (Phase 6a) — always computed (cheap, the same O(n)
+    // cost `count` below already pays on every publish); components/InterpretationPanel.jsx
+    // decides whether to show them, gated on `fold`, matching how `count` is always computed
+    // even while the meta row that shows it is hidden.
+    const fold = foldStats(notes);
     return {
       visible: !!frames,
       count: notes.length,
@@ -633,6 +606,13 @@ function createNotesChannel(stem, els) {
       jianpuOn: jianpu.on,
       tonic: jianpu.tonic,
       mode: jianpu.mode,
+      minDurationMs: interp.minDurationMs,
+      clip: interp.clip,
+      hmm: interp.hmm,
+      fold: interp.fold,
+      foldTol: interp.foldTol,
+      foldedCount: fold.folded,
+      mutedCount: fold.muted,
     };
   }
 
@@ -666,12 +646,36 @@ function createNotesChannel(stem, els) {
     reinterpret();
   }
 
-  els.min.addEventListener('input', reinterpret);
-  els.clip.addEventListener('change', reinterpret);
-  els.hmm.addEventListener('change', reinterpret);
-  els.fold.addEventListener('change', reinterpret);
-  els.foldTol.addEventListener('input', reinterpret);
-  window.addEventListener('sansbass:langchange', syncTips);
+  /** Shortest-note slider command. */
+  function setMinDurationMs(ms) {
+    interp.minDurationMs = ms;
+    reinterpret();
+  }
+
+  /** Fit-to-melody/clip checkbox command. */
+  function setClip(on) {
+    interp.clip = !!on;
+    reinterpret();
+  }
+
+  /** Whole-phrase/hmm checkbox command. */
+  function setHmm(on) {
+    interp.hmm = !!on;
+    reinterpret();
+  }
+
+  /** Fix-octave-outliers/fold checkbox command. */
+  function setFold(on) {
+    interp.fold = !!on;
+    reinterpret();
+  }
+
+  /** Fold-tolerance slider command. */
+  function setFoldTol(semitones) {
+    interp.foldTol = semitones;
+    reinterpret();
+  }
+
   /* Temporary exact-clock transport adapter; phase 2 records this notes.js consumer. */
   window.addEventListener('sansbass:transport', (e) => {
     if (!e.detail.playing) {
@@ -768,7 +772,7 @@ function createNotesChannel(stem, els) {
   function exportEntry() {
     return {
       ...currentParams(),
-      clip: els.clip.checked,
+      clip: interp.clip,
       jianpu: { on: jianpu.on, tonic: jianpu.tonic, mode: jianpu.mode },
       edits: editGroups.map((g) => ({
         edits: g.edits,
@@ -783,12 +787,12 @@ function createNotesChannel(stem, els) {
    * every affected channel's entry first, then reinterprets all of them once. */
   function importEntry(entry) {
     if (entry.params) {
-      if (entry.params.minDurationMs != null) els.min.value = entry.params.minDurationMs;
-      els.fold.checked = !!entry.params.fold;
-      if (entry.params.confidentWithin != null) els.foldTol.value = entry.params.confidentWithin;
+      if (entry.params.minDurationMs != null) interp.minDurationMs = entry.params.minDurationMs;
+      interp.fold = !!entry.params.fold;
+      if (entry.params.confidentWithin != null) interp.foldTol = entry.params.confidentWithin;
     }
-    els.hmm.checked = entry.interpreter !== 'threshold-v1';
-    els.clip.checked = entry.clip !== false;
+    interp.hmm = entry.interpreter !== 'threshold-v1';
+    interp.clip = entry.clip !== false;
     if (entry.jianpu) {
       jianpu.on = !!entry.jianpu.on;
       jianpu.auto = false;
@@ -822,24 +826,17 @@ function createNotesChannel(stem, els) {
     refresh, reinterpret, analyse, needsAnalyse, busy, hasStem, state, stem,
     hasFrames, exportEntry, importEntry, chordSource, keySource, dispose,
     view, toggleShow, setJianpuOn, setKey, useRelativeKey,
+    setMinDurationMs, setClip, setHmm, setFold, setFoldTol,
   };
 }
 
 // ---------------------------------------------------------------- two instances
 
-// count, show/hide, 簡譜, and key tonic/mode/relative-key are React-owned as of Phase 5b
-// (components/DetectionPanel.jsx) — no longer read via document.getElementById here.
+// count, show/hide, 簡譜, key tonic/mode/relative-key (Phase 5b), shortest-note, and the
+// Advanced/fold controls (Phase 6a) are all React-owned — no longer read via
+// document.getElementById here.
 channels.push(createNotesChannel('vocals', {
   panel: document.getElementById('notes-vocals'),
-  tune: document.getElementById('notes-tune-vocals'),
-  min: document.getElementById('notes-min-vocals'),
-  minOut: document.getElementById('notes-min-out-vocals'),
-  clip: document.getElementById('notes-clip-vocals'),
-  hmm: document.getElementById('notes-hmm-vocals'),
-  fold: document.getElementById('notes-fold-vocals'),
-  foldTol: document.getElementById('notes-fold-tol-vocals'),
-  foldTolOut: document.getElementById('notes-fold-tol-out-vocals'),
-  foldStats: document.getElementById('notes-fold-stats-vocals'),
   editsRow: document.getElementById('notes-edits-vocals'),
   editsSummary: document.getElementById('notes-edits-summary-vocals'),
   editUndo: document.getElementById('notes-edit-undo-vocals'),
@@ -850,15 +847,6 @@ channels.push(createNotesChannel('vocals', {
 
 channels.push(createNotesChannel('bass', {
   panel: document.getElementById('notes-bass'),
-  tune: document.getElementById('notes-tune-bass'),
-  min: document.getElementById('notes-min-bass'),
-  minOut: document.getElementById('notes-min-out-bass'),
-  clip: document.getElementById('notes-clip-bass'),
-  hmm: document.getElementById('notes-hmm-bass'),
-  fold: document.getElementById('notes-fold-bass'),
-  foldTol: document.getElementById('notes-fold-tol-bass'),
-  foldTolOut: document.getElementById('notes-fold-tol-out-bass'),
-  foldStats: document.getElementById('notes-fold-stats-bass'),
   editsRow: document.getElementById('notes-edits-bass'),
   editsSummary: document.getElementById('notes-edits-summary-bass'),
   editUndo: document.getElementById('notes-edit-undo-bass'),
@@ -923,6 +911,11 @@ export const detection = {
     setJianpuOn: (stem, on) => channels.find((c) => c.stem === stem)?.setJianpuOn(on),
     setKey: (stem, tonic, mode) => channels.find((c) => c.stem === stem)?.setKey(tonic, mode),
     useRelativeKey: (stem) => channels.find((c) => c.stem === stem)?.useRelativeKey(),
+    setMinDurationMs: (stem, ms) => channels.find((c) => c.stem === stem)?.setMinDurationMs(ms),
+    setClip: (stem, on) => channels.find((c) => c.stem === stem)?.setClip(on),
+    setHmm: (stem, on) => channels.find((c) => c.stem === stem)?.setHmm(on),
+    setFold: (stem, on) => channels.find((c) => c.stem === stem)?.setFold(on),
+    setFoldTol: (stem, semitones) => channels.find((c) => c.stem === stem)?.setFoldTol(semitones),
   },
 };
 

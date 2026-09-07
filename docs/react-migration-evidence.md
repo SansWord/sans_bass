@@ -2,8 +2,8 @@
 
 ## Phase 4a — React standard stem lane components
 
-Status: PR preview verified at synthetic merge `5cff888`, awaiting production acceptance.
-Evidence
+Status: accepted in production at rollback anchor
+`fcf27706c77267e269203b62fd40eae86be03380`. Evidence
 collected 2026-09-07 America/Los_Angeles. Branch `feat/react-phase-4a-stem-lanes`; starting
 source `7c968adad1e087346a677777bc718c0af05aa820`; plan commit
 `ef324cad8a36d11a92571a1cc3f88a923dbde119`; implementation source
@@ -175,7 +175,31 @@ empty.
 
 ### Production acceptance evidence
 
-Recorded after merge and the production delivery canary.
+PR #79 squash-merged as exact production source
+`fcf27706c77267e269203b62fd40eae86be03380`. Its exact-SHA
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34108107864) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34108107888) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/?phase4a=fcf2770`
+displayed exact `fcf2770`.
+
+The production delivery canary repeated the affected boundary: a generated four-stem fixture
+loaded through the real file input into 4 React-owned standard lanes; clicking the Vocals
+`.lane-name` button muted it, moved routing to `custom`/`unmuteAll`, and returned focus to
+`<body>`. The only console entries were from an unrelated browser extension
+(`chrome-extension://` origin); the first-party warning/error console was empty.
+
+The complete synthetic, malformed-input, storage-fault, Worker, and narrow-viewport matrices
+were not repeated in production because the canary agreed with the exact-source and preview
+evidence above. No real-song (`examples/nov_you.zip`), physical-handheld, subjective
+auditory, or background-tab check is claimed for this increment — none of Phase 4a's changed
+boundary (lane presentation/ownership) plausibly affects them, and the full deployed smoke is
+reserved for entry-point/base-path/Worker/cache changes or release acceptance, none of which
+this increment touched.
+
+Phase 4a is accepted at the full SHA above. Ribbon/zoom/overview lane ownership (Phase 4b),
+notes/tempo/chord UI (Phase 6), and separation/detection controls (Phase 5) remain legacy-owned;
+Phase 4 is not complete. This separate documentation-only PR records the immutable rollback
+anchor.
 
 ## Phase 3e — React mode and routing controls
 

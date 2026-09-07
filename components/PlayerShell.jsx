@@ -9,6 +9,7 @@ import { DetectionControls, NotesChannelPanel } from './DetectionPanel.jsx';
 import { InterpretationPanel } from './InterpretationPanel.jsx';
 import { SeparationPanel } from './SeparationPanel.jsx';
 import { SiteHeaderContent } from './SiteHeader.jsx';
+import { TempoPanel } from './TempoPanel.jsx';
 import { useLocale } from './useLocale.js';
 
 const INPUT_ACCEPT = 'audio/*,.wav,.flac,.m4a,.mp3,.opus,.ogg,.aiff,.zip,application/zip';
@@ -403,6 +404,7 @@ function PlayerShell({ application, hosts }) {
     {createPortal(<NotesChannelPanel stem="bass" />, hosts.notesMetaBass)}
     {createPortal(<InterpretationPanel stem="vocals" />, hosts.notesTuneVocals)}
     {createPortal(<InterpretationPanel stem="bass" />, hosts.notesTuneBass)}
+    {createPortal(<TempoPanel />, hosts.tempo)}
     {snapshot.song && <StemLanes application={application}
       tracks={snapshot.song.tracks} hosts={hosts} />}
     {snapshot.song && snapshot.song.tracks.some((track) => track.stem === 'vocals' || track.stem === 'bass')
@@ -433,6 +435,7 @@ export function mountPlayerShell(application, doc = document) {
     notesMetaBass: doc.getElementById('notes-meta-bass-root'),
     notesTuneVocals: doc.getElementById('notes-tune-vocals-root'),
     notesTuneBass: doc.getElementById('notes-tune-bass-root'),
+    tempo: doc.getElementById('tempo-ui-root'),
   };
   if (Object.values(hosts).some((host) => !host)) {
     console.warn('sans_bass: player React shell host missing — skipped');

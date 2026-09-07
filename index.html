@@ -23,11 +23,11 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/main-CvmzF9BP.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/SiteHeader-2gf44vNM.js">
+  <script type="module" crossorigin src="./assets/main-DJmcFRuG.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/SiteHeader-BH2nvAql.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/sonify-DfBfGpzd.js">
-  <link rel="stylesheet" crossorigin href="./assets/SiteHeader-DXOZa5Vk.css">
+  <link rel="stylesheet" crossorigin href="./assets/SiteHeader-EUDTu8IV.css">
 </head>
 <body>
 
@@ -132,6 +132,12 @@
     <div id="lanes" class="lanes">
       <div id="standard-lanes-root" class="react-portal-host"></div>
       <div id="overview-lane-root" class="react-portal-host"></div>
+      <!-- The zoomed pane (still legacy-owned — Phase 6d gave it this own root, separate from
+           #note-lanes-root, so its DOM survives a song load the way the Overview lane's did
+           after Phase 4b; #note-lanes-root's per-song teardown only ever needs to reach the
+           genuinely per-stem ribbon lanes). See app.js's buildUI() comment above this block's
+           construction. -->
+      <div id="zoom-lane-root"></div>
       <div id="note-lanes-root"></div>
     </div>
   </section>

@@ -1,5 +1,179 @@
 # React migration evidence
 
+## Phase 4b — React shared overview lane integration
+
+Status: accepted in production at rollback anchor
+`d961db76a8404a2aef1f544dfe9f9746a397aa74`. Evidence
+collected 2026-09-07 America/Los_Angeles. Branch `feat/react-phase-4b-shared-overview`;
+starting source `5f6bf62a9d33301ba6b630ae44238fd765eb91a9`; plan commit
+`5d57af6acdc9c2dfd2933f0626debd2d02bb9db4`; implementation source
+`ea7bdfd5c9a3ea1a63c805f62700e3f428ea4145`; CLAUDE.md ownership-description update
+`34f289caab85a307fd47689e936d5c6b29e63f7c`. Previous accepted implementation rollback anchor:
+Phase 4a at `fcf27706c77267e269203b62fd40eae86be03380`, documented through
+[PR #80](https://github.com/SansWord/sans_bass/pull/80).
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-4b-shared-overview-plan.md](react-phase-4b-shared-overview-plan.md), including
+its resolution of a lifecycle question specific to this lane (see below).
+`components/PlayerShell.jsx` adds an `OverviewLane` component, portalled into a new
+`#overview-lane-root` — a sibling of `#standard-lanes-root`, not a child of it, so
+`#standard-lanes-root > .lane` keeps meaning exactly "one per `song.tracks[]` entry" for
+every existing selector and test. Rendered only when `song.tracks[]` contains a `vocals` or
+`bass` stem (mirroring today's `anchorTrack` gate), it owns the translated label
+(`t('notes.overview')`), a live time-code readout self-subscribed to
+`application.subscribeTransport` the same way `PrimarySeekControls` already is, the
+master-volume-mirroring slider (reading `snapshot.masterVolume`, calling the existing
+`commands.setMasterVolume` — no new command), a stable `<canvas>` host, and an empty
+`.note-range-hint` host for its Phase-6-deferred range-select caption.
+
+`lib/player-application.js` adds `attachOverviewCanvas(canvas)` and
+`attachOverviewExtra(node)` — thin delegations mirroring `attachLaneCanvas`/`attachLaneExtra`
+exactly. No new commands or `applicationSnapshot()`/transport fields were needed: the volume
+slider reuses the already-published `masterVolume` field and `setMasterVolume` command, and
+the time-code text is fully derivable from the already-published transport snapshot.
+
+`app.js` retains `overviewStems()` (which stems the lane combines), peak combination,
+painting (`renderOverview()`, `paint()`, `paintRangeBand()`), canvas seek/scrub
+(`attachSeek`), and the range-hint's Phase-6 content/visibility (`syncRangeHints()`,
+unchanged). It loses the Overview lane's DOM-construction block from `buildUI()`,
+`overviewVolEl` and its manual mirroring write into the old slider, and — the one behavior
+change beyond pure ownership transfer — the `overviewEl = null` reset that used to run on
+every `buildUI()` call.
+
+That reset removal is the audit's key finding. The Overview lane is a single **unkeyed**
+React component, unlike a per-track `<Lane>` in a keyed list: whenever a reloaded song keeps
+a `vocals`/`bass` stem (the common case), React has no reason to unmount and remount it, so
+its canvas DOM node persists across the reload by construction. The old code safely reset
+`overviewEl` on every song load because the entire DOM subtree was torn down and rebuilt
+synchronously in the same call; under React ownership, nothing would ever call
+`attachOverviewCanvas` again to repopulate a reset reference, so painting would have silently
+stopped after the very first song. `overviewEl` is now a small persistent object
+(`{ canvas, rangeHint }`) whose fields are owned entirely by `attachOverviewCanvas`/
+`attachOverviewExtra`'s attach/detach lifecycle, never touched by `buildUI()`.
+
+Moving the label and both tooltips to React also fixes a pre-existing defect recorded in the
+Phase 4a evidence log above: `retranslate()` never touched the Overview lane's text, so it
+stayed stuck in whatever language was active when the current song loaded. It now
+retranslates like every other React-owned label, as a side effect of ownership transfer
+rather than a separate fix.
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+Before implementation, the focused Node facade run
+(`tests/player-application.test.js`) had 10 passing and 2 failing cases
+(`application.attachOverviewCanvas is not a function` / `application.attachOverviewExtra is
+not a function`) — the intended contract failures for the two new attach delegators, added to
+the test file before `lib/player-application.js` itself.
+
+After implementation:
+
+- focused Node `tests/player-application.test.js`: 1 file, 12 tests passed (2 new: attach/
+  detach for `attachOverviewCanvas` and `attachOverviewExtra`);
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 35 tests passed (1 new
+  case covering React ownership, retranslation, volume mirroring, and canvas
+  identity/repaint across song replacement, plus two pre-existing tests extended — the shell
+  remount test to also assert `#overview-lane-root canvas` clears and repaints, and the lane-
+  order test's `overview`/`zoom` selectors tightened to their exact React/legacy hosts — no
+  assertion weakened);
+- full `npm test`: 31 files, 423 tests passed (420 baseline + 2 facade + 1 Chromium);
+- `npm run build`: passed; 56 modules transformed; existing intentional unresolved-at-build-
+  time `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+The new Chromium case specifically proves the lifecycle finding above: it captures the
+Overview canvas's `__layers` reference, loads a second song that also has vocals/bass stems,
+then asserts the **same** canvas DOM node is still present (`#overview-lane-root > .lane.overview
+canvas` unchanged) while `__layers` has changed to a **different** object — proof React did
+not remount the lane and `app.js` still repainted it with the new song's peaks.
+
+The exact-source build emits **115,543 bytes** in the player entry (`dist/assets/main-*.js`)
+versus Phase 4a's 114,617: **+926 bytes (+0.81%)**. The shared React/header chunk is
+unchanged at exactly 218,172 bytes and the CSS chunk unchanged at exactly 13,274 bytes — no
+new dependency was added.
+
+### Exact-source local smoke
+
+Local production build served via `npm run preview` (root) and a second static server with
+the same build copied under `pr-99/` (nested-route smoke, since Vite's asset paths are
+relative). Both displayed the same content and behavior. A generated 4-second four-stem
+(vocals/guitar/bass/drums) ZIP fixture, built with the repository's own
+`tests/helpers/audio-fixtures.js#stemsZip` run directly under Node (the real `lib/wav.js`/
+`lib/zip.js` encoders, since the built site does not serve `/tests/` or `/lib/` source
+paths), loaded through the real `#file-input` at both origins via a direct file-input upload.
+
+At root: the Overview lane rendered with the correct label ("總覽" under the browser's
+default zh-TW), canvas tooltip, and volume-slider tooltip; dragging its own volume slider to
+55% updated `application.getSnapshot().masterVolume` and the primary React slider identically
+in both directions. Switching to English retranslated the label and both tooltips correctly
+(confirming the fix above) while the mirrored volume value (0.55) was preserved. Loading a
+second four-stem fixture (also vocals/bass) confirmed the same canvas DOM node persisted
+(`sameCanvasNode: true`) while its `__layers` reference changed (`layersChanged: true`) and
+the mirrored master volume survived the replacement unchanged. The nested route repeated the
+initial load/interaction with identical results. Console at both origins carried only the
+expected localhost GoatCounter refusal; no first-party warning or error appeared.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | Generated four-stem WAV/ZIP fixtures cover ordinary stems, locale, remount-equivalent (song replacement keeping a vocals/bass stem), and volume mirroring through the production-entry Chromium suite and a local exact-source smoke. |
+| Malformed input | Unchanged; no lane-ownership-affecting code path touched. |
+| Storage/locale | Both languages pass in Chromium and in exact-source local smoke; the Overview label/tooltips now retranslate (a fix — see above). |
+| Handheld | Unaffected; no new capability-gated code. |
+| Worker | Unaffected; no Worker/model code changed. |
+| Visual | Exact-source local smoke reviewed lane layout, order, and label/tooltip presentation at desktop width; no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine command/state evidence was collected, not subjective listening. |
+| Real song | Not run against `examples/nov_you.zip` in this evidence pass; the changed boundary (lane presentation/ownership, no audio-path or Worker change) does not plausibly affect it, matching Phase 4a's own scoping. |
+
+### PR-preview deployment evidence
+
+[PR #81](https://github.com/SansWord/sans_bass/pull/81)'s `test` and `deploy` checks both
+passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-81/`
+displayed exact synthetic merge `b021fa2208c2daf5ec7d7f2e1cff917510c54ce6` (`b021fa2`),
+matching `gh api repos/SansWord/sans_bass/pulls/81 --jq '{merge_commit_sha}'` (`gh pr view
+--json mergeCommit` returned null pre-merge in this session; the REST API's
+`merge_commit_sha` field was used instead and confirmed identical to the deployed
+`#build-sha`).
+
+A generated four-stem ZIP fixture loaded through the real `#file-input`. The Overview lane
+rendered (label "總覽" under the browser's default zh-TW) alongside all four React-owned
+standard lanes; dragging its volume slider to 33% updated
+`application.getSnapshot().masterVolume` to `0.33` and the primary slider mirrored it
+identically. The only console entries were from an unrelated browser extension
+(MetaMask-style `chrome-extension://` origin); the first-party console was empty.
+
+### Production acceptance evidence
+
+PR #81 squash-merged as exact production source
+`d961db76a8404a2aef1f544dfe9f9746a397aa74`. Its exact-SHA
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34111554517) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34111554387) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/?phase4b=d961db7`
+displayed exact `d961db7`.
+
+The production delivery canary repeated the affected boundary: a generated four-stem fixture
+loaded through the real file input rendered the Overview lane correctly; dragging its volume
+slider to 60% updated `application.getSnapshot().masterVolume` to `0.6` and the primary
+slider mirrored it identically. The only console entries were from the same unrelated browser
+extension; the first-party warning/error console was empty.
+
+The complete synthetic, malformed-input, storage-fault, Worker, and narrow-viewport matrices
+were not repeated in production because the canary agreed with the exact-source and preview
+evidence above. No real-song (`examples/nov_you.zip`), physical-handheld, subjective
+auditory, or background-tab check is claimed for this increment, for the same reasons given
+in the omissions table above.
+
+Phase 4b is accepted at the full SHA above. The zoomed pane (notes chips, tempo hint, chord
+editor, edit toolbar) and the range hint's translation-refresh gap remain untouched and
+deferred to Phase 6; ribbon lanes are unaffected. Separation/detection controls (Phase 5)
+remain legacy-owned; Phase 4 is now complete. This separate documentation-only PR records the
+immutable rollback anchor.
+
 ## Phase 4a — React standard stem lane components
 
 Status: accepted in production at rollback anchor

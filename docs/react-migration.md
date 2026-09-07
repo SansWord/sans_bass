@@ -2,9 +2,10 @@
 
 Status: Phase 3 is complete. Its header/loading, play/pause/speed, primary seek/time,
 volume/loop, and top-level mode/routing slices are accepted in production through Phase 3e
-at `41ff22cdfad6221164ea7105273b24d338251c95`. Phase 4a standard stem lanes are accepted in
-production at `fcf27706c77267e269203b62fd40eae86be03380`; Phase 4b (shared overview
-integration) is next.
+at `41ff22cdfad6221164ea7105273b24d338251c95`. Phase 4 is now complete: standard stem lanes
+(4a) are accepted in production at `fcf27706c77267e269203b62fd40eae86be03380` and shared
+overview integration (4b) at `d961db76a8404a2aef1f544dfe9f9746a397aa74`; Phase 5
+(separation/detection controls) is next.
 Created 2026-09-05.
 
 ## Goal and scope
@@ -285,6 +286,7 @@ Use a revert PR on shared `main` rather than resetting published history.
 | Phase 3d volume and A/B controls accepted in production | `4b14667a935f1faef4af1f8ba8df8acb37d6ab5f` | Known-good React primary master-volume and A/B presentation increment from [PR #75](https://github.com/SansWord/sans_bass/pull/75). Restore to this boundary to retain React-owned loading and transport controls through volume/loop while backing out later mode/routing or lane slices. |
 | Phase 3e mode and routing controls accepted in production | `41ff22cdfad6221164ea7105273b24d338251c95` | Known-good React top-level mode selector and all-toggle increment from [PR #77](https://github.com/SansWord/sans_bass/pull/77). Restore to this boundary to retain the complete Phase 3 player header/loading/transport/top-level-control ownership while backing out later lane slices. |
 | Phase 4a standard stem lanes accepted in production | `fcf27706c77267e269203b62fd40eae86be03380` | Known-good React standard-lane presentation (label/mute/volume/canvas host) increment from [PR #79](https://github.com/SansWord/sans_bass/pull/79). Restore to this boundary to retain Phase 3's complete ownership plus React-owned standard lanes while backing out the later overview/notes slices. |
+| Phase 4b shared overview integration accepted in production | `d961db76a8404a2aef1f544dfe9f9746a397aa74` | Known-good React shared Overview-lane presentation (label/master-volume-mirroring slider/canvas host) increment from [PR #81](https://github.com/SansWord/sans_bass/pull/81). Restore to this boundary to retain the complete Phase 4 ownership (standard lanes plus the shared overview lane) while backing out the later notes/tempo/chord slices (Phase 6) or separation/detection controls (Phase 5). |
 
 Add one row after each phase is accepted in production. The target SHA is a restoration and
 comparison anchor, not permission to `git reset` a shared branch; revert the commits after the
@@ -317,7 +319,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 1 | Accepted in production at `5de58b6` | [Evidence](react-migration-evidence.md#phase-1--isolated-react-demo-header-pilot) · [PR #65](https://github.com/SansWord/sans_bass/pull/65) | Complete; Phase 2 may begin |
 | 2 | Accepted in production at `6657528` | [Plan](react-phase-2-plan.md) · [Evidence](react-migration-evidence.md#phase-2--player-command-and-subscription-boundary) · [PR #67](https://github.com/SansWord/sans_bass/pull/67) | Complete; Phase 3 may begin |
 | 3 | Complete; final Phase 3e boundary accepted at `41ff22c` | [Phase 3a plan](react-phase-3-header-loading-plan.md) · [Phase 3b plan](react-phase-3-playback-controls-plan.md) · [Phase 3c plan](react-phase-3c-seek-controls-plan.md) · [Phase 3d plan](react-phase-3d-volume-loop-controls-plan.md) · [Phase 3e plan](react-phase-3e-mode-routing-controls-plan.md) · [Evidence](react-migration-evidence.md) · [PR #71](https://github.com/SansWord/sans_bass/pull/71) · [PR #73](https://github.com/SansWord/sans_bass/pull/73) · [PR #75](https://github.com/SansWord/sans_bass/pull/75) · [PR #77](https://github.com/SansWord/sans_bass/pull/77) | Complete; Phase 4 may begin |
-| 4 | In progress; Phase 4a accepted in production at `fcf2770` | [Phase 4a plan](react-phase-4a-stem-lanes-plan.md) · [Evidence](react-migration-evidence.md#phase-4a--react-standard-stem-lane-components) · [PR #79](https://github.com/SansWord/sans_bass/pull/79) | Phase 4b shared overview integration |
+| 4 | Complete; Phase 4b accepted in production at `d961db7` | [Phase 4a plan](react-phase-4a-stem-lanes-plan.md) · [Phase 4b plan](react-phase-4b-shared-overview-plan.md) · [Evidence](react-migration-evidence.md#phase-4b--react-shared-overview-lane-integration) · [PR #79](https://github.com/SansWord/sans_bass/pull/79) · [PR #81](https://github.com/SansWord/sans_bass/pull/81) | Complete; Phase 5 may begin |
 | 5 | Not started | — | Separation/detection controls |
 | 6 | Not started | — | Notes/editor controls |
 | 7 | Not started | — | Cleanup and acceptance |

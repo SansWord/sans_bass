@@ -140,6 +140,7 @@ describe('production player integration', () => {
     const standardCanvasCount = player.doc.querySelectorAll('#standard-lanes-root canvas').length;
     const overviewCanvasCount = player.doc.querySelectorAll('#overview-lane-root canvas').length;
     const noteCanvases = [...player.doc.querySelectorAll('#note-lanes-root canvas')];
+    const zoomCanvases = [...player.doc.querySelectorAll('#zoom-lane-root canvas')];
     player.doc.dispatchEvent(new player.win.DragEvent('dragenter', { bubbles: true, cancelable: true }));
     await waitFor(() => player.win.getComputedStyle(player.doc.getElementById('drag-overlay')).display === 'flex',
       'overlay before remount');
@@ -147,11 +148,13 @@ describe('production player integration', () => {
     player.win.sansBass.playerShell.unmount();
     expect(application.getSnapshot().song).toEqual(song);
     // Standard lanes and the shared overview lane are both React-owned (Phase 4a/4b), so
-    // unmounting the shell clears both portals just like every other React-owned region —
-    // the ribbon/zoom canvases in #note-lanes-root are legacy DOM and stay untouched.
+    // unmounting the shell clears both portals just like every other React-owned region — the
+    // ribbon canvases in #note-lanes-root and the zoomed pane's canvas in #zoom-lane-root
+    // (its own root since Phase 6d) are legacy DOM and stay untouched.
     expect(player.doc.querySelectorAll('#standard-lanes-root canvas')).toHaveLength(0);
     expect(player.doc.querySelectorAll('#overview-lane-root canvas')).toHaveLength(0);
     expect([...player.doc.querySelectorAll('#note-lanes-root canvas')]).toEqual(noteCanvases);
+    expect([...player.doc.querySelectorAll('#zoom-lane-root canvas')]).toEqual(zoomCanvases);
     expect(player.doc.getElementById('drag-overlay')).toBeNull();
     player.win.sansBass.playerShell.remount();
     player.win.sansBass.playerShell.remount();
@@ -514,7 +517,7 @@ describe('production player integration', () => {
     const [vocals, guitar, bass, drums] = [...player.doc.querySelectorAll('#standard-lanes-root > .lane')];
     const vocalsRibbon = player.doc.querySelector('#note-lanes-root .lane.ribbon');
     const overview = player.doc.querySelector('#overview-lane-root > .lane.overview');
-    const zoom = player.doc.querySelector('#note-lanes-root .lane.ribbon-zoom');
+    const zoom = player.doc.querySelector('#zoom-lane-root .lane.ribbon-zoom');
     expect(drums.querySelector('.tempo-range-hint')).toBeTruthy();
     expect([overview, zoom].every((el) => order(el) < order(vocals))).toBe(true);
     expect(order(vocals)).toBeLessThan(order(vocalsRibbon));
@@ -1415,6 +1418,102 @@ describe('production player integration', () => {
       detail: { chords: [], running: true, phase: 'detecting' },
     }));
     expect(status.textContent).toBe('Detecting chords…');
+  });
+
+  it('keeps the zoomed pane\'s capo/chord/Edit-notes/Export-Import nodes stable across a song replacement that keeps a vocals/bass stem', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, guitar: 220 }, { folder: 'First song' });
+
+    const chordGroup = player.doc.querySelector('.zoom-chord-row');
+    const capoSelect = player.doc.querySelector('.capo-select');
+    const editToggle = player.doc.getElementById('notes-edit');
+    const editIoGroup = player.doc.querySelector('.zoom-edit-io');
+    expect(chordGroup && capoSelect && editToggle && editIoGroup).toBeTruthy();
+
+    // Complete detection so the Edit-notes toggle, Export/Import buttons, and a nonzero capo
+    // are all visible/enabled/set — the state a second song must not inherit.
+    const detect = player.doc.getElementById('notes-go-all');
+    await waitFor(() => !detect.disabled, 'notes detection control');
+    detect.click();
+    workers[0].emit({ type: 'result', frames: { t: [], f0: [], conf: [], cents: [], frameSeconds: 0.01 } });
+    await waitFor(() => !editToggle.disabled, 'edit toggle enabled once vocals has notes');
+    capoSelect.value = '5';
+    capoSelect.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    expect(editIoGroup.hidden).toBe(false);
+
+    await loadZip(player, { vocals: 220, guitar: 110 }, { folder: 'Second song' });
+    await waitFor(() => player.doc.getElementById('title').textContent === 'Second song', 'second song title');
+
+    // Node identity survives — these are the exact same DOM elements, not rebuilt ones.
+    expect(player.doc.querySelector('.zoom-chord-row')).toBe(chordGroup);
+    expect(player.doc.querySelector('.capo-select')).toBe(capoSelect);
+    expect(player.doc.getElementById('notes-edit')).toBe(editToggle);
+    expect(player.doc.querySelector('.zoom-edit-io')).toBe(editIoGroup);
+
+    // But per-song state resets exactly as it would for a first-ever load: the new song has
+    // not run detection yet, so nothing carries over from the first song's completed state.
+    expect(editToggle.disabled).toBe(true);
+    expect(editToggle.parentElement.hidden).toBe(true);
+    expect(editIoGroup.hidden).toBe(true);
+    expect(capoSelect.value).toBe('0');
+  });
+
+  it('rebuilds the zoomed pane\'s stem/Notes chips to match a song replacement with a different stem set', async () => {
+    player = await openPlayer();
+    const workers = installFakeWorker(player.win);
+    await loadZip(player, { vocals: 440, bass: 110 }, { folder: 'Vocals and bass' });
+    let chipLabels = [...player.doc.querySelectorAll('.zoom-chip-label')].map((n) => n.textContent);
+    expect(chipLabels).toEqual(['Vocals', 'Bass']);
+
+    await loadZip(player, { vocals: 220, drums: 100 }, { folder: 'Vocals and drums' });
+    await waitFor(() => player.doc.getElementById('title').textContent === 'Vocals and drums', 'second song title');
+    chipLabels = [...player.doc.querySelectorAll('.zoom-chip-label')].map((n) => n.textContent);
+    expect(chipLabels).toEqual(['Vocals', 'Drums']);
+    // The Notes chip for bass is gone (no bass stem this song); only vocals remains eligible.
+    expect(player.doc.querySelectorAll('.zoom-notes-chip')).toHaveLength(1);
+    void workers;
+  });
+
+  it('cleanly tears down and remounts the zoomed pane across a replacement that drops then reintroduces the anchor stem', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, guitar: 220 }, { folder: 'Has anchor' });
+    expect(player.doc.querySelector('.lane.ribbon-zoom')).toBeTruthy();
+
+    await loadZip(player, { guitar: 220, drums: 100 }, { folder: 'No anchor' });
+    await waitFor(() => player.doc.getElementById('title').textContent === 'No anchor', 'no-anchor song title');
+    expect(player.doc.querySelector('.lane.ribbon-zoom')).toBeFalsy();
+
+    await loadZip(player, { bass: 110, guitar: 220 }, { folder: 'Anchor again' });
+    await waitFor(() => player.doc.getElementById('title').textContent === 'Anchor again', 'anchor-again song title');
+    expect(player.doc.querySelector('.lane.ribbon-zoom')).toBeTruthy();
+    expect(player.doc.querySelector('.capo-select').value).toBe('0');
+  });
+
+  it('does not double-register zoom canvas wheel/pan listeners across repeated song loads', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, guitar: 220 }, { folder: 'First' });
+    await loadZip(player, { vocals: 220, guitar: 440 }, { folder: 'Second' });
+    await waitFor(() => player.doc.getElementById('title').textContent === 'Second', 'second song title');
+
+    const canvas = player.doc.querySelector('.zoomwave');
+    const secsLabel = player.doc.querySelector('.zoom-secs');
+    const startSecs = parseFloat(secsLabel.textContent);
+    const clamp = (n) => Math.round(Math.max(2, Math.min(60, n)) * 100) / 100;
+    const render = (secs) => `${secs.toFixed(secs < 10 ? 1 : 0)}s`;
+    const singleTick = clamp(startSecs * 1.15);
+    const doubleTick = clamp(singleTick * 1.15);
+    expect(render(singleTick)).not.toBe(render(doubleTick));
+
+    const rect = { left: 0, top: 0, width: 200, height: 100 };
+    canvas.getBoundingClientRect = () => rect;
+    canvas.dispatchEvent(new player.win.WheelEvent('wheel', {
+      bubbles: true, cancelable: true, shiftKey: true, deltaY: 100, clientX: 100, clientY: 50,
+    }));
+    // One wheel tick should move the zoom level by exactly one factor step. If attachZoom had
+    // been registered twice (a stale listener from the first song plus a fresh one from the
+    // second), the same event would fire the handler twice, landing on doubleTick instead.
+    expect(secsLabel.textContent).toBe(render(singleTick));
   });
 
   it('loads generated stems through the one real file input', async () => {

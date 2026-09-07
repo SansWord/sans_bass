@@ -5,6 +5,7 @@ import { AUDIO_RE } from '../lib/stems.js';
 import { t } from '../lib/i18n.js';
 import { isHandheld } from '../lib/platform.js';
 import { formatClockTime, formatClockTimeCentiseconds } from '../lib/time.js';
+import { DetectionControls, NotesChannelPanel } from './DetectionPanel.jsx';
 import { SeparationPanel } from './SeparationPanel.jsx';
 import { SiteHeaderContent } from './SiteHeader.jsx';
 import { useLocale } from './useLocale.js';
@@ -396,6 +397,9 @@ function PlayerShell({ application, hosts }) {
       routing={snapshot.routing} song={snapshot.song} />, hosts.modeRouting)}
     <PrimarySeekControls application={application} hosts={hosts} />
     {createPortal(<SeparationPanel />, hosts.separation)}
+    {createPortal(<DetectionControls />, hosts.detection)}
+    {createPortal(<NotesChannelPanel stem="vocals" />, hosts.notesMetaVocals)}
+    {createPortal(<NotesChannelPanel stem="bass" />, hosts.notesMetaBass)}
     {snapshot.song && <StemLanes application={application}
       tracks={snapshot.song.tracks} hosts={hosts} />}
     {snapshot.song && snapshot.song.tracks.some((track) => track.stem === 'vocals' || track.stem === 'bass')
@@ -421,6 +425,9 @@ export function mountPlayerShell(application, doc = document) {
     standardLanes: doc.getElementById('standard-lanes-root'),
     overviewLane: doc.getElementById('overview-lane-root'),
     separation: doc.getElementById('separation-ui-root'),
+    detection: doc.getElementById('detection-ui-root'),
+    notesMetaVocals: doc.getElementById('notes-meta-vocals-root'),
+    notesMetaBass: doc.getElementById('notes-meta-bass-root'),
   };
   if (Object.values(hosts).some((host) => !host)) {
     console.warn('sans_bass: player React shell host missing — skipped');

@@ -23,7 +23,7 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/main-BBK05zcU.js"></script>
+  <script type="module" crossorigin src="./assets/main-Cy_d8VEx.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/SiteHeader-2gf44vNM.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/sonify-DfBfGpzd.js">
@@ -97,29 +97,17 @@
         <strong class="notes-panel-label" data-i18n="stem.vocals">Vocals</strong>
       </div>
       <!-- React-owned (Phase 5b): count, Show/Hide, 簡譜, and key tonic/mode/relative-key.
-           See components/DetectionPanel.jsx's NotesChannelPanel. The tune/edits/list-io
-           siblings below stay legacy-owned (Phase 6). -->
+           See components/DetectionPanel.jsx's NotesChannelPanel. -->
       <div id="notes-meta-vocals-root" class="react-portal-host"></div>
       <!-- React-owned (Phase 6a): shortest-note slider and the Advanced disclosure
-           (clip/hmm/fold + fold tolerance/stats). See
-           components/InterpretationPanel.jsx. The edits/list-io siblings below stay
-           legacy-owned (a later Phase 6 sub-slice). -->
+           (clip/hmm/fold + fold tolerance/stats). See components/InterpretationPanel.jsx. -->
       <div id="notes-tune-vocals-root" class="react-portal-host"></div>
-      <details id="notes-edits-vocals" class="notes-edit-list" hidden>
-        <summary id="notes-edits-summary-vocals"></summary>
-        <div class="notes-row notes-edit-panel">
-          <button id="notes-edit-undo-vocals" class="mini" type="button" disabled
-                  data-i18n-attr="title:notes.editUndoTip">&#8630;</button>
-          <ol id="notes-edit-rows-vocals" class="edit-rows"></ol>
-        </div>
-      </details>
-      <div id="notes-list-io-vocals" class="notes-row">
-        <label class="notes-ctl">
-          <span data-i18n="notes.listBars">Bars per line</span>
-          <input id="notes-list-bars-vocals" type="number" min="1" max="16" step="1" value="4">
-        </label>
-        <button id="notes-list-export-vocals" class="mini" type="button" disabled data-i18n="notes.exportList">Export list</button>
-      </div>
+      <!-- React-owned (Phase 6c): edit-group list, Undo. See
+           components/EditorPanel.jsx's EditListPanel. -->
+      <div id="notes-edits-vocals-root" class="react-portal-host"></div>
+      <!-- React-owned (Phase 6c): "Bars per line" and the 簡譜 HTML "Export list" button. See
+           components/EditorPanel.jsx's ListExportPanel. -->
+      <div id="notes-list-io-vocals-root" class="react-portal-host"></div>
     </section>
 
     <section id="notes-bass" class="notes" hidden>
@@ -130,21 +118,10 @@
       <div id="notes-meta-bass-root" class="react-portal-host"></div>
       <!-- React-owned (Phase 6a): see the vocals section's equivalent comment above. -->
       <div id="notes-tune-bass-root" class="react-portal-host"></div>
-      <details id="notes-edits-bass" class="notes-edit-list" hidden>
-        <summary id="notes-edits-summary-bass"></summary>
-        <div class="notes-row notes-edit-panel">
-          <button id="notes-edit-undo-bass" class="mini" type="button" disabled
-                  data-i18n-attr="title:notes.editUndoTip">&#8630;</button>
-          <ol id="notes-edit-rows-bass" class="edit-rows"></ol>
-        </div>
-      </details>
-      <div id="notes-list-io-bass" class="notes-row">
-        <label class="notes-ctl">
-          <span data-i18n="notes.listBars">Bars per line</span>
-          <input id="notes-list-bars-bass" type="number" min="1" max="16" step="1" value="4">
-        </label>
-        <button id="notes-list-export-bass" class="mini" type="button" disabled data-i18n="notes.exportList">Export list</button>
-      </div>
+      <!-- React-owned (Phase 6c): see the vocals section's equivalent comment above. -->
+      <div id="notes-edits-bass-root" class="react-portal-host"></div>
+      <!-- React-owned (Phase 6c): see the vocals section's equivalent comment above. -->
+      <div id="notes-list-io-bass-root" class="react-portal-host"></div>
     </section>
 
     <!-- Shared: tempo is derived from the drums stem and has never depended on which melodic

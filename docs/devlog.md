@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 6e](#react-phase-6e--edit-notes-toggle-and-shared-exportimport-edits-json-buttons-2026-09-07) | React now owns the zoomed pane's Edit-notes toggle and shared Export/Import edits JSON buttons; `app.js` keeps `editMode` and event dispatch, exposing state through a new `notesEdit` snapshot field and three commands. The audit found capo and the chord editor remain entangled via one shared per-frame-recomputed hidden state, deferred to a new Phase 6f. Accepted in production at `130af31`. |
 | [React phase 6d](#react-phase-6d--zoomed-pane-mount-lifecycle-refactor-2026-09-07) | The zoomed pane (capo/chord row, Edit-notes toggle, shared Export/Import buttons, and everything else inside it) now survives a song replacement that keeps a vocals/bass stem, moved into its own `#zoom-lane-root` — the same fix Phase 4b applied to the Overview lane. A pure, ownership-neutral refactor: nothing moved to React. Unblocks Phase 6e, the actual ownership handoff. Accepted in production at `6a49bb4`. |
 | [React phase 6c](#react-phase-6c--edit-list-undo-and-list-export-controls-2026-09-07) | React now owns each melodic stem's edit list (summary/rows/Undo) and list-export row (Bars-per-line/Export list), completing all three originally-scheduled Phase 6 sub-slices; the audit found the Edit-notes toggle and shared Export/Import-edits buttons entangled with the same still-legacy zoomed-pane construction Phase 6b found for capo/chord, joining that same deferred future sub-slice. Accepted in production at `2aa9cdc`. |
 | [React phase 6b](#react-phase-6b--tempogrid-controls-2026-09-07) | React now owns the shared tempo/grid panel (BPM/phase/beats-per-bar/range-toggle/redetect); the audit found the capo control and zoomed-pane chord editor entangled with still-legacy rAF-driven, per-song-rebuilt rendering, so they stay legacy-owned, narrowing this slice from its originally-scoped "tempo/grid/capo/chord". Accepted in production at `65a8ae6`. |
@@ -90,6 +91,88 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## React phase 6e — Edit-notes toggle and shared Export/Import edits JSON buttons (2026-09-07)
+
+- [note] React now owns the zoomed pane's Edit-notes toggle (`#notes-edit`) and shared
+  Export/Import edits JSON buttons. `app.js` keeps `editMode` itself and the
+  `sansbass:editmode`/`sansbass:exportedits`/`sansbass:importedits` event dispatch (unchanged
+  shape, unchanged `notes.js` listeners), exposing visibility/enablement/checked state through
+  a new `applicationSnapshot()` `notesEdit: { visible, enabled, on }` field and three new
+  commands (`setEditMode`, `exportEdits`, `importEdits`).
+- `[insight]` This slice was originally scoped to cover capo, chord display/editing, the
+  Edit-notes toggle, and the shared Export/Import buttons — everything Phase 6d's
+  mount-lifecycle refactor unblocked. Its own audit found that framing does not describe one
+  separable region: the Edit-notes toggle and Export/Import buttons have zero dependency on any
+  per-frame state (every write to either traces back to a discrete cause — a detection result,
+  a ribbon-visibility toggle, an `editmode` event — never the playhead), but capo and the chord
+  editor share one DOM container (`chordGroup`) and one hidden flag recomputed every `draw()`
+  call from `chordTimeline.find(...)`. Moving capo alone would again relocate a control that is
+  visually and functionally part of one row — the same finding 6b's original audit made. The
+  actual deliverable narrowed to the Edit-notes toggle and Export/Import buttons only; capo and
+  the chord editor become Phase 6f.
+- `[insight]` This audit also revised part of 6b's original premise, worth recording before 6f
+  repeats the same reasoning: 6b called the chord editor's per-frame-recomputed fields "the same
+  category of per-frame, clock-driven DOM write the migration architecture keeps outside React
+  everywhere else." Re-reading `syncChordEditor`/`draw()` found that claim broader than
+  necessary — `lib/player-application.js`'s existing `publishTransport()` already proves a
+  "recomputed every frame, published to React only on change" pattern works for exactly this
+  shape of state (most of `syncChordEditor`'s fields don't even depend on `time`, only on
+  discrete state; the one that does, `chordGroup.hidden`/the chord-under-playhead lookup, only
+  changes a few times per song, not every frame). The one still-genuinely-novel problem for 6f
+  is a focus-aware controlled input for the chord field's own live-editable text — a real,
+  well-understood pattern, not a reason capo/chord-editor ownership is unreachable.
+- `[insight]` A genuinely new plumbing direction: since the controls' actual DOM parent
+  (`zLaneSel`) is legacy-built inside `buildUI()`, not static `index.html` markup
+  `mountPlayerShell()` could read upfront, `lib/player-application.js` gained
+  `publishEditHost(node)`/`subscribeEditHost(listener)`/`getEditHost()` — the *reverse*
+  direction of every other attach hook in this migration (elsewhere React creates a node and
+  hands it to `app.js`; here `app.js` creates a stable `<span class="zoom-edit-host">` inside
+  its own tree, kept `display: contents` so React's rendered children act as direct flex items
+  of `zLaneSel`, and hands it to React). Published once at the zoomed pane's first construction
+  (Phase 6d already made this persist across song loads) and nulled on teardown.
+- `[note]` `components/PlayerShell.jsx` gains `EditModeToggle`/`EditIoControls` directly in that
+  file (matching the `MasterVolume`/`LoopControls`/`ModeRoutingControls` precedent — state
+  exposed through `lib/player-application.js`, not a separate-file `notes.js`/`separate.js`
+  store) plus `EditModeControls`, which subscribes to the new host channel and portals the
+  other two once a host exists. The import button stays a real `<button>` with a ref-proxied
+  `.click()` on the hidden file input (matching the legacy shape) rather than a `<label>`
+  wrapping it, to keep it keyboard-focusable/activatable.
+- `[note]` `app.js` gains a shared `notesEditState()` helper (`{ visible, enabled, on }`) used
+  by both `applicationSnapshot()` and `syncEditToggle()`, so the visibility/enablement
+  computation has one source of truth instead of being duplicated.
+- `[test]` New focused Chromium cases exercise the real controls end to end (checking the
+  actual checkbox, clicking the actual buttons, dispatching a real `change` on the real hidden
+  file input) rather than only the manual-event-dispatch shortcuts most existing edit-mode
+  tests already used. After implementation: focused Chromium 59/59 (54 baseline + 5 new),
+  focused Node facade 13/13 (12 baseline + 1 new), full suite 31 files / 454 tests, `npm run
+  build` with only the existing intentional worklet warning, `git diff --check` clean.
+- `[measurement]` Exact commit `130af31` player bundle is 122,717 bytes, +771 (+0.63%) from
+  accepted Phase 6d; the CSS chunk grows 13,323 → 13,339 bytes (+16, the one new
+  `.zoom-edit-host` rule); the 218,172-byte shared React chunk is unchanged — no
+  `components/*.jsx` file outside `PlayerShell.jsx` changed.
+- `[note]` An independent fresh-context review (a `general-purpose` subagent, given the plan
+  doc and the full diff) ran before opening the PR, per this repo's Review Protocol; it found
+  no functional bugs — only one stale comment naming removed variables — fixed before the PR
+  opened.
+- [note] Exact-source local smoke (root, plus the same build served under a nested `pr-998/`
+  path) loaded a real generated fixture, ran a real "Find notes" detection to completion,
+  clicked the real checkbox and buttons and dispatched a real `change` on the real import file
+  input, then replaced with a second fixture with a different stem set — confirmed the
+  toggle's/io-group's node identity (`===`) survived identically while checked/disabled/hidden
+  state correctly reset. A screenshot confirmed the rendered row is pixel-position-identical to
+  the pre-6e legacy row. Repeated identically at the nested route with no first-party console
+  errors.
+- [note] PR #95's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `9af9d8c` before the affected-boundary check (same real-checkbox/button/file-input
+  assertions as the local smoke, repeated live). PR #95 squash-merged as
+  `130af31bd80f8cd55f5b413e8a1ce8f6563deb15`; its exact-SHA deploy and test workflows passed,
+  production displayed `130af31`, and the production canary confirmed the same boundary with an
+  empty first-party console. This full SHA is the Phase 6e rollback anchor, the fifth of Phase
+  6's now-six ordered sub-slices — see the `[insight]`s above. Full details in
+  [react-migration-evidence.md](react-migration-evidence.md).
 
 ---
 

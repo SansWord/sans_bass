@@ -23,8 +23,8 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/main-DijbmbkY.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/SiteHeader--uJNYNKh.js">
+  <script type="module" crossorigin src="./assets/main-CkFlR0dF.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/SiteHeader-BbcmsBwR.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/sonify-DfBfGpzd.js">
   <link rel="stylesheet" crossorigin href="./assets/SiteHeader-suOaFPwt.css">
@@ -128,6 +128,11 @@
          stem is being read, so it lives once regardless of how many note panels exist above.
          React-owned since Phase 6b — see components/TempoPanel.jsx. -->
     <div id="tempo-ui-root" class="react-portal-host"></div>
+
+    <!-- Shared: which extra stems (vocals, other) are mixed into chord detection alongside the
+         fixed guitar/piano/bass baseline. Global per-song setting, not per-channel — same
+         reasoning as the tempo host just above. See components/ChordStemsPanel.jsx. -->
+    <div id="chord-stems-ui-root" class="react-portal-host"></div>
 
     <div id="lanes" class="lanes">
       <div id="standard-lanes-root" class="react-portal-host"></div>

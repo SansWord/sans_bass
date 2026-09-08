@@ -9,13 +9,16 @@ in [`behaviour.md`](behaviour.md).
 
 ## React component migration
 
-**In progress.** [Phased migration roadmap](react-migration.md) covering baseline evidence,
-an isolated React pilot, player boundaries, incremental UI conversion, and final acceptance.
-Phase 0 is recorded and the phase-1 demo-header pilot has met its local and PR-preview gates;
-merge and production evidence are tracked with
-[PR #65](https://github.com/SansWord/sans_bass/pull/65). Phase 2, the player command/
-subscription boundary, is next after production acceptance. Progress and remaining legacy
-ownership are tracked in the roadmap.
+**Built.** [Phased migration roadmap](react-migration.md) covering baseline evidence, an
+isolated React pilot, player boundaries, incremental UI conversion, and final acceptance. All
+seven phases (and Phase 6's six sub-slices) are accepted in production, finishing at Phase 7's
+legacy-UI retirement and release acceptance
+([PR #99](https://github.com/SansWord/sans_bass/pull/99)). React now owns all player and
+demo-page component UI; `app.js` remains the sole owner of decoded tracks, transport/routing
+state, the audio graph, and canvas painting — see `CLAUDE.md`'s "Hard constraints" for the
+current, steady-state architecture and
+[`docs/react-migration-history.md`](react-migration-history.md) for the phase-by-phase
+narrative.
 
 ## Note editing — layer 4
 

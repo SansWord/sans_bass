@@ -129,6 +129,11 @@ init();
          React-owned since Phase 6b — see components/TempoPanel.jsx. -->
     <div id="tempo-ui-root" class="react-portal-host"></div>
 
+    <!-- Shared: which extra stems (vocals, other) are mixed into chord detection alongside the
+         fixed guitar/piano/bass baseline. Global per-song setting, not per-channel — same
+         reasoning as the tempo host just above. See components/ChordStemsPanel.jsx. -->
+    <div id="chord-stems-ui-root" class="react-portal-host"></div>
+
     <div id="lanes" class="lanes">
       <div id="standard-lanes-root" class="react-portal-host"></div>
       <div id="overview-lane-root" class="react-portal-host"></div>

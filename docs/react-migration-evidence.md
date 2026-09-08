@@ -1,5 +1,186 @@
 # React migration evidence
 
+## Phase 6f — capo control and chord display/editing
+
+Status: accepted in production at rollback anchor
+`c833b7e3022e7e0a7c414ca848aa50da51364d5f`, the sixth and last of Phase 6's ordered
+sub-slices, completing Phase 6 in full. Evidence collected 2026-09-07/08 America/Los_Angeles.
+Branch `feat/react-phase-6f-capo-chord-editor`; starting source
+`0d5013c3e0b6860f66a49b2ac45d707d2efe3014` (Phase 6e documentation-anchor merge, PR #96);
+plan committed as `b8ba2a0`, implementation as `da0f9d0` (squash-merged as PR #97's single
+commit, `c833b7e`). Previous accepted implementation rollback anchor: Phase 6e at
+`130af31bd80f8cd55f5b413e8a1ce8f6563deb15`, documented through
+[PR #95](https://github.com/SansWord/sans_bass/pull/95) and anchored through
+[PR #96](https://github.com/SansWord/sans_bass/pull/96).
+
+Phase 6e's own audit found the capo control and the chord editor entangled with each other
+(one shared DOM container, `chordGroup`) and with a per-frame-recomputed hidden flag, and
+sketched — but did not implement — the design this slice needed. This slice's own re-audit of
+`buildUI()`/`draw()`/`syncChordEditor()`/`retranslate()` (they had shifted since 6e's own
+snapshot) confirmed 6e's revision of the original Phase 6b premise line by line: every field
+`syncChordEditor()` wrote except the chord segment under the playhead was an ordinary
+discrete-state derivation, not genuinely per-frame, and the one part that is (which chord
+segment, if any, is under the playhead) changes only a few times per song — exactly the shape
+`publishTransport`/`sameTransport` already solve.
+
+### Ownership and command boundary
+
+The bounded audit and plan are recorded in
+[react-phase-6f-capo-chord-editor-plan.md](react-phase-6f-capo-chord-editor-plan.md).
+
+`lib/player-application.js` gains a `publishChord(projection)`/`subscribeChord(listener)`/
+`getChordSnapshot()` triplet structurally identical to `publishTransport`/`sameTransport`/
+`getTransportSnapshot` (a `sameChord` shallow-compare, extended with a `sameChordCandidates`
+array comparison, gates notification) — a distinct store from `transport` (this isn't
+playback state) and from `notesEdit` (this must be recomputed every `draw()` tick, not just
+from the discrete sites `notesEdit`'s own source functions publish from) — plus a
+`publishChordHost(node)`/`subscribeChordHost(listener)`/`getChordHost()` triplet mirroring
+`publishEditHost`, since the row's actual parent (`zName`) is legacy DOM with no static
+`index.html` root to portal into. Three new commands (`setCapo`, `commitChord`,
+`redetectChord`) dispatch the exact same `sansbass:capochange`/`sansbass:chordedit`/
+`sansbass:chordredetect` events the removed DOM listeners used, so `notes.js`'s own listeners
+are untouched.
+
+`components/PlayerShell.jsx` gains `CapoSelect`, `ChordInput`, `ChordCandidatesSelect`, and
+`ChordRow` (the presentational components, added directly in this file matching the
+`EditModeToggle`/`EditIoControls` precedent) and `ChordEditorControls`, which — like
+`OverviewLane`/`PrimarySeekControls` reading `subscribeTransport` themselves rather than via a
+prop from `PlayerShell`'s top-level snapshot — subscribes to both `subscribeChordHost` (for
+the host) and `subscribeChord` (for the per-frame projection) directly, and portals `ChordRow`
+into the host once it exists. `ChordInput` is the one genuinely new pattern: a real controlled
+`<input>`, not an imperative escape hatch. Local draft state (`useState`) syncs from the
+published `chord.inputValue` only while unfocused (a `focusedRef`-gated `useEffect`, the
+direct translation of the legacy `document.activeElement !== chordEditor.input` guard); a
+`valueAtFocusRef` captures the draft at focus time so blur commits only when the value
+actually differs from it — reproducing a native `<input>`'s own `change` semantics (which
+fires only on a real value change since focus) rather than committing on every blur
+regardless of whether anything was typed.
+
+`app.js` loses `chordEditor` and the entire `capoCaption`/`capoSelect`/`playKey`/
+`chordCaption`/`chordInput`/`chordCandidates`/`chordRedetect`/`chordSpinner`/`chordStatus`/
+`chordGroup` construction block (replaced by one stable `<span class="zoom-chord-host">`),
+`syncChordEditor()` itself (replaced by `applicationChordSnapshot()`, called from `draw()` via
+`playerApplication.publishChord()` alongside the existing `publishTransport()` call), the
+reuse branch's imperative `capoSelect.value = '0'` reset (no longer needed — a React-controlled
+`<select>` reflects the module-level `capo` reset on its own next publish tick), and the
+retranslate block's now-dead DOM writes. It keeps `capo`, `chordTimeline`,
+`chordDetectionPhase`, `detectedKey` (unchanged module state — only presentation moved) and a
+new small `chordSegmentStart` variable the `commitChord` command reads (the one thing
+`applicationChordSnapshot()` computes that no component needs).
+
+### Failing-first and automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+New focused Node facade cases (`tests/player-application.test.js`) cover the three new
+commands, the `chord` field's presence in the initial snapshot, a deduplicated
+`publishChord`/`subscribeChord`/`getChordSnapshot` cycle (mirroring `publishTransport`'s own
+dedup test), and an identity-deduplicated `publishChordHost`/`subscribeChordHost`/
+`getChordHost` cycle (mirroring `publishEditHost`'s) — all written and confirmed failing
+before `lib/player-application.js` changed. New focused production-entry Chromium cases
+(`tests/player.test.js`) exercise the real controls end to end: a focused chord field is not
+clobbered by an external capo-driven republish and commits only on an actual edit (versus an
+unedited focus-then-blur, which commits nothing); Enter commits immediately and blurs; picking
+a real chord-candidate option commits its value; a language switch retranslates the capo/chord
+captions, both tooltips, and the redetect button. Two pre-existing cases exercising this region
+against the legacy DOM needed a `waitFor` where a synchronous check had relied on a synchronous
+legacy DOM write that a React re-render no longer guarantees to have flushed yet.
+
+An independent fresh-context review (general-purpose agent, given the plan doc and the full
+diff, run before opening the PR) traced `sameChord`/`publishChord`/`publishChordHost` against
+their `sameTransport`/`publishTransport`/`publishEditHost` precedent, `applicationChordSnapshot()`
+against the deleted `syncChordEditor()` field by field, and `ChordInput`'s focus/blur sequencing
+against React's event-flush timing (including the Enter-then-programmatic-blur double-dispatch
+case, which it confirmed is the same `chordSegmentStart == null` guard the legacy code always
+had, not a new hazard) — no correctness bugs, preservation-rule violations, or unnecessary
+duplication found; test coverage judged to exercise the actual risk surface rather than being
+shallow.
+
+After implementation:
+
+- focused production-entry Chromium `tests/player.test.js`: 1 file, 63 tests passed (4 net new
+  this slice; 2 existing cases edited to add a `waitFor`);
+- focused Node facade `tests/player-application.test.js`: 1 file, 15 tests passed (2 new: the
+  chord-projection dedup case and the chord-host identity-dedup case);
+- full `npm test`: 31 files, 460 tests passed (454 baseline at Phase 6e's anchor + 6 new);
+- `npm run build`: passed; existing intentional unresolved-at-build-time
+  `stretch-processor.js` URL warning only;
+- `git diff --check`: passed.
+
+The exact-source build emits **124,387 bytes** in the player entry (`dist/assets/main-*.js`)
+versus Phase 6e's 122,717: **+1,670 bytes (+1.36%)**. The CSS chunk grows from 13,339 to
+13,356 bytes (**+17 bytes**, the one new `.zoom-chord-host` rule) and the shared React/header
+chunk is unchanged at exactly 218,172 bytes — no new dependency was added, and no
+`components/*.jsx` file outside `PlayerShell.jsx` changed.
+
+### Exact-source local smoke
+
+Local production build served via `npm run preview` (root, port 4173) and the same origin's
+`/demos/` route (nested-route smoke). A generated 1-second two-stem (vocals/guitar) ZIP
+fixture, built with the repository's own `tests/helpers/audio-fixtures.js#stemsZip` run
+directly under Node, loaded through the real `#file-input` at root via a direct file-input
+upload; a synthetic `sansbass:chords` `CustomEvent` (capo 0, a detected key, one chord segment
+with two candidates) dispatched against the real page stood in for a real detection run, the
+same substitution the existing `player.test.js` chord cases already use.
+
+Changing the real capo `<select>`'s value from `0` to `3` correctly re-transposed the play-key
+readout ("Play key G"), the chord field's displayed value ("G"), and the canvas overlay's own
+chord label (all three read from the same `capo` module variable, confirming presentation-only
+scope). Picking the real chord-candidates option showing the capo-transposed "B (0.40)"
+correctly dispatched `sansbass:chordedit` with the concert-pitch `{start:0, label:'D'}` — the
+full transpose-for-display / transpose-back-for-storage round trip. Clicking the real
+Re-detect button dispatched `sansbass:chordredetect` with no detail. Switching to 繁體中文
+correctly retranslated the row to "移調夾 3 演奏調 G 和弦 [G] 重新偵測和弦" and back. The
+`/demos/` nested route loaded with no console errors. The first-party console carried no
+errors throughout either check.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | A generated two-stem WAV/ZIP fixture plus synthetic `sansbass:chords` events cover ordinary stems, capo transposition, candidate selection, and busy/waiting states, through the production-entry Chromium suite and a local exact-source smoke. |
+| Malformed input | Unchanged; no ownership-affecting code path touched. |
+| Storage/locale | Both languages pass in Chromium and in exact-source local smoke; the capo/chord row's captions, tooltips, and redetect button text retranslate correctly. |
+| Handheld | Unaffected; no new capability-gated code. |
+| Worker | Not exercised directly this slice — the chord-editing controls consume `notes.js`'s already-existing `sansbass:chords` broadcast, which the exact-source smoke substitutes with a synthetic event, the same approach the existing automated chord tests already use; no Worker protocol code changed. |
+| Visual | Exact-source local smoke and the PR-preview/production checks reviewed the row's layout and control visibility at desktop width, including a language switch — no exhaustive comparison or narrow-viewport screenshot. |
+| Auditory | Not claimed; genuine command/state evidence was collected, not subjective listening. |
+| Real song | Not run against `examples/nov_you.zip` in this evidence pass; the changed boundary (control ownership/presentation only, no audio-path or Worker change) does not plausibly affect it, matching every prior Phase 6 sub-slice's own scoping. |
+
+### PR-preview deployment evidence
+
+[PR #97](https://github.com/SansWord/sans_bass/pull/97)'s `test` and `deploy` checks both
+passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-97/` displayed
+exact synthetic merge `d98b3d367d77498eaa4ffa25019357f61a3de450` (`d98b3d3`), matching
+`gh api repos/SansWord/sans_bass/pulls/97 --jq '.merge_commit_sha'` at the time of that check.
+The same real-capo/real-candidate/real-redetect/retranslation check performed in the local
+smoke above was repeated against the live preview with a freshly generated fixture and
+produced identical results. The first-party console carried no errors.
+
+### Production acceptance evidence
+
+PR #97 squash-merged as exact production source
+`c833b7e3022e7e0a7c414ca848aa50da51364d5f`. Its
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34174004830) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34174004835) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/` (fetched with a
+cache-busting query string) displayed exact `c833b7e`.
+
+The production delivery canary repeated the affected boundary: dispatching the same synthetic
+`sansbass:chords` fixture rendered the capo/chord row correctly and produced no console
+errors; the page booted cleanly.
+
+The complete synthetic, malformed-input, storage-fault, and narrow-viewport matrices were not
+repeated in production because the canary agreed with the exact-source and preview evidence
+above. No real-song (`examples/nov_you.zip`), musical-accuracy, physical-handheld, or
+subjective auditory check is claimed for this increment, for the same reasons given in the
+omissions table above.
+
+Phase 6f is accepted at the full SHA above, the sixth and last of Phase 6's ordered
+sub-slices, completing Phase 6 in full. This separate documentation-only PR records the
+immutable rollback anchor. Phase 7 (legacy UI retirement and release acceptance) may begin.
+
 ## Phase 6e — Edit-notes toggle and shared Export/Import edits JSON buttons
 
 Status: accepted in production at rollback anchor

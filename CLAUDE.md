@@ -185,15 +185,25 @@ loop it. Not a DAW, not a mixer, not a library manager — one song at a time.
   inside its own tree, kept `display: contents`, and hands it to React, which portals
   `EditModeToggle`/`EditIoControls` — added directly in `components/PlayerShell.jsx`, matching
   the `MasterVolume`/`LoopControls` precedent since this state is `lib/player-application.js`-
-  owned, not a separate `notes.js`/`separate.js` store — into it once it exists). The capo
-  control and the chord editor remain entirely legacy-owned, now Phase 6f: 6e's own audit found
-  most of the chord editor's per-frame-recomputed fields do not actually need to stay
-  imperative the way canvas pixels do (`publishTransport()`'s existing "recomputed every frame,
-  published only on change" pattern already covers this shape of state), narrowing 6f's real
-  design problem to a focus-aware controlled input for the chord field's own live-editable
-  text. Phase 2's DOM-independent command/subscription facade in `lib/player-application.js`
-  remains the only UI-to-player seam; React invokes its commands and renders its published
-  transport snapshot.
+  owned, not a separate `notes.js`/`separate.js` store — into it once it exists). Phase 6f
+  completes Phase 6 by giving React the capo control and chord display/editing themselves
+  (`chordGroup`'s former contents): 6e's own audit found most of the chord editor's
+  per-frame-recomputed fields did not actually need to stay imperative the way canvas pixels
+  do, and 6f's re-audit confirmed it — `lib/player-application.js` gained a
+  `publishChord`/`subscribeChord`/`getChordSnapshot` triplet structurally identical to
+  `publishTransport`/`sameTransport`/`getTransportSnapshot` (recomputed every `draw()` tick,
+  published to subscribers only when the projection actually changes) backed by a new
+  `applicationChordSnapshot()` in `app.js`, plus a `publishChordHost`/`subscribeChordHost`/
+  `getChordHost` triplet mirroring `publishEditHost`, at the exact position `chordGroup` used
+  to occupy inside `zName`. The one genuinely new pattern is `ChordInput` — a real controlled
+  `<input>`, not an imperative escape hatch: local draft state syncs from the published value
+  only while unfocused (mirroring the legacy `document.activeElement !== chordEditor.input`
+  guard), and a `valueAtFocusRef` reproduces a native `<input>`'s own `change` semantics
+  (commits on blur only if the value actually differs from what it was when focus began) so an
+  unedited focus-then-blur commits nothing. `capo`, `chordTimeline`, `chordDetectionPhase`, and
+  `detectedKey` stay `app.js` module state — only presentation moved. Phase 2's DOM-independent
+  command/subscription facade in `lib/player-application.js` remains the only UI-to-player
+  seam; React invokes its commands and renders its published transport snapshot.
   Audio, analysis,
   serialization, canvas renderers, Workers, and AudioWorklets stay ordinary JavaScript
   modules outside React. Vanilla JS remains the default where a component lifecycle is not
@@ -345,12 +355,22 @@ channel in `lib/player-application.js`, into a stable `<span class="zoom-edit-ho
 `app.js` creates once inside `zLaneSel` (the reverse of every other attach hook: `app.js`
 hands React the node here, not the other way around) — reading a new `notesEdit` snapshot
 field and three commands (`setEditMode`/`exportEdits`/`importEdits`) that dispatch the exact
-same events the removed DOM listeners used. The capo control and the zoomed pane's chord
-display/editing stay entirely legacy-owned in `app.js` (sharing one DOM container and one
-per-frame-recomputed hidden state with each other, which is why they could not move with the
-other two controls — see `docs/react-phase-6e-edit-toggle-export-import-plan.md`'s scope
-decision), now Phase 6f, unblocked by 6d and with 6e's own audit narrowing 6f's real design
-problem to a focus-aware controlled input for the chord field's live-editable text.
+same events the removed DOM listeners used. `components/PlayerShell.jsx`'s `CapoSelect`,
+`ChordInput`, `ChordCandidatesSelect`, and `ChordRow` (Phase 6f) now own the capo control and
+the zoomed pane's chord display/editing — the row Phase 6e's audit found entangled with a
+shared per-frame-recomputed hidden state, unblocked by that same audit's revised finding that
+the shape already fits `publishTransport`'s existing dedup pattern. They portal, via a new
+`publishChordHost`/`subscribeChordHost` channel in `lib/player-application.js` mirroring
+`publishEditHost`, into a stable `<span class="zoom-chord-host">` `app.js` creates once inside
+`zName` at the position `chordGroup` used to occupy — reading a new `chord` snapshot (a
+distinct `publishChord`/`subscribeChord`/`getChordSnapshot` channel, not a field of `notesEdit`
+or `transport`, recomputed every `draw()` tick and published only on change) and three commands
+(`setCapo`/`commitChord`/`redetectChord`) that dispatch the exact same
+`sansbass:capochange`/`sansbass:chordedit`/`sansbass:chordredetect` events the removed DOM
+listeners used. `ChordInput` is the one genuinely new pattern this migration needed: a real
+controlled `<input>` whose local draft state syncs from the published value only while
+unfocused, with a `valueAtFocusRef` reproducing a native `<input>`'s own change-since-focus
+commit semantics — not an imperative escape hatch. This completes Phase 6.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the
@@ -419,10 +439,9 @@ notes.js  notes.worker.js          ESM — notes panel and the analysis worker; 
                                    tempo/grid-panel presentation is components/TempoPanel.jsx,
                                    and each channel's edit-list/list-export-row presentation is
                                    components/EditorPanel.jsx. The Edit-notes toggle and shared
-                                   Export/Import edits JSON buttons are React-owned via
-                                   components/PlayerShell.jsx (Phase 6e). The capo control and
-                                   chord display/editing remain app.js-owned (deferred to
-                                   Phase 6f, see docs/react-migration.md)
+                                   Export/Import edits JSON buttons, and the capo control and
+                                   chord display/editing, are React-owned via
+                                   components/PlayerShell.jsx (Phase 6e, Phase 6f)
 tests/*.test.js                    units      → `npm test` (Vitest; see vitest.config.js)
 tests/parity.html                  accuracy   → window.__parity
 tests/notes.html                   notes+key  → window.__notes

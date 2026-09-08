@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 6f](#react-phase-6f--capo-control-and-chord-displayediting-2026-09-07) | React now owns the zoomed pane's capo control and chord display/editing, completing Phase 6 in full. `lib/player-application.js` gains a `publishChord`/`subscribeChord` dedup channel mirroring `publishTransport`, and a focus-aware controlled `<input>` for the chord field needed no imperative escape hatch. Accepted in production at `c833b7e`. |
 | [React phase 6e](#react-phase-6e--edit-notes-toggle-and-shared-exportimport-edits-json-buttons-2026-09-07) | React now owns the zoomed pane's Edit-notes toggle and shared Export/Import edits JSON buttons; `app.js` keeps `editMode` and event dispatch, exposing state through a new `notesEdit` snapshot field and three commands. The audit found capo and the chord editor remain entangled via one shared per-frame-recomputed hidden state, deferred to a new Phase 6f. Accepted in production at `130af31`. |
 | [React phase 6d](#react-phase-6d--zoomed-pane-mount-lifecycle-refactor-2026-09-07) | The zoomed pane (capo/chord row, Edit-notes toggle, shared Export/Import buttons, and everything else inside it) now survives a song replacement that keeps a vocals/bass stem, moved into its own `#zoom-lane-root` — the same fix Phase 4b applied to the Overview lane. A pure, ownership-neutral refactor: nothing moved to React. Unblocks Phase 6e, the actual ownership handoff. Accepted in production at `6a49bb4`. |
 | [React phase 6c](#react-phase-6c--edit-list-undo-and-list-export-controls-2026-09-07) | React now owns each melodic stem's edit list (summary/rows/Undo) and list-export row (Bars-per-line/Export list), completing all three originally-scheduled Phase 6 sub-slices; the audit found the Edit-notes toggle and shared Export/Import-edits buttons entangled with the same still-legacy zoomed-pane construction Phase 6b found for capo/chord, joining that same deferred future sub-slice. Accepted in production at `2aa9cdc`. |
@@ -91,6 +92,93 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## React phase 6f — capo control and chord display/editing (2026-09-07)
+
+- `[note]` React now owns the zoomed pane's capo control and chord display/editing
+  (`CapoSelect`/`ChordInput`/`ChordCandidatesSelect`/`ChordRow`), completing Phase 6 in full.
+  `app.js` keeps `capo`/`chordTimeline`/`chordDetectionPhase`/`detectedKey` and the
+  `sansbass:capochange`/`sansbass:chordedit`/`sansbass:chordredetect` event dispatch (unchanged
+  shape, unchanged `notes.js` listeners), exposing presentation through a new
+  `applicationChordSnapshot()` and three new commands (`setCapo`, `commitChord`,
+  `redetectChord`).
+- `[insight]` This slice's own re-audit of `buildUI()`/`draw()`/`syncChordEditor()`/
+  `retranslate()` (they had shifted since 6e's own snapshot) confirmed 6e's revision of the
+  original Phase 6b premise line by line: every field `syncChordEditor()` wrote except the
+  chord segment under the playhead was an ordinary discrete-state derivation (spinner/status
+  depend only on `chordDetectionPhase`; the play-key readout only on `detectedKey`/`capo` —
+  none of it on `time`), not genuinely per-frame. The one part that does depend on `time`
+  (which chord segment, if any, is under the playhead) changes only a few times per song, not
+  every frame — exactly the shape `publishTransport`/`sameTransport` already solve for the
+  transport clock. `lib/player-application.js` gained a distinct
+  `publishChord`/`subscribeChord`/`getChordSnapshot` triplet (not a field of `transport` or
+  `notesEdit` — this state must be recomputed every `draw()` tick, which `notesEdit`'s
+  discrete-only sites don't need) structurally identical to `publishTransport`'s own, called
+  from `draw()` unconditionally alongside the existing `publishTransport()` call.
+- `[insight]` The one genuinely new pattern, sketched but not designed by 6e, turned out not to
+  need an imperative escape hatch: `ChordInput` is a real controlled `<input>`. Local `useState`
+  draft syncs from the published `chord.inputValue` only while unfocused (a `focusedRef`-gated
+  `useEffect` — the direct translation of the legacy `document.activeElement !==
+  chordEditor.input` guard), and a `valueAtFocusRef` captures the draft at focus time so a blur
+  commits only when the value actually differs from it — reproducing a native `<input>`'s own
+  `change` semantics (fires only on a real edit since focus) rather than committing on every
+  blur regardless of whether anything was typed. Enter still commits unconditionally and blurs,
+  which can double-dispatch the same commit exactly as the legacy code already did (blurring
+  after a real edit also satisfies the "differs from focus start" check) — carried forward, not
+  introduced.
+- `[note]` The host follows the exact `publishEditHost` shape 6e established: `app.js` creates
+  one stable `<span class="zoom-chord-host">` at the position `chordGroup` used to occupy
+  inside `zName`, and hands it to React via a new `publishChordHost`/`subscribeChordHost`/
+  `getChordHost` channel.
+- `[note]` A real simplification fell out of the migration: the reuse branch's imperative
+  `capoSelect.value = '0'` reset (needed only because the legacy `<select>` persisted with its
+  own stale `.value` once Phase 6d stopped recreating it every song) is gone — a
+  React-controlled `<select value={chord.capo}>` reflects the module-level `capo` reset on its
+  own next `publishChord()` tick, with no DOM write required.
+- `[note]` A small pre-existing inconsistency got fixed as a side effect, the same way Phase
+  6c's edit-list migration incidentally added a missing `langchange` listener: legacy
+  `retranslate()` unconditionally set the status text to "Detecting…" regardless of
+  `chordDetectionPhase`, so a language switch mid-"waiting for the other channel" briefly
+  showed the wrong phase until the next real state change. Computing the status text from
+  `chord.busyPhase` at render time (as every other React-owned status line already does) fixes
+  this automatically.
+- `[test]` New focused Chromium cases exercise the real controls end to end: a focused chord
+  field survives an external capo-driven republish without losing the typed draft, and commits
+  only on an actual edit (an unedited focus-then-blur commits nothing); Enter commits
+  immediately and blurs; picking a real candidate option commits its value; a language switch
+  retranslates the capo/chord captions, both tooltips, and the redetect button. Two existing
+  cases needed a `waitFor` where a synchronous check had relied on a synchronous legacy DOM
+  write a React re-render no longer guarantees to have flushed yet. After implementation:
+  focused Chromium 63/63 (59 baseline + 4 net new), focused Node facade 15/15 (13 baseline + 2
+  new), full suite 31 files / 460 tests, `npm run build` with only the existing intentional
+  worklet warning, `git diff --check` clean.
+- `[measurement]` Exact commit `c833b7e` player bundle is 124,387 bytes, +1,670 (+1.36%) from
+  accepted Phase 6e; the CSS chunk grows 13,339 → 13,356 bytes (+17, the one new
+  `.zoom-chord-host` rule); the 218,172-byte shared React chunk is unchanged — no
+  `components/*.jsx` file outside `PlayerShell.jsx` changed.
+- `[note]` An independent fresh-context review (a `general-purpose` subagent, given the plan
+  doc and the full diff) ran before opening the PR, per this repo's Review Protocol; it traced
+  the new dedup/host channels against their `publishTransport`/`publishEditHost` precedent and
+  `ChordInput`'s focus/blur sequencing against React's event-flush timing, and found no
+  correctness bugs, preservation-rule violations, or unnecessary duplication.
+- `[note]` Exact-source local smoke (root, plus the same origin's `/demos/` route) loaded a
+  real generated fixture and substituted a synthetic `sansbass:chords` event for a real
+  detection run (the same substitution the existing automated chord tests already use).
+  Changing the real capo select from `0` to `3` correctly re-transposed the play-key readout,
+  the chord field, and the canvas overlay together; picking the candidate showing the
+  capo-transposed "B (0.40)" correctly dispatched the concert-pitch `{start:0, label:'D'}` —
+  the full transpose-for-display/transpose-back-for-storage round trip confirmed live. No
+  first-party console errors at either route.
+- `[note]` PR #97's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `d98b3d3` before the affected-boundary check (same real-capo/candidate/redetect/
+  retranslation assertions as the local smoke, repeated live). PR #97 squash-merged as
+  `c833b7e3022e7e0a7c414ca848aa50da51364d5f`; its exact-SHA deploy and test workflows passed,
+  production displayed `c833b7e`, and the production canary confirmed the same boundary with an
+  empty first-party console. This full SHA is the Phase 6f rollback anchor, the sixth and last
+  of Phase 6's ordered sub-slices — Phase 6 is now complete. Full details in
+  [react-migration-evidence.md](react-migration-evidence.md).
 
 ---
 

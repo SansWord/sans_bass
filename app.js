@@ -88,7 +88,15 @@ let zoomLaneSel = new Set(['vocals']);
 let zoomChipEls = [];      // [{ stem, select, label, spk }] for the current song's lane chips
 let chordTimeline = [];    // half-bar results supplied by notes.js after Find notes
 let chordDetectionPhase = null; // null | 'waiting' | 'detecting'
-let chordEditor = null;    // { group, input, list, segmentStart } for the chord under the playhead
+/* The capo control and chord display/editing are React-owned since Phase 6f
+ * (components/PlayerShell.jsx's CapoSelect/ChordInput/ChordCandidatesSelect/ChordRow) — no
+ * module-level DOM references remain here. Their presentation is published through
+ * applicationChordSnapshot() (see draw()'s playerApplication.publishChord() call below); their
+ * actions are playerApplication.commands.setCapo/commitChord/redetectChord. chordSegmentStart
+ * is the one piece applicationChordSnapshot() computes that no component reads — only the
+ * commitChord command handler does, to address the commit at the right timeline position,
+ * the same role chordEditor.segmentStart used to play. */
+let chordSegmentStart = null;
 let capo = 0;
 let detectedKey = null;
 /* Sub-beat dotted lines in the zoomed pane, off by default — the beat/bar grid is the
@@ -618,7 +626,7 @@ function buildUI(title) {
   zoomNotesStem = null;
   // overviewEl is deliberately NOT reset here — see its own declaration comment. React owns
   // the Overview lane's mount/unmount lifecycle now, not this per-song rebuild. zoomEl,
-  // chordEditor, zoomToolbar, halfBeatBtn, quarterBeatBtn, zoomChipEls, and zoomNotesChipEls
+  // zoomToolbar, halfBeatBtn, quarterBeatBtn, zoomChipEls, and zoomNotesChipEls
   // get the same treatment as of Phase 6d (see docs/react-phase-6d-zoomed-pane-mount-refactor-
   // plan.md): they are NOT unconditionally reset here. The zoomed pane's own DOM (built into
   // #zoom-lane-root, a root separate from #note-lanes-root precisely so this teardown above
@@ -814,80 +822,23 @@ function buildUI(title) {
     zLaneSel.appendChild(zEditHost);
     playerApplication.publishEditHost(zEditHost);
 
-    const chordGroup = document.createElement('div');
-    chordGroup.className = 'zoom-chord-row';
-    chordGroup.hidden = true;
-    const chordCaption = document.createElement('span');
-    chordCaption.textContent = tr('notes.chord');
-    const capoCaption = document.createElement('span');
-    capoCaption.textContent = tr('notes.capo');
-    const capoSelect = document.createElement('select');
-    capoSelect.className = 'capo-select';
-    capoSelect.title = tr('notes.capoTip');
-    capoSelect.setAttribute('aria-label', tr('notes.capoTip'));
-    for (let fret = 0; fret <= 11; fret++) {
-      const option = document.createElement('option');
-      option.value = String(fret);
-      option.textContent = String(fret);
-      capoSelect.appendChild(option);
-    }
-    capoSelect.addEventListener('change', () => {
-      capo = Number(capoSelect.value);
-      window.dispatchEvent(new CustomEvent('sansbass:capochange', { detail: { capo } }));
-      draw();
-    });
-    const playKey = document.createElement('span');
-    playKey.className = 'notes-count capo-play-key';
-    const chordInput = document.createElement('input');
-    chordInput.type = 'text';
-    chordInput.className = 'note-field chord-field';
-    chordInput.setAttribute('aria-label', tr('notes.chordEditTip'));
-    chordInput.title = tr('notes.chordEditTip');
-    const commitChord = () => {
-      if (chordEditor?.segmentStart == null || !chordInput.value.trim()) return;
-      window.dispatchEvent(new CustomEvent('sansbass:chordedit', {
-        detail: { start: chordEditor.segmentStart, label: transposeChordLabel(chordInput.value.trim(), capo) },
-      }));
-    };
-    chordInput.addEventListener('change', commitChord);
-    chordInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') { event.preventDefault(); commitChord(); chordInput.blur(); }
-    });
-    /* A real select, not datalist: datalist suggestions are filtered by the text already in
-     * the input, which hides alternatives precisely when a detected chord is populated. */
-    const chordCandidates = document.createElement('select');
-    chordCandidates.className = 'note-field chord-candidates';
-    chordCandidates.setAttribute('aria-label', tr('notes.chordCandidates'));
-    chordCandidates.title = tr('notes.chordCandidatesTip');
-    chordCandidates.hidden = true;
-    chordCandidates.addEventListener('change', () => {
-      if (!chordCandidates.value) return;
-      chordInput.value = chordCandidates.value;
-      commitChord();
-    });
-    const chordRedetect = document.createElement('button');
-    chordRedetect.type = 'button';
-    chordRedetect.className = 'mini';
-    chordRedetect.textContent = tr('notes.chordRedetect');
-    chordRedetect.title = tr('notes.chordRedetectTip');
-    chordRedetect.addEventListener('click', () => {
-      window.dispatchEvent(new CustomEvent('sansbass:chordredetect'));
-    });
-    const chordSpinner = document.createElement('span');
-    chordSpinner.className = 'notes-spinner';
-    chordSpinner.hidden = true;
-    const chordStatus = document.createElement('span');
-    chordStatus.className = 'notes-count chord-status';
-    chordStatus.textContent = tr('notes.chordDetecting');
-    chordStatus.hidden = true;
-    chordGroup.append(capoCaption, capoSelect, playKey, chordCaption, chordInput,
-      chordCandidates, chordRedetect, chordSpinner, chordStatus);
-    chordEditor = { group: chordGroup, input: chordInput, candidates: chordCandidates, segmentStart: null,
-      caption: chordCaption, capoCaption, capoSelect, playKey, redetect: chordRedetect, spinner: chordSpinner, status: chordStatus };
+    /* The capo control and chord display/editing that used to be built here (as `chordGroup`,
+     * a sibling of `zTopRow`/`zLaneSel` inside `zName`) are React-owned since Phase 6f — see
+     * components/PlayerShell.jsx's CapoSelect/ChordInput/ChordCandidatesSelect/ChordRow. Same
+     * plumbing shape as `zEditHost` just above (a legacy-created, `display: contents` host
+     * handed to React via `playerApplication.publishChordHost()`, since `zName` is legacy DOM
+     * with no static index.html root to portal into), at the exact position `chordGroup` used
+     * to occupy — see docs/react-phase-6f-capo-chord-editor-plan.md. Created once, alongside
+     * the rest of this first-time-construction branch, and persists across song loads exactly
+     * like `zEditHost`/`zChipHost` — never recreated on reuse, only torn down (see the
+     * `else if (zoomEl)` teardown branch below). */
+    const zChordHost = document.createElement('span');
+    zChordHost.className = 'zoom-chord-host';
+    playerApplication.publishChordHost(zChordHost);
 
     syncZoomChips();
 
-    zName.append(zTopRow, chordGroup, zLaneSel);
+    zName.append(zTopRow, zChordHost, zLaneSel);
 
     const zCanvas = document.createElement('canvas');
     zCanvas.className = 'wave zoomwave';
@@ -1074,25 +1025,27 @@ function buildUI(title) {
     // attachOverviewCanvas/attachOverviewExtra below, not here — see overviewEl's own comment.
   } else if (anchorTrack) {
     /* Reuse: the pane built for a previous song is still attached (anchorTrack persisted
-     * across this song replacement). Only the parts that genuinely vary per song need
-     * rebuilding — the stem/Notes chips (different songs can have different stem sets) and
-     * capoSelect's value (capo itself was already reset to 0 above; the <select> element's
-     * own .value does not follow that reset automatically once it stops being recreated). */
+     * across this song replacement). Only the stem/Notes chips genuinely vary per song and
+     * need rebuilding (different songs can have different stem sets) — capo's displayed value
+     * no longer needs an imperative reset here: `capo` itself was already reset to 0 above,
+     * and the React-controlled capo <select> (Phase 6f) reflects that on its own next
+     * publishChord() tick, unlike the legacy <select> node this replaced, which needed its own
+     * stale `.value` reset by hand once it stopped being recreated every song. */
     rebuildZoomChipHost(zoomEl.chipHost);
-    if (chordEditor) chordEditor.capoSelect.value = '0';
   } else if (zoomEl) {
     /* Teardown: this song has no vocals/bass stem where a previous one did. Matches today's
      * "no anchor → no zoomed pane" state exactly; a later replacement that reintroduces a
      * vocals/bass stem re-enters the first-time branch above and builds a fresh pane. */
     zoomEl.lane.remove();
     zoomEl = null;
-    chordEditor = null;
+    chordSegmentStart = null;
     zoomToolbar = null;
     halfBeatBtn = null;
     quarterBeatBtn = null;
     zoomChipEls = [];
     zoomNotesChipEls = {};
     playerApplication.publishEditHost(null);
+    playerApplication.publishChordHost(null);
   }
 
   /* Forces the zoomed pane's detection-gated controls (Notes chips, Edit-notes toggle,
@@ -1979,41 +1932,41 @@ function draw() {
     renderZoom(zoomEl.canvas);
     zoomEl.out.textContent = `${zoomSeconds.toFixed(zoomSeconds < 10 ? 1 : 0)}s`;
     zoomEl.time.textContent = timeCode;
-    syncChordEditor(t);
   }
   if (editMode) syncEditToolbar();
   playerApplication.publishTransport();
+  playerApplication.publishChord();
 }
 
-function syncChordEditor(time) {
-  if (!chordEditor) return;
-  const chord = chordTimeline.find((item) => item.start <= time && time < item.end);
-  const chordBusy = chordDetectionPhase !== null;
-  chordEditor.group.hidden = !chord && !chordBusy;
-  chordEditor.spinner.hidden = !chordBusy;
-  chordEditor.status.hidden = !chordBusy;
-  chordEditor.status.textContent = tr(chordDetectionPhase === 'waiting'
-    ? 'notes.chordWaiting' : 'notes.chordDetecting');
-  chordEditor.input.hidden = !chord || chordBusy;
-  chordEditor.candidates.hidden = !chord || chordBusy || chord.candidates?.length <= 1;
-  chordEditor.redetect.hidden = !chord || chordBusy;
-  chordEditor.segmentStart = chord ? chord.start : null;
-  chordEditor.playKey.textContent = detectedKey
-    ? tr('notes.playKey', { key: NOTE_LETTERS[transposePitchClass(detectedKey.tonicPc, -capo)] }) : '';
-  if (!chord) return;
-  chordEditor.input.classList.toggle('ambiguous', !chord.edited && chord.candidates?.length > 1);
-  chordEditor.input.classList.toggle('edited', !!chord.edited);
-  if (document.activeElement !== chordEditor.input) chordEditor.input.value = transposeChordLabel(chord.label, -capo) || '';
-  const prompt = document.createElement('option');
-  prompt.value = '';
-  prompt.textContent = tr('notes.chordCandidates');
-  chordEditor.candidates.replaceChildren(prompt, ...(chord.candidates || []).map((candidate) => {
-    const option = document.createElement('option');
-    option.value = transposeChordLabel(candidate.label, -capo);
-    option.textContent = `${option.value} (${candidate.confidence.toFixed(2)})`;
-    return option;
-  }));
-  chordEditor.candidates.value = '';
+/** The capo control's and chord editor's published presentation — same "recompute every
+ *  frame, publish only on change" shape draw()'s playerApplication.publishTransport() call
+ *  already uses for the transport clock (see docs/react-phase-6f-capo-chord-editor-plan.md).
+ *  `chordSegmentStart` is the one field this function updates that no component reads — only
+ *  the commitChord command handler does, the same role chordEditor.segmentStart used to
+ *  play. */
+function applicationChordSnapshot() {
+  const time = currentTime();
+  const chord = chordTimeline.find((item) => item.start <= time && time < item.end) || null;
+  const busy = chordDetectionPhase !== null;
+  chordSegmentStart = chord ? chord.start : null;
+  const candidatesVisible = !!chord && !busy && chord.candidates?.length > 1;
+  return {
+    visible: !!chord || busy,
+    busy,
+    busyPhase: chordDetectionPhase,
+    capo,
+    playKeyLetter: detectedKey ? NOTE_LETTERS[transposePitchClass(detectedKey.tonicPc, -capo)] : null,
+    inputVisible: !!chord && !busy,
+    inputValue: chord ? (transposeChordLabel(chord.label, -capo) || '') : '',
+    inputAmbiguous: !!(chord && !chord.edited && chord.candidates?.length > 1),
+    inputEdited: !!(chord && chord.edited),
+    candidatesVisible,
+    candidates: candidatesVisible ? chord.candidates.map((candidate) => {
+      const value = transposeChordLabel(candidate.label, -capo);
+      return { value, label: `${value} (${candidate.confidence.toFixed(2)})` };
+    }) : [],
+    redetectVisible: !!chord && !busy,
+  };
 }
 
 window.addEventListener('sansbass:chords', (event) => {
@@ -2022,7 +1975,6 @@ window.addEventListener('sansbass:chords', (event) => {
     || (event.detail?.running ? 'detecting' : null);
   capo = Number(event.detail?.capo) || 0;
   detectedKey = event.detail?.key || null;
-  if (chordEditor) chordEditor.capoSelect.value = String(capo);
   draw();
 });
 
@@ -2650,19 +2602,8 @@ function retranslate() {
     if (lane) lane.el.txt.textContent = tr('notes.zoomNotesChipFor', { lane: tr('stem.' + stem) });
   }
   if (zoomEl) zoomEl.lane.querySelector('.txt').textContent = tr('notes.zoom');
-  if (chordEditor) {
-    chordEditor.caption.textContent = tr('notes.chord');
-    chordEditor.capoCaption.textContent = tr('notes.capo');
-    chordEditor.capoSelect.title = tr('notes.capoTip');
-    chordEditor.capoSelect.setAttribute('aria-label', tr('notes.capoTip'));
-    chordEditor.input.title = tr('notes.chordEditTip');
-    chordEditor.input.setAttribute('aria-label', tr('notes.chordEditTip'));
-    chordEditor.candidates.setAttribute('aria-label', tr('notes.chordCandidates'));
-    chordEditor.candidates.title = tr('notes.chordCandidatesTip');
-    chordEditor.redetect.textContent = tr('notes.chordRedetect');
-    chordEditor.redetect.title = tr('notes.chordRedetectTip');
-    chordEditor.status.textContent = tr('notes.chordDetecting');
-  }
+  // The capo control's and chord editor's captions/tooltips/labels retranslate through
+  // React's own useLocale() since Phase 6f — no legacy DOM write needed here.
   for (const { stem, select, label: labelEl, spk } of zoomChipEls) {
     const t = tracks.find((tr) => tr.stem === stem);
     const label = t ? laneLabel(t) : stem;
@@ -3538,12 +3479,14 @@ function applicationSnapshot() {
     transport: applicationTransportSnapshot(),
     status: lastSay ? { key: lastSay.key, params: lastSay.params || null, error: !!lastSay.isErr } : null,
     notesEdit: notesEditState(),
+    chord: applicationChordSnapshot(),
   };
 }
 
 playerApplication.initialize({
   getSnapshot: applicationSnapshot,
   getTransportSnapshot: applicationTransportSnapshot,
+  getChordSnapshot: applicationChordSnapshot,
   attachPrimarySeekCanvas,
   attachLaneCanvas,
   attachLaneExtra,
@@ -3579,6 +3522,19 @@ playerApplication.initialize({
     },
     exportEdits: () => window.dispatchEvent(new CustomEvent('sansbass:exportedits')),
     importEdits: (file) => window.dispatchEvent(new CustomEvent('sansbass:importedits', { detail: { file } })),
+    setCapo: (fret) => {
+      capo = Number(fret) || 0;
+      window.dispatchEvent(new CustomEvent('sansbass:capochange', { detail: { capo } }));
+      draw();
+    },
+    commitChord: (label) => {
+      const trimmed = typeof label === 'string' ? label.trim() : '';
+      if (chordSegmentStart == null || !trimmed) return;
+      window.dispatchEvent(new CustomEvent('sansbass:chordedit', {
+        detail: { start: chordSegmentStart, label: transposeChordLabel(trimmed, capo) },
+      }));
+    },
+    redetectChord: () => window.dispatchEvent(new CustomEvent('sansbass:chordredetect')),
   },
   reportCommandError: (error) => {
     loading = false;

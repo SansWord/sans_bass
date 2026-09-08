@@ -1,4 +1,4 @@
-import { StrictMode, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { AUDIO_RE } from '../lib/stems.js';
@@ -163,8 +163,8 @@ function ModeRoutingControls({ application, routing, song }) {
  * `subscribeEditHost`/`getEditHost` hand a stable, app.js-created host node to React instead of
  * the usual direction (React creates a node and hands it to app.js via `attachLaneCanvas`-style
  * methods) — see docs/react-phase-6e-edit-toggle-export-import-plan.md. The capo control and
- * the chord editor, sharing the same `chordGroup` container and its own per-frame-recomputed
- * hidden state, are out of scope this slice (Phase 6f). */
+ * the chord editor, sharing one container and one per-frame-recomputed hidden state, became
+ * React-owned in Phase 6f — see `ChordRow`/`ChordEditorControls` below. */
 function EditModeToggle({ application, notesEdit }) {
   const onChange = (event) => {
     ignoreReportedError(application.commands.setEditMode(event.currentTarget.checked));
@@ -209,6 +209,121 @@ function EditModeControls({ application, notesEdit }) {
     <EditModeToggle application={application} notesEdit={notesEdit} />
     <EditIoControls application={application} notesEdit={notesEdit} />
   </>, host);
+}
+
+function CapoSelect({ application, chord }) {
+  const onChange = (event) => {
+    ignoreReportedError(application.commands.setCapo(Number(event.currentTarget.value)));
+  };
+  return <select className="capo-select" title={t('notes.capoTip')}
+    aria-label={t('notes.capoTip')} value={chord.capo} onChange={onChange}>
+    {Array.from({ length: 12 }, (_, fret) => (
+      <option key={fret} value={fret}>{fret}</option>
+    ))}
+  </select>;
+}
+
+/** The one field in the row that is both externally driven (follows the chord under the
+ *  playhead, published as `chord.inputValue`) and user-editable (typed text staged until
+ *  blur/Enter) — see the plan doc's "focus-aware controlled <input>" section. `focusedRef`
+ *  gates the sync-from-published effect exactly like the legacy `document.activeElement !==
+ *  chordEditor.input` guard did; `valueAtFocusRef` reproduces a native `<input>`'s own
+ *  `change` semantics (fires only when the value actually differs from what it was when focus
+ *  began), so an unedited focus-then-blur commits nothing, matching today's `change`-driven
+ *  commit exactly. */
+function ChordInput({ application, chord }) {
+  const [draft, setDraft] = useState(chord.inputValue);
+  const focusedRef = useRef(false);
+  const valueAtFocusRef = useRef(chord.inputValue);
+
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(chord.inputValue);
+  }, [chord.inputValue]);
+
+  const commit = (value) => ignoreReportedError(application.commands.commitChord(value));
+
+  return <input type="text"
+    className={`note-field chord-field${chord.inputAmbiguous ? ' ambiguous' : ''}${chord.inputEdited ? ' edited' : ''}`}
+    aria-label={t('notes.chordEditTip')} title={t('notes.chordEditTip')}
+    hidden={!chord.inputVisible} value={draft}
+    onChange={(event) => setDraft(event.currentTarget.value)}
+    onFocus={() => { focusedRef.current = true; valueAtFocusRef.current = draft; }}
+    onBlur={() => {
+      focusedRef.current = false;
+      if (draft !== valueAtFocusRef.current) commit(draft);
+    }}
+    onKeyDown={(event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      commit(draft);
+      event.currentTarget.blur();
+    }} />;
+}
+
+/** A real select, not datalist: datalist suggestions are filtered by the text already in the
+ *  input, which hides alternatives precisely when a detected chord is populated. Always
+ *  rendered with `value=""` — a pure action picker, like the legacy select's own reset back to
+ *  its empty prompt option after each pick. */
+function ChordCandidatesSelect({ application, chord }) {
+  const onChange = (event) => {
+    const value = event.currentTarget.value;
+    if (value) ignoreReportedError(application.commands.commitChord(value));
+  };
+  return <select className="note-field chord-candidates" aria-label={t('notes.chordCandidates')}
+    title={t('notes.chordCandidatesTip')} hidden={!chord.candidatesVisible} value=""
+    onChange={onChange}>
+    <option value="">{t('notes.chordCandidates')}</option>
+    {chord.candidates.map((candidate, index) => (
+      <option key={index} value={candidate.value}>{candidate.label}</option>
+    ))}
+  </select>;
+}
+
+/** React ownership of the zoomed pane's capo control and chord display/editing (Phase 6f).
+ *  `app.js` keeps `capo`/`chordTimeline`/`chordDetectionPhase`/`detectedKey` themselves, the
+ *  event dispatch these controls trigger (`sansbass:capochange`/`sansbass:chordedit`/
+ *  `sansbass:chordredetect`, all three sides unchanged), and the zoomed canvas's own chord
+ *  overlay painting (a canvas paint, not a DOM control). `chord`'s shape is published through
+ *  `lib/player-application.js`'s `publishChord`/`subscribeChord`, the same "recompute every
+ *  frame, publish only on change" pattern `publishTransport` already uses — see
+ *  docs/react-phase-6f-capo-chord-editor-plan.md. */
+function ChordRow({ application, chord }) {
+  const onRedetect = (event) => {
+    ignoreReportedError(application.commands.redetectChord());
+    event.currentTarget.blur();
+  };
+  const statusText = chord.busy
+    ? t(chord.busyPhase === 'waiting' ? 'notes.chordWaiting' : 'notes.chordDetecting')
+    : '';
+  const playKeyText = chord.playKeyLetter ? t('notes.playKey', { key: chord.playKeyLetter }) : '';
+  return <div className="zoom-chord-row" hidden={!chord.visible}>
+    <span>{t('notes.capo')}</span>
+    <CapoSelect application={application} chord={chord} />
+    <span className="notes-count capo-play-key">{playKeyText}</span>
+    <span>{t('notes.chord')}</span>
+    <ChordInput application={application} chord={chord} />
+    <ChordCandidatesSelect application={application} chord={chord} />
+    <button type="button" className="mini" hidden={!chord.redetectVisible}
+      title={t('notes.chordRedetectTip')} onClick={onRedetect}>{t('notes.chordRedetect')}</button>
+    <span className="notes-spinner" hidden={!chord.busy} />
+    <span className="notes-count chord-status" hidden={!chord.busy}>{statusText}</span>
+  </div>;
+}
+
+/** Portals `ChordRow` into the legacy-created host once it exists (there is none before the
+ *  first song with a vocals/bass stem loads — same lifecycle as `EditModeControls`'s host).
+ *  Reads the per-frame chord projection itself, the same way `OverviewLane`/
+ *  `PrimarySeekControls` read `subscribeTransport` themselves rather than via a prop from
+ *  `PlayerShell`'s top-level (discrete) snapshot. */
+function ChordEditorControls({ application }) {
+  const host = useSyncExternalStore(
+    application.subscribeChordHost, application.getChordHost, application.getChordHost,
+  );
+  const chord = useSyncExternalStore(
+    application.subscribeChord, application.getChordSnapshot, application.getChordSnapshot,
+  );
+  if (!host) return null;
+  return createPortal(<ChordRow application={application} chord={chord} />, host);
 }
 
 const laneLabel = (track) => (track.stem ? t(`stem.${track.stem}`) : track.label);
@@ -468,6 +583,7 @@ function PlayerShell({ application, hosts }) {
     {createPortal(<ListExportPanel stem="bass" />, hosts.notesListIoBass)}
     {createPortal(<TempoPanel />, hosts.tempo)}
     <EditModeControls application={application} notesEdit={snapshot.notesEdit} />
+    <ChordEditorControls application={application} />
     {snapshot.song && <StemLanes application={application}
       tracks={snapshot.song.tracks} hosts={hosts} />}
     {snapshot.song && snapshot.song.tracks.some((track) => track.stem === 'vocals' || track.stem === 'bass')

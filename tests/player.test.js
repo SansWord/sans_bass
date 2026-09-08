@@ -1402,7 +1402,7 @@ describe('production player integration', () => {
     const capo = player.doc.querySelector('.capo-select');
     capo.value = '3';
     capo.dispatchEvent(new player.win.Event('change', { bubbles: true }));
-    expect(player.doc.querySelector('.chord-field').value).toBe('G');
+    await waitFor(() => player.doc.querySelector('.chord-field').value === 'G', 'capo-transposed chord field');
     expect(player.doc.querySelector('.capo-play-key').textContent).toBe('Play key G');
   });
 
@@ -1413,11 +1413,133 @@ describe('production player integration', () => {
     player.win.dispatchEvent(new player.win.CustomEvent('sansbass:chords', {
       detail: { chords: [], running: true, phase: 'waiting' },
     }));
-    expect(status.textContent).toBe('Waiting for note detection…');
+    await waitFor(() => status.textContent === 'Waiting for note detection…', 'waiting status');
     player.win.dispatchEvent(new player.win.CustomEvent('sansbass:chords', {
       detail: { chords: [], running: true, phase: 'detecting' },
     }));
-    expect(status.textContent).toBe('Detecting chords…');
+    await waitFor(() => status.textContent === 'Detecting chords…', 'detecting status');
+  });
+
+  it('does not clobber a focused chord field against an external republish, and commits only on an actual edit', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:chords', { detail: {
+      capo: 0,
+      key: { tonicPc: 10, mode: 'major' },
+      chords: [{ start: 0, end: 999, barStart: true, label: 'A#',
+        candidates: [{ label: 'A#', confidence: 0.9 }] }],
+    } }));
+    const field = await waitFor(() => {
+      const input = player.doc.querySelector('.chord-field');
+      return input.value === 'A#' ? input : null;
+    }, 'chord field shows the detected label');
+
+    const events = [];
+    player.win.addEventListener('sansbass:chordedit', (e) => events.push(e.detail));
+
+    // Focusing and blurring with no edit must not commit — matches a native <input>'s own
+    // `change` event, which only fires when the value actually differs from focus time.
+    field.focus();
+    field.blur();
+    expect(events).toHaveLength(0);
+
+    // While focused, an external republish (a capo change re-transposes every chord label)
+    // must not overwrite the field's own displayed text — the focus-aware guard's whole job.
+    field.focus();
+    const capoSelect = player.doc.querySelector('.capo-select');
+    capoSelect.value = '2';
+    capoSelect.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    await waitFor(() => player.doc.querySelector('.capo-play-key').textContent !== '', 'capo change republished');
+    expect(field.value).toBe('A#');
+
+    // Now actually edit it, then blur: commits the transposed label at the segment under the
+    // playhead, capo included.
+    Object.getOwnPropertyDescriptor(player.win.HTMLInputElement.prototype, 'value')
+      .set.call(field, 'Bm');
+    field.dispatchEvent(new player.win.Event('input', { bubbles: true }));
+    field.blur();
+    expect(events).toEqual([{ start: 0, label: 'C#m' }]);
+  });
+
+  it('commits an Enter-confirmed edit immediately and blurs', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:chords', { detail: {
+      capo: 0,
+      chords: [{ start: 0, end: 999, barStart: true, label: 'A#',
+        candidates: [{ label: 'A#', confidence: 0.9 }] }],
+    } }));
+    const field = await waitFor(() => {
+      const input = player.doc.querySelector('.chord-field');
+      return input.value === 'A#' ? input : null;
+    }, 'chord field shows the detected label');
+
+    // A real notes.js is listening too — its own 'sansbass:chordedit' handler round-trips
+    // through a genuine (empty, since no real detection ran) chord timeline of its own and
+    // re-publishes 'sansbass:chords', which would otherwise clobber this test's injected
+    // fixture. Only 'sansbass:chordedit' itself, dispatched exactly once by the commit this
+    // test is checking, is the assertion target — what notes.js does with it afterward is
+    // deliberately out of this test's scope.
+    const events = [];
+    player.win.addEventListener('sansbass:chordedit', (e) => events.push(e.detail));
+
+    field.focus();
+    Object.getOwnPropertyDescriptor(player.win.HTMLInputElement.prototype, 'value')
+      .set.call(field, 'Gm');
+    field.dispatchEvent(new player.win.Event('input', { bubbles: true }));
+    field.dispatchEvent(new player.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    expect(events).toEqual([{ start: 0, label: 'Gm' }]);
+    expect(player.doc.activeElement).not.toBe(field);
+  });
+
+  it('commits a picked chord candidate', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:chords', { detail: {
+      capo: 0,
+      chords: [{ start: 0, end: 999, barStart: true, label: 'A#',
+        candidates: [{ label: 'A#', confidence: 0.9 }, { label: 'D', confidence: 0.4 }] }],
+    } }));
+    const candidates = await waitFor(() => {
+      const select = player.doc.querySelector('.chord-candidates');
+      return !select.hidden ? select : null;
+    }, 'candidates visible for a multi-candidate segment');
+
+    const events = [];
+    player.win.addEventListener('sansbass:chordedit', (e) => events.push(e.detail));
+    candidates.value = 'D';
+    candidates.dispatchEvent(new player.win.Event('change', { bubbles: true }));
+    expect(events).toEqual([{ start: 0, label: 'D' }]);
+  });
+
+  it('retranslates the capo/chord captions, tooltips, and redetect button on a language switch', async () => {
+    player = await openPlayer();
+    await loadZip(player, { vocals: 440, guitar: 220 });
+    player.win.dispatchEvent(new player.win.CustomEvent('sansbass:chords', { detail: {
+      capo: 0,
+      chords: [{ start: 0, end: 999, barStart: true, label: 'A#',
+        candidates: [{ label: 'A#', confidence: 0.9 }] }],
+    } }));
+    const row = await waitFor(() => {
+      const el = player.doc.querySelector('.zoom-chord-row');
+      return !el.hidden ? el : null;
+    }, 'chord row visible');
+    const [capoCaption, chordCaption] = row.querySelectorAll('span:not([class])');
+    const capoSelect = row.querySelector('.capo-select');
+    const chordField = row.querySelector('.chord-field');
+    const redetect = row.querySelector('button');
+    expect(capoCaption.textContent).toBe('Capo');
+    expect(chordCaption.textContent).toBe('Chord');
+
+    player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
+    await waitFor(() => player.doc.documentElement.lang === 'zh-TW', 'translated capo/chord row');
+    expect(capoCaption.textContent).toBe('移調夾');
+    expect(chordCaption.textContent).toBe('和弦');
+    expect(capoSelect.title).toBe('移調夾品數；顯示的和弦與演奏調會向下移調');
+    expect(chordField.title).toBe('編輯目前和弦；相近信心的候選會顯示在建議清單中');
+    expect(redetect.textContent).toBe('重新偵測和弦');
+    player.doc.querySelector('#lang-toggle [data-lang="en"]').click();
+    await waitFor(() => player.doc.documentElement.lang === 'en', 'back to English');
   });
 
   it('keeps the zoomed pane\'s capo/chord/Edit-notes/Export-Import nodes stable across a song replacement that keeps a vocals/bass stem', async () => {

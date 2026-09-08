@@ -565,6 +565,13 @@ input[type=range] { width: 110px; }
    `display: contents` trick as .zoom-chip-host, for the same reason: React's rendered
    `<label>`/`<span>` children act as direct flex items of .zoom-lane-sel. */
 .zoom-edit-host { display: contents; }
+/* Legacy-created host the capo control and chord editor portal into (Phase 6f — see
+   playerApplication.publishChordHost() in app.js and lib/player-application.js), at the
+   position `chordGroup` used to occupy directly inside `zName` (a sibling of .zoom-top-row
+   and .zoom-lane-sel, not nested inside either). Same `display: contents` trick as
+   .zoom-chip-host/.zoom-edit-host: React's rendered `.zoom-chord-row` acts as a direct flex
+   item of `zName`'s own column layout, exactly as `chordGroup` did. */
+.zoom-chord-host { display: contents; }
 .zoom-chip { display: inline-flex; align-items: center; gap: 3px; }
 /* A colour alone doesn't say which stem a dot is — see the chip's own label span. The dot
    still carries the stem's colour (via --chip-color) so it reads at a glance once learned. */

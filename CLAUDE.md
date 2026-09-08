@@ -515,3 +515,10 @@ out of the project; never commit them.
 - **Verify audio behaviour by observing audio, not parameters.** Loop bounds being set is not
   evidence the audio wraps; sampling the playhead across laps is. Fault-inject where the real
   environment can't be reproduced (`file://` is not reachable from browser automation).
+- **Describe new architecture and behavior on its own terms, not against the pre-React
+  imperative approach.** The React migration is complete and accepted; future architecture
+  docs and PR descriptions should not compare new work to how `app.js` used to do it
+  unless a specific regression is suspected. That comparison was the job of the
+  2026-09-07 post-migration review (see
+  [`docs/superpowers/plans/2026-09-07-post-migration-cleanup.md`](superpowers/plans/2026-09-07-post-migration-cleanup.md)),
+  not a standing obligation for every change that follows.

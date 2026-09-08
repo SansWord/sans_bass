@@ -108,6 +108,22 @@ directly — see the v1.27.0 devlog entry.
 **Still wanted.** Persistence of the chosen key across loads, and surfacing detection
 confidence (`margin`) so a low-confidence guess reads as a guess.
 
+## Configurable harmonic stems for chord detection
+
+**Planned, not yet built.**
+[Spec](superpowers/specs/2026-09-08-configurable-harmonic-stems-design.md)
+[Plan](superpowers/plans/2026-09-08-configurable-harmonic-stems.md).
+
+Chord detection mixes down whichever of `guitar`/`piano`/`bass` are loaded (`HARMONIC_STEMS`
+in `notes.js`). A real-song investigation against `examples/nov_you.zip` found some persistent
+"no chord" gaps are not silence or a tempo-grid artifact — they're genuine template-correlation
+misses, and adding `vocals`/`other` to the mix measurably reduced them on that song. Since
+`other` (Demucs's catch-all bucket) can just as easily hold non-harmonic noise on a different
+song, the fix is a per-song user toggle rather than a new hardcoded default: `guitar`+`piano`+
+`bass` stay the fixed baseline, and the user can independently opt `vocals` and/or `other` in,
+with the choice resetting per song and round-tripping through the shared edits JSON the same
+way capo already does. New UI is a row below the tempo panel, not the zoomed pane.
+
 ## Migrate to npm + a build step
 
 **Built in v1.20.0** — [spec](superpowers/specs/2026-09-02-npm-vite-migration-design.md),

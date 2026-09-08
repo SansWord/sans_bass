@@ -16,10 +16,20 @@ The implementation is split between `lib/chroma.js` (audio to chord candidates),
 
 ## Inputs
 
-`notes.js` mixes every loaded `guitar`, `piano`, and `bass` `AudioBuffer` into mono. It
+`notes.js` mixes loaded `AudioBuffer`s from the current harmonic stem set into mono. It
 averages each buffer's channels first, then sums the stems and zero-pads shorter stems. The
 mix is deliberately independent of the notes channel being exported: a vocals export and a
 bass export see the same harmony.
+
+`guitar`/`piano`/`bass` are the fixed baseline: always included whenever loaded, with no UI to
+turn any of them off. `vocals` and `other` are optional extras the user can independently
+toggle on, per song, in the row directly below the tempo panel (`components/
+ChordStemsPanel.jsx`). Toggling either one re-runs chord detection immediately against the new
+mix, reapplying any existing manual chord corrections by interval start — the same reuse
+behaviour described above for import — rather than discarding them. The choice resets to both
+extras off on every new song load, and round-trips through the shared edits JSON the same way
+capo already does (a file with no `harmonicExtras` field, from before this feature, leaves the
+current choice untouched on import).
 
 The bass notes are a separate, optional input. They are only used to render slash notation.
 If bass analysis has not run, chords still export from guitar/piano/bass audio, just without

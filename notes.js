@@ -83,8 +83,72 @@ function currentTempoRangeChannels() {
   return { channels: chans, sampleRate: buffer.sampleRate };
 }
 
-/** Stems whose audio can contribute pitch classes to a chord label. */
-const HARMONIC_STEMS = ['guitar', 'piano', 'bass'];
+/** guitar/piano/bass are the fixed baseline — always included whenever loaded, exactly as
+ *  before this feature. No UI turns any of these three off; only vocals/other are
+ *  configurable, per song. See
+ *  docs/superpowers/specs/2026-09-08-configurable-harmonic-stems-design.md. */
+const HARMONIC_BASE_STEMS = ['guitar', 'piano', 'bass'];
+let harmonicExtras = new Set();   // subset of ['vocals', 'other']
+
+/** Every stem id currently feeding chord detection: the fixed baseline plus whichever extras
+ *  are opted in. Replaces every direct read of the old HARMONIC_STEMS constant. */
+function harmonicStemIds() {
+  return [...HARMONIC_BASE_STEMS, ...harmonicExtras];
+}
+
+const chordStemsListeners = new Set();
+let lastChordStemsView = null;
+
+/** Recompute the published chord-stems view and notify subscribers — same pattern as
+ *  publishTempo() below. Gated on the same tempo.confidence > 0 signal TempoPanel already
+ *  uses for its own visibility: chord-source controls are meaningless before a detection pass
+ *  has actually run. */
+function publishChordStems() {
+  lastChordStemsView = Object.freeze({
+    visible: tempo.confidence > 0,
+    vocals: harmonicExtras.has('vocals'),
+    other: harmonicExtras.has('other'),
+  });
+  for (const listener of [...chordStemsListeners]) {
+    try { listener(lastChordStemsView); } catch (error) {
+      console.error('sans_bass: chord-stems subscriber failed', error);
+    }
+  }
+  return lastChordStemsView;
+}
+
+function setHarmonicExtra(id, on) {
+  if (on) harmonicExtras.add(id); else harmonicExtras.delete(id);
+  publishChordStems();
+  // Re-derive in place, not chordredetect: scheduleChordDetection() already reapplies
+  // chordEdits by interval start, so an existing manual correction survives a stem toggle.
+  scheduleChordDetection();
+}
+
+/** Peer service consumed by components/ChordStemsPanel.jsx — the same subscribe/getSnapshot/
+ *  commands shape tempoGrid/detection/separation already established. A store of its own
+ *  since this state has no owner other than this module and no natural home inside tempoGrid
+ *  (not tempo-grid state) or the chord/detection projections (not a per-frame chord-editor
+ *  projection either). */
+export const chordStems = {
+  subscribe(listener) {
+    if (typeof listener !== 'function') throw new TypeError('subscriber must be a function');
+    chordStemsListeners.add(listener);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      chordStemsListeners.delete(listener);
+    };
+  },
+  getSnapshot() {
+    return lastChordStemsView ?? publishChordStems();
+  },
+  commands: {
+    setVocals(on) { setHarmonicExtra('vocals', on); },
+    setOther(on) { setHarmonicExtra('other', on); },
+  },
+};
 
 /** Downmix loaded buffers to mono, then sum them, retaining the longest stem's tail. */
 function mixDown(buffers) {
@@ -121,7 +185,7 @@ function publishChords(phase = null) {
  * Debouncing coalesces the two note channels completing/reinterpreting in the same turn. */
 function scheduleChordDetection() {
   clearTimeout(chordTimer);
-  const loaded = HARMONIC_STEMS.map((id) => window.sansBass.stemBuffer(id)).filter(Boolean);
+  const loaded = harmonicStemIds().map((id) => window.sansBass.stemBuffer(id)).filter(Boolean);
   const channelStates = channels.map((channel) => ({ state: channel.state() }));
   if (!loaded.length || !channelStates.some(({ state }) => state === 'complete')) {
     chordTimeline = [];
@@ -187,6 +251,8 @@ function resetTempo() {
   chordTimeline = [];
   chordEdits = new Map();
   capo = 0;
+  harmonicExtras = new Set();
+  publishChordStems();
 }
 
 /** Adopts a fresh { bpmValue, phaseSec, confidence } from the worker. */
@@ -199,6 +265,10 @@ function applyTempoResult(result) {
     beatsPerBar: tempo.beatsPerBar,
     confidence: result.confidence,
   };
+  // chordStems.visible is derived from tempo.confidence, which only ever changes here — keep
+  // it in sync regardless of which of applyTempoResult()'s two call sites (first-channel auto
+  // detection, manual Re-detect tempo) just ran, rather than duplicating this call at each one.
+  publishChordStems();
 }
 
 const tempoListeners = new Set();
@@ -736,7 +806,7 @@ function createNotesChannel(stem, panelEl) {
      * regardless of its own start time — layoutBars (lib/jianpu.js) sorts its own copy
      * before walking it, the same guard lib/sonify.js needed for the same reason. */
     const stemAudio = window.sansBass.stemBuffer(stem);
-    const loadedHarmonic = HARMONIC_STEMS
+    const loadedHarmonic = harmonicStemIds()
       .map((stemId) => window.sansBass.stemBuffer(stemId))
       .filter(Boolean);
     // Keep accompaniment-only bars, including an outro beyond this channel's audio.
@@ -945,6 +1015,7 @@ window.addEventListener('sansbass:exportedits', () => {
       .map(([start, label]) => ({ start, label }))
       .sort((a, b) => a.start - b.start),
     capo,
+    harmonicExtras: [...harmonicExtras].sort(),
     stems,
   });
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -999,6 +1070,10 @@ window.addEventListener('sansbass:importedits', async (e) => {
     chordEdits = new Map(plan.chordEdits.map((edit) => [edit.start, edit.label]));
   }
   if (plan.hasCapo) capo = plan.capo;
+  if (plan.hasHarmonicExtras) {
+    harmonicExtras = new Set(plan.harmonicExtras);
+    publishChordStems();
+  }
 
   const entryByStem = new Map(plan.apply.map((x) => [x.stem, x.entry]));
   for (const c of channels) {

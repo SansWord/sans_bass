@@ -281,14 +281,14 @@ The historical inventory above remains unchanged. Phase 0's legacy-header jsdom 
 LANG-001 and demo-listing evidence for button state, input identity, navigation, and demo
 load-control absence. That transitional test was retired with its `lib/header.js` subject in
 Phase 3a; the React demo test and production-player Chromium test now cover those live owners.
-See [phase 0 evidence](react-migration-evidence.md) for the historical result and gaps.
+See [phase 0 evidence](archive/react-migration/react-migration-evidence.md) for the historical result and gaps.
 
 `tests/demo-header.test.jsx` adds phase-1 jsdom evidence for the React-owned demo header:
 normal/nested relative links, both locale renderings, saved and blocked storage, active-page
 semantics, and Strict Mode-style mount/unmount/remount cleanup. The phase-1 build harness
 adds actual generated-page, normal/nested build, exported-demo, and responsive-layout
 evidence. These checks do not claim player audio continuity or deployed delivery; see the
-[migration evidence log](react-migration-evidence.md).
+[migration evidence log](archive/react-migration/react-migration-evidence.md).
 
 `tests/player-application.test.js` adds Phase 2 Node evidence for explicit initialization and
 the initial snapshot; stable immutable snapshot reads; loading/transport/replacement command
@@ -305,7 +305,7 @@ stale notes completion after replacement, and separation completion after applic
 Existing player cases continue to cover MIX-001 gain routing, deterministic SEP-001 success,
 drag visibility, and locale/canvas identity. These fake-Worker cases do not prove real Worker,
 model, physical-device, background, visual, or auditory behavior; deployed and manual evidence
-is recorded separately in the [migration evidence log](react-migration-evidence.md).
+is recorded separately in the [migration evidence log](archive/react-migration/react-migration-evidence.md).
 
 The Phase 3a additions to `tests/player.test.js` cover the React player shell through the
 production entry: one stable/repeatable file input across locale and snapshot renders;

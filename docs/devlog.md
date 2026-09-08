@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.35.0](#v1350--post-migration-cleanup-2026-09-07) | A comparative review of `main` vs. `before_react_migration` found the migration's real code came out ahead but its own phase-by-phase docs outweighed the code 5:1; extracted a `makeChannel()` pub/sub factory in `lib/player-application.js`, rewrote `CLAUDE.md`'s React sections as steady-state description, and archived the 17 phase-plan docs plus the evidence log. |
 | [React phase 7](#react-phase-7--retire-legacy-ui-and-accept-the-migration-2026-09-07) | Legacy-UI retirement audit found no removable migration adapter anywhere — every phase had already cleaned up after itself. Reworded four `app.js` comments that mislabeled permanent bridges as "temporary," then ran a chained real-build acceptance pass (real cached-model separation, real notes Workers, real song, stretched/backgrounded playback, language switch) closing the last evidence gap. Accepted in production at `abcc94e`, completing the React migration roadmap. |
 | [React phase 6f](#react-phase-6f--capo-control-and-chord-displayediting-2026-09-07) | React now owns the zoomed pane's capo control and chord display/editing, completing Phase 6 in full. `lib/player-application.js` gains a `publishChord`/`subscribeChord` dedup channel mirroring `publishTransport`, and a focus-aware controlled `<input>` for the chord field needed no imperative escape hatch. Accepted in production at `c833b7e`. |
 | [React phase 6e](#react-phase-6e--edit-notes-toggle-and-shared-exportimport-edits-json-buttons-2026-09-07) | React now owns the zoomed pane's Edit-notes toggle and shared Export/Import edits JSON buttons; `app.js` keeps `editMode` and event dispatch, exposing state through a new `notesEdit` snapshot field and three commands. The audit found capo and the chord editor remain entangled via one shared per-frame-recomputed hidden state, deferred to a new Phase 6f. Accepted in production at `130af31`. |
@@ -96,6 +97,46 @@ Running log of what was built and what was learned building it.
 
 ---
 
+## v1.35.0 — Post-migration cleanup (2026-09-07 20:17)
+
+**Review:** not yet
+**Design docs:**
+- Post-migration cleanup: [Plan](superpowers/plans/2026-09-07-post-migration-cleanup.md)
+
+**What was built:**
+- Extracted a `makeChannel()` pub/sub factory in `lib/player-application.js`, replacing five
+  near-identical Set-based subscribe/publish implementations (`subscribe`,
+  `subscribeTransport`, `subscribeChord`, `subscribeEditHost`, `subscribeChordHost`) with one
+  factory. Each channel keeps its own dedup logic (`sameTransport`, `sameChord`) as a thin
+  wrapper, since host channels don't dedupe by value. Pure refactor, no behavior change.
+- Rewrote `CLAUDE.md`'s "Hard constraints" and "Repo layout" sections from an incremental
+  phase-by-phase narrative (Phase 1 through Phase 7) into a flat, current-state description of
+  what React owns, what `app.js` owns, and what `lib/player-application.js` is.
+- Moved the full phase-by-phase history to a new `docs/react-migration-history.md`, linked
+  from `CLAUDE.md`.
+- Archived the 17 `docs/react-phase-*-plan.md` files and `docs/react-migration-evidence.md`
+  into `docs/archive/react-migration/` (with a README noting they're historical), and fixed
+  the still-live links pointing at them in `docs/devlog.md`, `docs/react-migration.md`, and
+  `docs/test-coverage.md`.
+- Added a Working Conventions note: future architecture/behavior docs and PR descriptions
+  describe the current design on its own terms rather than compare against the pre-React
+  imperative approach, unless a specific regression is suspected.
+
+**Key technical learnings:**
+- `[insight]` A migration's own phase-by-phase documentation can outweigh its code by a wide
+  margin and become a maintenance cost in its own right. The comparative review that motivated
+  this cleanup found the React migration's real code delta was a modest net +1,429 lines
+  (+2,851/−1,422), while its planning/evidence docs alone totaled roughly 7,546 lines across 17
+  phase-plan files plus a 3,045-line evidence log — over 5x the code, for a single-page app's
+  migration.
+- `[gotcha]` The completed migration's own devlog entries (React phase 0 through 7) never
+  adopted this project's three-part semver convention — they're titled "React phase N" rather
+  than `vX.Y.Z`, so the TL;DR table's version column mixes two labeling schemes across entries
+  spanning the same 2026-09-05–2026-09-07 window this entry's `v1.35.0` continues from. Flagged
+  here rather than silently backfilled or renamed: those anchors are already referenced from
+  merged PR history and `docs/react-migration.md`'s rollback-anchor table, so renaming them is
+  a separate, larger task if the user wants it done.
+
 ## React phase 7 — retire legacy UI and accept the migration (2026-09-07)
 
 - `[note]` Phase 7's brief is cleanup plus acceptance, not a new ownership handoff. Three
@@ -168,7 +209,7 @@ Running log of what was built and what was learned building it.
   production displayed `abcc94e`, and the production canary reloaded the real song fixture with
   an empty first-party console. This full SHA is the Phase 7 rollback anchor — **the incremental
   React migration roadmap in `docs/react-migration.md` is now complete.** Full details in
-  [react-migration-evidence.md](react-migration-evidence.md).
+  [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ---
 
@@ -255,7 +296,7 @@ Running log of what was built and what was learned building it.
   production displayed `c833b7e`, and the production canary confirmed the same boundary with an
   empty first-party console. This full SHA is the Phase 6f rollback anchor, the sixth and last
   of Phase 6's ordered sub-slices — Phase 6 is now complete. Full details in
-  [react-migration-evidence.md](react-migration-evidence.md).
+  [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ---
 
@@ -337,7 +378,7 @@ Running log of what was built and what was learned building it.
   production displayed `130af31`, and the production canary confirmed the same boundary with an
   empty first-party console. This full SHA is the Phase 6e rollback anchor, the fifth of Phase
   6's now-six ordered sub-slices — see the `[insight]`s above. Full details in
-  [react-migration-evidence.md](react-migration-evidence.md).
+  [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ---
 
@@ -402,7 +443,7 @@ Running log of what was built and what was learned building it.
   production displayed `6a49bb4`, and the production canary confirmed the same boundary with an
   empty first-party console. This full SHA is the Phase 6d rollback anchor, the fourth of
   Phase 6's now-five ordered sub-slices — see the `[insight]` above. Full details in
-  [react-migration-evidence.md](react-migration-evidence.md).
+  [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ---
 
@@ -469,7 +510,7 @@ Running log of what was built and what was learned building it.
   production displayed `2aa9cdc`, and the production canary confirmed the edit-list/list-export
   hosts' presence with an empty first-party console. This full SHA is the Phase 6c rollback
   anchor, the third of Phase 6's four ordered sub-slices in practice — see the `[insight]`
-  above. Full details in [react-migration-evidence.md](react-migration-evidence.md).
+  above. Full details in [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ---
 
@@ -539,7 +580,7 @@ Running log of what was built and what was learned building it.
   production displayed `65a8ae6`, and the production canary confirmed `#tempo-ui-root`/
   `#notes-tempo` presence with an empty first-party console. This full SHA is the Phase 6b
   rollback anchor, the second of Phase 6's sub-slices (now four in practice — see the
-  `[insight]` above). Full details in [react-migration-evidence.md](react-migration-evidence.md).
+  `[insight]` above). Full details in [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ## React phase 6a — interpretation controls (2026-09-07)
 
@@ -598,7 +639,7 @@ Running log of what was built and what was learned building it.
   workflows passed, production displayed `61e2b29`, and the production canary repeated the
   detect/fold-stats flow with an empty first-party console. This full SHA is the Phase 6a
   rollback anchor, the first of Phase 6's three sub-slices. Full details in
-  [react-migration-evidence.md](react-migration-evidence.md).
+  [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ## React phase 5b — detection controls (2026-09-07)
 
@@ -664,7 +705,7 @@ Running log of what was built and what was learned building it.
   workflows passed, production displayed `3e241da`, and the production canary repeated the
   detect/complete/hide flow with an empty first-party console. This full SHA is the Phase 5b
   rollback anchor, completing Phase 5. Full details in
-  [react-migration-evidence.md](react-migration-evidence.md).
+  [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ## React phase 5a — separation panel controls (2026-09-07)
 
@@ -726,7 +767,7 @@ Running log of what was built and what was learned building it.
   production displayed `ffe5ed5`, and the production canary repeated the load/separate/replace
   flow with an empty first-party console. This full SHA is the Phase 5a rollback anchor.
   Detection controls (Phase 5b) remain legacy-owned. Full details in
-  [react-migration-evidence.md](react-migration-evidence.md).
+  [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ## React phase 4b — shared overview integration (2026-09-07)
 
@@ -782,7 +823,7 @@ Running log of what was built and what was learned building it.
   workflows passed, production displayed `d961db7`, and the production canary repeated the
   Overview-lane load and volume-mirroring behavior with an empty first-party console. This
   full SHA is the Phase 4b rollback anchor, completing Phase 4. Full details in
-  [react-migration-evidence.md](react-migration-evidence.md).
+  [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ## React phase 4a — standard stem lane components (2026-09-07)
 
@@ -832,7 +873,7 @@ Running log of what was built and what was learned building it.
   test workflows passed, production displayed `fcf2770`, and the production canary repeated
   the four-lane load and genuine mute/focus/routing behavior with an empty first-party console.
   This full SHA is the Phase 4a rollback anchor. Full details in
-  [react-migration-evidence.md](react-migration-evidence.md).
+  [react-migration-evidence.md](archive/react-migration/react-migration-evidence.md).
 
 ## React phase 3e — mode and routing controls (2026-09-06/07)
 
@@ -1125,7 +1166,7 @@ Running log of what was built and what was learned building it.
 
 ## React phase 0 — baseline inventory (2026-09-05)
 
-- [note] Began phase 0 with a [bounded evidence log](react-migration-evidence.md), current
+- [note] Began phase 0 with a [bounded evidence log](archive/react-migration/react-migration-evidence.md), current
   ownership/event inventory, and focused jsdom header regression coverage. No React or
   production behaviour change; the baseline is recorded with explicit manual/deployed omissions.
 - [gotcha] Locale changes still traverse the whole document, and `window.sansBass` still

@@ -6,6 +6,7 @@ import { t } from '../lib/i18n.js';
 import { isHandheld } from '../lib/platform.js';
 import { ignoreReportedError } from '../lib/player-application.js';
 import { formatClockTime, formatClockTimeCentiseconds } from '../lib/time.js';
+import { ChordStemsPanel } from './ChordStemsPanel.jsx';
 import { DetectionControls, NotesChannelPanel } from './DetectionPanel.jsx';
 import { EditListPanel, ListExportPanel } from './EditorPanel.jsx';
 import { InterpretationPanel } from './InterpretationPanel.jsx';
@@ -578,6 +579,7 @@ function PlayerShell({ application, hosts }) {
     {createPortal(<ListExportPanel stem="vocals" />, hosts.notesListIoVocals)}
     {createPortal(<ListExportPanel stem="bass" />, hosts.notesListIoBass)}
     {createPortal(<TempoPanel />, hosts.tempo)}
+    {createPortal(<ChordStemsPanel />, hosts.chordStems)}
     <EditModeControls application={application} notesEdit={snapshot.notesEdit} />
     <ChordEditorControls application={application} />
     {snapshot.song && <StemLanes application={application}
@@ -615,6 +617,7 @@ export function mountPlayerShell(application, doc = document) {
     notesListIoVocals: doc.getElementById('notes-list-io-vocals-root'),
     notesListIoBass: doc.getElementById('notes-list-io-bass-root'),
     tempo: doc.getElementById('tempo-ui-root'),
+    chordStems: doc.getElementById('chord-stems-ui-root'),
   };
   if (Object.values(hosts).some((host) => !host)) {
     console.warn('sans_bass: player React shell host missing — skipped');

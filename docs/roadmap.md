@@ -110,8 +110,9 @@ confidence (`margin`) so a low-confidence guess reads as a guess.
 
 ## Configurable harmonic stems for chord detection
 
-**Designed, not yet planned or built.**
-[Spec](superpowers/specs/2026-09-08-configurable-harmonic-stems-design.md).
+**Planned, not yet built.**
+[Spec](superpowers/specs/2026-09-08-configurable-harmonic-stems-design.md)
+[Plan](superpowers/plans/2026-09-08-configurable-harmonic-stems.md).
 
 Chord detection mixes down whichever of `guitar`/`piano`/`bass` are loaded (`HARMONIC_STEMS`
 in `notes.js`). A real-song investigation against `examples/nov_you.zip` found some persistent

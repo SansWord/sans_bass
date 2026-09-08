@@ -9,13 +9,16 @@ in [`behaviour.md`](behaviour.md).
 
 ## React component migration
 
-**In progress.** [Phased migration roadmap](react-migration.md) covering baseline evidence,
-an isolated React pilot, player boundaries, incremental UI conversion, and final acceptance.
-Phase 0 is recorded and the phase-1 demo-header pilot has met its local and PR-preview gates;
-merge and production evidence are tracked with
-[PR #65](https://github.com/SansWord/sans_bass/pull/65). Phase 2, the player command/
-subscription boundary, is next after production acceptance. Progress and remaining legacy
-ownership are tracked in the roadmap.
+**Built.** [Phased migration roadmap](react-migration.md) covering baseline evidence, an
+isolated React pilot, player boundaries, incremental UI conversion, and final acceptance. All
+seven phases (and Phase 6's six sub-slices) are accepted in production, finishing at Phase 7's
+legacy-UI retirement and release acceptance
+([PR #99](https://github.com/SansWord/sans_bass/pull/99)). React now owns all player and
+demo-page component UI; `app.js` remains the sole owner of decoded tracks, transport/routing
+state, the audio graph, and canvas painting — see `CLAUDE.md`'s "Hard constraints" for the
+current, steady-state architecture and
+[`docs/react-migration-history.md`](react-migration-history.md) for the phase-by-phase
+narrative.
 
 ## Note editing — layer 4
 
@@ -96,10 +99,14 @@ picked automatically and overridable: a `1=` selector, a major/minor selector th
 the degrees mean, and a ⇄ button swapping the current key for its relative. This was also the
 first time `detectKey()` reached the player — it had been bench-page-only since v1.10.0.
 
-**Still wanted.** Rhythm notation: 簡譜 proper carries beams and dashes for duration, which
-needs beat tracking — see the note under note editing on why that is its own problem. Export
-and printing, persistence of the chosen key across loads, and surfacing detection confidence
-(`margin`) so a low-confidence guess reads as a guess.
+**Rhythm notation and export — built, v1.27.0.** 簡譜 proper carries beams and dashes for
+duration; this needed beat tracking first (built separately as the tempo grid, v1.17.0), then
+landed as underline/dash/dot rhythm notation, tie marks across barlines, and a self-contained,
+visually laid-out HTML export (replacing the old plain-text export) that a browser can print
+directly — see the v1.27.0 devlog entry.
+
+**Still wanted.** Persistence of the chosen key across loads, and surfacing detection
+confidence (`margin`) so a low-confidence guess reads as a guess.
 
 ## Migrate to npm + a build step
 

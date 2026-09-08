@@ -1245,7 +1245,8 @@ function attachLaneCanvas(trackId, canvas) {
 }
 
 /** The drums lane's tempo-range hint (caption + Clear button) is notes/tempo feature UI, not
- *  lane presentation — explicitly deferred, same as the rest of notes/tempo (Phase 6) — but
+ *  lane presentation — a permanent, settled split from the React-owned lane chrome (Phase 6
+ *  completed without moving this content, and no further migration of it is planned) — but
  *  its host div is only ever rendered by React for the drums `<Lane>` (see PlayerShell.jsx),
  *  so it is populated the same explicit-attach way as attachLaneCanvas rather than being
  *  built inside buildUI() the way it used to be. A no-op for any other lane. */
@@ -1295,12 +1296,15 @@ function attachOverviewCanvas(canvas) {
 }
 
 /** The Overview lane's full-song range-select caption is notes/edit feature UI, not lane
- *  presentation — explicitly deferred, same as the rest of notes/tempo (Phase 6) — but its
- *  host div is only ever rendered by React (see PlayerShell.jsx), so it is populated the
+ *  presentation — a permanent, settled split from the React-owned lane chrome (Phase 6
+ *  completed without moving this content, and no further migration of it is planned) — but
+ *  its host div is only ever rendered by React (see PlayerShell.jsx), so it is populated the
  *  same explicit-attach way as attachLaneExtra rather than being built inside buildUI() the
  *  way it used to be. Content and visibility stay exactly as syncRangeHints() computes them;
  *  only the DOM host moved. Its own translation-refresh gap (never retranslated on language
- *  switch) is unchanged and stays deferred along with the rest of the zoomed pane. */
+ *  switch until the next edit changes it) predates this migration and is an explicitly
+ *  accepted pre-existing tradeoff — see docs/react-migration-evidence.md's Phase 7 section —
+ *  not something this migration introduced or is expected to fix. */
 function attachOverviewExtra(node) {
   if (!node) return () => {};
   node.textContent = tr('notes.rangeTip');
@@ -2306,9 +2310,10 @@ async function play() {
   tick();
 }
 
-/* Temporary exact-clock adapter for the two notes.js sonifiers. It carries t0 and offset rather than
- * "we started": the synth has to schedule against the SAME clock reading the stems were
- * started from, or it lands near them instead of with them. */
+/* Permanent cross-module clock bridge for the two notes.js sonifiers (no other clock source
+ * exists, and none is planned). It carries t0 and offset rather than "we started": the synth
+ * has to schedule against the SAME clock reading the stems were started from, or it lands
+ * near them instead of with them. */
 function announceTransport(t0) {
   window.dispatchEvent(new CustomEvent('sansbass:transport', {
     detail: {
@@ -3553,13 +3558,15 @@ playerApplication.initialize({
 });
 playerShell = mountPlayerShell(playerApplication);
 
-/* Temporary compatibility bridge for notes.js, separate.js, and the browser harness.
- * New loading/transport UI imports lib/player-application.js instead. Remove each member
- * when its named consumer migrates; do not add unrelated globals. */
+/* Permanent, documented cross-module bridge for notes.js, separate.js, and the browser
+ * harness — the exception CLAUDE.md's own rule allows for a consumer that genuinely cannot
+ * `import` this module's mutable closure state. React never reads this global; it uses
+ * lib/player-application.js's ESM command/subscription facade exclusively. The `playerShell`
+ * member below is a harness-only adapter for proving React mount cleanup independently of
+ * application/audio/song disposal. Do not add unrelated globals here. */
 window.sansBass = {
   application: playerApplication,
-  // Temporary browser-harness adapter for proving React mount cleanup independently of
-  // application/audio/song disposal. Production UI imports the ESM mount directly.
+  // Harness-only: production UI imports the ESM mount directly (see the block comment above).
   playerShell: {
     unmount: () => playerShell?.unmount(),
     remount: () => playerShell?.mount(),

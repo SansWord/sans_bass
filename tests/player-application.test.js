@@ -13,6 +13,11 @@ function adapter(overrides = {}) {
     },
     status: null,
     notesEdit: { visible: false, enabled: false, on: false },
+    chord: {
+      visible: false, busy: false, busyPhase: null, capo: 0, playKeyLetter: null,
+      inputVisible: false, inputValue: '', inputAmbiguous: false, inputEdited: false,
+      candidatesVisible: false, candidates: [], redetectVisible: false,
+    },
   };
   return {
     state,
@@ -36,9 +41,13 @@ function adapter(overrides = {}) {
       setEditMode: vi.fn(),
       exportEdits: vi.fn(),
       importEdits: vi.fn(),
+      setCapo: vi.fn(),
+      commitChord: vi.fn(),
+      redetectChord: vi.fn(),
       ...overrides.commands,
     },
     getTransportSnapshot: () => state.transport,
+    getChordSnapshot: () => state.chord,
     attachPrimarySeekCanvas: vi.fn(() => vi.fn()),
     attachLaneCanvas: vi.fn(() => vi.fn()),
     attachLaneExtra: vi.fn(() => vi.fn()),
@@ -119,6 +128,9 @@ describe('player application command/subscription facade', () => {
     application.commands.exportEdits();
     const editsFile = { name: 'edits.json' };
     application.commands.importEdits(editsFile);
+    application.commands.setCapo(5);
+    application.commands.commitChord('G');
+    application.commands.redetectChord();
 
     expect(owner.commands.load).toHaveBeenCalledWith(file, 1);
     expect(owner.commands.rejectLoad).toHaveBeenCalledWith('multiple', { count: 2 });
@@ -140,6 +152,9 @@ describe('player application command/subscription facade', () => {
     expect(owner.commands.setEditMode).toHaveBeenCalledWith(true);
     expect(owner.commands.exportEdits).toHaveBeenCalledOnce();
     expect(owner.commands.importEdits).toHaveBeenCalledWith(editsFile);
+    expect(owner.commands.setCapo).toHaveBeenCalledWith(5);
+    expect(owner.commands.commitChord).toHaveBeenCalledWith('G');
+    expect(owner.commands.redetectChord).toHaveBeenCalledOnce();
     expect(application.currentSongToken()).toBe(2);
     expect(() => application.commands.rejectLoad('mystery')).toThrow(PlayerCommandError);
     expect(() => application.commands.setMasterVolume(Number.NaN)).toThrow(PlayerCommandError);
@@ -172,6 +187,50 @@ describe('player application command/subscription facade', () => {
     owner.state.transport = { ...owner.state.transport, position: 2.5 };
     application.publishTransport();
     expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('publishes a deduplicated chord/capo projection independently of the transport clock', () => {
+    const application = createPlayerApplication();
+    const owner = adapter();
+    application.initialize(owner);
+    const listener = vi.fn();
+    const unsubscribe = application.subscribeChord(listener);
+
+    application.publishChord();
+    expect(listener).not.toHaveBeenCalled();
+    owner.state.chord = { ...owner.state.chord, capo: 5 };
+    application.publishChord();
+    application.publishChord();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(application.getChordSnapshot().capo).toBe(5);
+
+    unsubscribe();
+    unsubscribe();
+    owner.state.chord = { ...owner.state.chord, capo: 7 };
+    application.publishChord();
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('hands the capo/chord-editor host to React, deduplicated by node identity', () => {
+    const application = createPlayerApplication();
+    application.initialize(adapter());
+    expect(application.getChordHost()).toBeNull();
+    const listener = vi.fn();
+    const unsubscribe = application.subscribeChordHost(listener);
+
+    const host = {};
+    application.publishChordHost(host);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalledWith(host);
+    expect(application.getChordHost()).toBe(host);
+
+    application.publishChordHost(host);   // same reference — no redundant notification
+    expect(listener).toHaveBeenCalledOnce();
+
+    unsubscribe();
+    application.publishChordHost(null);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(application.getChordHost()).toBeNull();
   });
 
   it('hands the Edit-notes toggle/Export-Import host to React, deduplicated by node identity', () => {

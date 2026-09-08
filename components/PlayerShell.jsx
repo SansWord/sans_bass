@@ -1,9 +1,10 @@
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { AUDIO_RE } from '../lib/stems.js';
+import { AUDIO_RE, isZipFile as isZip } from '../lib/stems.js';
 import { t } from '../lib/i18n.js';
 import { isHandheld } from '../lib/platform.js';
+import { ignoreReportedError } from '../lib/player-application.js';
 import { formatClockTime, formatClockTimeCentiseconds } from '../lib/time.js';
 import { DetectionControls, NotesChannelPanel } from './DetectionPanel.jsx';
 import { EditListPanel, ListExportPanel } from './EditorPanel.jsx';
@@ -14,13 +15,8 @@ import { TempoPanel } from './TempoPanel.jsx';
 import { useLocale } from './useLocale.js';
 
 const INPUT_ACCEPT = 'audio/*,.wav,.flac,.m4a,.mp3,.opus,.ogg,.aiff,.zip,application/zip';
-const isZip = (file) => /\.zip$/i.test(file.name);
 // Match the legacy startup contract: device capability is classified once per page load.
 const HANDHELD = isHandheld();
-
-function ignoreReportedError(result) {
-  if (result && typeof result.catch === 'function') result.catch(() => {});
-}
 
 function FileLoadControl({ application }) {
   const onChange = (event) => {

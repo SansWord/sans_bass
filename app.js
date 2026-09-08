@@ -3,7 +3,7 @@
  * because every track is started from one AudioContext clock at the same time.
  */
 
-import { STEMS, EXTRA_COLORS, AUDIO_RE, detectStem, assignStems, hasMixPlusStems } from './lib/stems.js';
+import { STEMS, EXTRA_COLORS, AUDIO_RE, isZipFile as isZip, detectStem, assignStems, hasMixPlusStems } from './lib/stems.js';
 import { extract } from './lib/unzip.js';
 import { parseNoteName } from './lib/pitch.js';
 import { formatClockTime, formatClockTimeCentiseconds, roundSeconds } from './lib/time.js';
@@ -16,7 +16,7 @@ import { allToggleLabel, initialRouting, route } from './lib/routing-state.js';
 import * as SansLoopState from './lib/loop-state.js';
 import { commandState, wholeSong } from './lib/editor-state.js';
 import { transposeChordLabel, transposePitchClass } from './lib/chords.js';
-import { playerApplication } from './lib/player-application.js';
+import { playerApplication, ignoreReportedError as ignoreReportedCommandError } from './lib/player-application.js';
 import { mountPlayerShell } from './components/PlayerShell.jsx';
 
 const BUCKETS = 1400;   // waveform resolution
@@ -126,6 +126,23 @@ let tempoRangeArmed = false;    // mirrors notes.js's "Select BPM range" toggle
 let tempoHintEl = null;         // caption text node under the drums lane
 let tempoClearBtn = null;       // the Clear button beside it
 let tempoDrumsCanvas = null;    // the drums stem's own waveform canvas — the drag surface
+
+/** Read a span — either an in-progress drag `{startT, curT}` or a committed `{from, to}` — as
+ *  ordered `{start, end}`, regardless of which direction the drag ran. */
+function spanOf(rsel) {
+  return {
+    start: Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to),
+    end: Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to),
+  };
+}
+
+/** Commit a finished `{startT, curT}` drag into an ordered `{from, to}` span, or null if it
+ *  was shorter than minSpan — too small to count as a real selection rather than a tap. */
+function commitDrag(drag, minSpan = 0.01) {
+  const { start: from, end: to } = spanOf(drag);
+  return (to - from > minSpan) ? { from, to } : null;
+}
+
 const RULER_BAND_PX = 16;    // bottom band of the zoomed canvas reserved for range-select
 const WHEEL_SEEK_FRACTION = 0.05;  // fraction of the zoom span a single wheel tick seeks
 const ARROW_SEEK_FRACTION = 0.15;  // fraction of the zoom span a single Arrow Left/Right seeks
@@ -174,10 +191,6 @@ if (el.buildSha) el.buildSha.textContent = BUILD_SHA;
 function on(node, ev, fn, opts) {
   if (!node) { console.warn(`sans_bass: no element for the "${ev}" handler — skipped`); return; }
   node.addEventListener(ev, fn, opts);
-}
-
-function ignoreReportedCommandError(result) {
-  if (result && typeof result.catch === 'function') result.catch(() => {});
 }
 
 const tr = (key, params) => SansI18n.t(key, params);
@@ -422,8 +435,6 @@ async function loadZip(file, token) {
     arrayBuffer: async () => e.bytes.buffer,
   })), file.name.replace(/\.zip$/i, ''), 'zip', token);
 }
-
-const isZip = (f) => /\.zip$/i.test(f.name);
 
 /**
  * The one entry point behind the single Load button and behind a drop of one file.
@@ -1676,8 +1687,7 @@ function renderZoom(canvas) {
 
   const rsel = showNotes ? (rangeDrag || rangeSelection) : null;
   if (rsel) {
-    const s = Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
-    const eT = Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
+    const { start: s, end: eT } = spanOf(rsel);
     c.fillStyle = 'rgba(255,209,102,.18)';
     c.fillRect(x(s), 0, Math.max(1, x(eT) - x(s)), h);
   }
@@ -2162,8 +2172,7 @@ function paintRangeBand(c, canvas, dpr) {
   }
   const rsel = rangeDrag || rangeSelection;
   if (rsel && duration) {
-    const s = Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
-    const eT = Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
+    const { start: s, end: eT } = spanOf(rsel);
     c.fillStyle = 'rgba(255,209,102,.18)';
     c.fillRect((s / duration) * w, 0, Math.max(1, ((eT - s) / duration) * w), h);
   }
@@ -2183,8 +2192,7 @@ function paintTempoRangeBand(c, canvas, dpr) {
   }
   const rsel = tempoRangeDrag || tempoRange;
   if (rsel && duration) {
-    const s = Math.min(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
-    const eT = Math.max(rsel.startT ?? rsel.from, rsel.curT ?? rsel.to);
+    const { start: s, end: eT } = spanOf(rsel);
     c.fillStyle = 'rgba(255,209,102,.18)';
     c.fillRect((s / duration) * w, 0, Math.max(1, ((eT - s) / duration) * w), h);
   }
@@ -2886,10 +2894,8 @@ function attachZoom(canvas) {
       return;
     }
     if (rangeDrag) {
-      const from = Math.min(rangeDrag.startT, rangeDrag.curT);
-      const to = Math.max(rangeDrag.startT, rangeDrag.curT);
+      rangeSelection = commitDrag(rangeDrag);
       rangeDrag = null;
-      rangeSelection = (to - from > 0.01) ? { from, to } : null;
       if (rangeSelection) selectedNote = null;
       draw();
       return;
@@ -3317,20 +3323,17 @@ function attachSeek(canvas, opts) {
   });
   canvas.addEventListener('pointerup', (e) => {
     if (tempoRangeDrag) {
-      const from = Math.min(tempoRangeDrag.startT, tempoRangeDrag.curT);
-      const to = Math.max(tempoRangeDrag.startT, tempoRangeDrag.curT);
+      const span = commitDrag(tempoRangeDrag);
       tempoRangeDrag = null;
-      tempoRange = (to - from > 0.01) ? { from: roundSeconds(from), to: roundSeconds(to) } : null;
+      tempoRange = span ? { from: roundSeconds(span.from), to: roundSeconds(span.to) } : null;
       syncTempoRangeHint();
       window.dispatchEvent(new CustomEvent('sansbass:temporange', { detail: tempoRange }));
       draw();
       return;
     }
     if (rangeDrag) {
-      const from = Math.min(rangeDrag.startT, rangeDrag.curT);
-      const to = Math.max(rangeDrag.startT, rangeDrag.curT);
+      rangeSelection = commitDrag(rangeDrag);
       rangeDrag = null;
-      rangeSelection = (to - from > 0.01) ? { from, to } : null;
       if (rangeSelection) selectedNote = null;
       draw();
       return;

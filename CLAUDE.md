@@ -370,7 +370,15 @@ or `transport`, recomputed every `draw()` tick and published only on change) and
 listeners used. `ChordInput` is the one genuinely new pattern this migration needed: a real
 controlled `<input>` whose local draft state syncs from the published value only while
 unfocused, with a `valueAtFocusRef` reproducing a native `<input>`'s own change-since-focus
-commit semantics — not an imperative escape hatch. This completes Phase 6.
+commit semantics — not an imperative escape hatch. This completes Phase 6. Phase 7 audited
+`app.js`, `lib/player-application.js`, and every `components/*.jsx` file for leftover
+migration adapters and found none removable: every `window.sansBass` member, every
+`sansbass:*` event, every DOM attach hook, and every CSS selector still has a live consumer —
+each phase's own audit had already retired its scaffolding as it went. Phase 7's actual work
+was documentation accuracy (rewording comments that called permanent bridges "temporary") and
+a chained real-build acceptance pass; see `docs/react-phase-7-retire-legacy-plan.md` and
+`docs/react-migration-evidence.md`'s Phase 7 section. The incremental React migration
+described by this file is complete.
 Its locale/application and focused transport-frame
 subscriptions and document drag listeners clean up on UI
 unmount without disposing the player. React-owned descendants carry no `data-i18n`, so the

@@ -99,10 +99,14 @@ picked automatically and overridable: a `1=` selector, a major/minor selector th
 the degrees mean, and a ⇄ button swapping the current key for its relative. This was also the
 first time `detectKey()` reached the player — it had been bench-page-only since v1.10.0.
 
-**Still wanted.** Rhythm notation: 簡譜 proper carries beams and dashes for duration, which
-needs beat tracking — see the note under note editing on why that is its own problem. Export
-and printing, persistence of the chosen key across loads, and surfacing detection confidence
-(`margin`) so a low-confidence guess reads as a guess.
+**Rhythm notation and export — built, v1.27.0.** 簡譜 proper carries beams and dashes for
+duration; this needed beat tracking first (built separately as the tempo grid, v1.17.0), then
+landed as underline/dash/dot rhythm notation, tie marks across barlines, and a self-contained,
+visually laid-out HTML export (replacing the old plain-text export) that a browser can print
+directly — see the v1.27.0 devlog entry.
+
+**Still wanted.** Persistence of the chosen key across loads, and surfacing detection
+confidence (`margin`) so a low-confidence guess reads as a guess.
 
 ## Migrate to npm + a build step
 

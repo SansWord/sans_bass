@@ -91,6 +91,51 @@ test('notes-edits: capo round-trips and older v4 files leave it unchanged', () =
   assert(!old.hasCapo);
 });
 
+test('notes-edits: harmonicExtras round-trips through buildEditsPayload', () => {
+  const payload = buildEditsPayload({
+    tempo: {}, tempoRange: null, stems: {}, harmonicExtras: ['other', 'vocals'],
+  });
+  assertEq(payload.harmonicExtras.length, 2);
+  assert(payload.harmonicExtras.includes('vocals'));
+});
+
+test('notes-edits: buildEditsPayload defaults harmonicExtras to an empty array', () => {
+  const payload = buildEditsPayload({ tempo: {}, tempoRange: null, stems: {} });
+  assertEq(payload.harmonicExtras.length, 0);
+});
+
+test('notes-edits: planImport carries validated harmonicExtras with an explicit presence flag', () => {
+  const withExtras = planImport(
+    { version: NOTES_EDITS_VERSION, stems: {}, harmonicExtras: ['vocals'] }, [],
+  );
+  assert(withExtras.ok);
+  assert(withExtras.hasHarmonicExtras);
+  assertEq(withExtras.harmonicExtras.length, 1);
+  assertEq(withExtras.harmonicExtras[0], 'vocals');
+
+  const withoutExtras = planImport({ version: NOTES_EDITS_VERSION, stems: {} }, []);
+  assert(!withoutExtras.hasHarmonicExtras, 'no key at all means no opinion, not "clear it"');
+  assertEq(withoutExtras.harmonicExtras.length, 0);
+});
+
+test('notes-edits: planImport rejects a malformed harmonicExtras value', () => {
+  assertEq(
+    planImport({ version: NOTES_EDITS_VERSION, stems: {}, harmonicExtras: 'vocals' }, []).ok,
+    false, 'must be an array, not a bare string',
+  );
+  assertEq(
+    planImport({ version: NOTES_EDITS_VERSION, stems: {}, harmonicExtras: ['drums'] }, []).ok,
+    false, 'only vocals/other are valid entries',
+  );
+});
+
+test('notes-edits: a v5 file with no harmonicExtras field imports with no opinion', () => {
+  const plan = planImport({ version: 5, stems: {} }, []);
+  assert(plan.ok);
+  assert(!plan.hasHarmonicExtras);
+  assertEq(plan.harmonicExtras.length, 0);
+});
+
 // ---------------------------------------------------------------- planImport: invalid input
 
 test('notes-edits: planImport rejects a file that is not a note-edits file at all', () => {

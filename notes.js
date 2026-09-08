@@ -265,6 +265,10 @@ function applyTempoResult(result) {
     beatsPerBar: tempo.beatsPerBar,
     confidence: result.confidence,
   };
+  // chordStems.visible is derived from tempo.confidence, which only ever changes here — keep
+  // it in sync regardless of which of applyTempoResult()'s two call sites (first-channel auto
+  // detection, manual Re-detect tempo) just ran, rather than duplicating this call at each one.
+  publishChordStems();
 }
 
 const tempoListeners = new Set();

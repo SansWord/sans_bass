@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [React phase 7](#react-phase-7--retire-legacy-ui-and-accept-the-migration-2026-09-07) | Legacy-UI retirement audit found no removable migration adapter anywhere — every phase had already cleaned up after itself. Reworded four `app.js` comments that mislabeled permanent bridges as "temporary," then ran a chained real-build acceptance pass (real cached-model separation, real notes Workers, real song, stretched/backgrounded playback, language switch) closing the last evidence gap. Accepted in production at `abcc94e`, completing the React migration roadmap. |
 | [React phase 6f](#react-phase-6f--capo-control-and-chord-displayediting-2026-09-07) | React now owns the zoomed pane's capo control and chord display/editing, completing Phase 6 in full. `lib/player-application.js` gains a `publishChord`/`subscribeChord` dedup channel mirroring `publishTransport`, and a focus-aware controlled `<input>` for the chord field needed no imperative escape hatch. Accepted in production at `c833b7e`. |
 | [React phase 6e](#react-phase-6e--edit-notes-toggle-and-shared-exportimport-edits-json-buttons-2026-09-07) | React now owns the zoomed pane's Edit-notes toggle and shared Export/Import edits JSON buttons; `app.js` keeps `editMode` and event dispatch, exposing state through a new `notesEdit` snapshot field and three commands. The audit found capo and the chord editor remain entangled via one shared per-frame-recomputed hidden state, deferred to a new Phase 6f. Accepted in production at `130af31`. |
 | [React phase 6d](#react-phase-6d--zoomed-pane-mount-lifecycle-refactor-2026-09-07) | The zoomed pane (capo/chord row, Edit-notes toggle, shared Export/Import buttons, and everything else inside it) now survives a song replacement that keeps a vocals/bass stem, moved into its own `#zoom-lane-root` — the same fix Phase 4b applied to the Overview lane. A pure, ownership-neutral refactor: nothing moved to React. Unblocks Phase 6e, the actual ownership handoff. Accepted in production at `6a49bb4`. |
@@ -92,6 +93,82 @@ Running log of what was built and what was learned building it.
 | [v1.1.0](#v110--a-b-repeat-loop-2026-08-13) | A-B repeat: `a`/`b` set loop points, looping runs on the audio thread so all six stems stay sample-locked |
 | [v1.0.1](#v101--drag-and-drop-repair-2026-08-13) | Fixed folder drag-and-drop dying silently; a callback-pair API wrapped without its error path hung the handler forever |
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
+
+---
+
+## React phase 7 — retire legacy UI and accept the migration (2026-09-07)
+
+- `[note]` Phase 7's brief is cleanup plus acceptance, not a new ownership handoff. Three
+  independent audits covered `app.js`, `lib/player-application.js`, every `components/*.jsx`
+  file, and `styles.css`, checking every `window.sansBass` member, every `sansbass:*` event,
+  every DOM attach hook, and every CSS selector against its actual consumers repo-wide.
+- `[insight]` The audit found **no removable dead code anywhere**. Every migration adapter still
+  has a live consumer, because each of Phase 6's sub-slices (6b through 6f) had already retired
+  its own scaffolding before merging — the discipline of scoping each slice's audit narrowly
+  paid off at the end: there was nothing left to sweep up.
+- `[note]` The audit's other finding was documentation accuracy, not code: four `app.js`
+  comments mislabeled permanent, documented bridges. `attachLaneExtra`/`attachOverviewExtra`
+  called the drums-hint/range-caption content "explicitly deferred, same as the rest of
+  notes/tempo (Phase 6)" — Phase 6 is complete and never moved this content, so the wording
+  read as an open TODO for settled, permanent architecture. `announceTransport` and the
+  `window.sansBass` block called themselves "Temporary" when both are the permanent, justified
+  exceptions CLAUDE.md's own bridge rule allows (mutable closure state `notes.js`/`separate.js`
+  cannot statically `import`). Reworded all four to state the settled facts; no logic changed.
+- `[insight]` A third audit cross-referenced every `behaviour.md` scenario against the
+  accumulated evidence in `react-migration-evidence.md` and found the real gap Phase 7's
+  outcome actually calls for: every SEP/NOTE evidence entry from Phase 5a onward explicitly
+  scoped out real Worker/model re-verification, so the only real cached-model separation, real
+  notes-Worker, and real AudioWorklet evidence anywhere in the log predated Phase 5a entirely —
+  before any of the affected React ownership existed. No single pass had chained a full
+  real-song load→separate→detect→interpret→tempo→edit→capo/chord→export workflow on the
+  post-6f UI. Background-tab playback was last confirmed at Phase 3e, before four later phases
+  changed the surrounding DOM.
+- `[test]` The only code change (rewording four comments) needed no new failing-first test:
+  full `npm test` stayed at 31 files / 460 tests, `npm run build` passed with only the existing
+  intentional worklet warning, `git diff --check` was clean, and `/code-review low` against the
+  diff returned no findings ("comment-only, no logic touched").
+- `[measurement]` Exact commit `abcc94e`'s player bundle is **124,387 bytes**, byte-for-byte
+  identical to Phase 6f's anchor — comments are stripped at minification, so a comment-only
+  diff produces zero bundle-size change, confirmed by measurement.
+- `[note]` The real acceptance pass, run live against the PR preview: an 8-second synthetic WAV
+  exercised real cached-model separation (`[separate] model loaded from cache` in console), six
+  real lanes, real notes-Worker detection on both channels, real tempo-grid detection, a real
+  capo transposition (0→5 correctly re-keyed C to G), a real chord-input commit, the Edit-notes
+  toggle, and real downloads for edits JSON, notation HTML, and a stems ZIP (verified by
+  unzipping it — six correctly named full-length WAVs). Stretched playback at 130% correctly
+  scaled the BPM tag and ended naturally; backgrounding the tab for 6 seconds and returning
+  confirmed the source had already reached its natural end, closing the background-tab
+  staleness gap the audit found.
+- `[gotcha]` `examples/nov_you.zip` (279 MB) exceeds the browser-automation upload tool's 10 MB
+  cap, so it cannot be fed through a real file input in an automated session directly. Worked
+  around by trimming an 8-second-per-stem excerpt with `ffmpeg` and rezipping it with Python's
+  `zipfile` (verifying `flag_bits & 0x800` stayed set for the Unicode folder name) — 4.7 MB
+  total, small enough to upload, real enough to exercise genuine musical detection/chord/tempo
+  output and a real Unicode-title load. Loading it produced an actual chord progression (F#,
+  F#m7, G#m, C#m) with an ambiguous-candidate dropdown, confirming the acceptance pass used
+  real music, not only a synthetic tone.
+- `[note]` A live language switch mid-playback (0:04.18/0:08, 中文) retranslated every visible
+  label and the tab title in place while the transport clock and audio continued
+  uninterrupted — confirmed on the final build, not assumed from earlier phases' evidence.
+- `[note]` One pre-existing, non-migration behavior gap surfaced during the audit and is
+  recorded as an explicitly accepted tradeoff rather than fixed: the Overview lane's
+  range-select caption is never retranslated on a language switch until the next edit changes
+  it. This predates the React migration (it is a property of the caption's own content, not of
+  which layer owns its host div); fixing it would mean giving this content its own
+  React-rendered presentation, a new ownership handoff outside this phase's scope.
+- `[note]` Physical-handheld and auditory/subjective checks (pitch preservation, loop-seam
+  quality, note-tone alignment) are recorded as explicit skips, per user direction — no
+  physical touch device or reliable listening judgment was available this session. Every prior
+  phase already left these unclaimed rather than fabricated; Phase 7 continues that practice
+  rather than inventing evidence to close the gate.
+- `[note]` PR #99's `test` and `deploy` checks passed; the preview displayed exact synthetic
+  merge `05dd53e` before the acceptance pass above (same real-separation/detection/chord/
+  export/playback/language checks). PR #99 squash-merged as
+  `abcc94e136be5c48f7d183cb53f44e37c37068cd`; its exact-SHA deploy and test workflows passed,
+  production displayed `abcc94e`, and the production canary reloaded the real song fixture with
+  an empty first-party console. This full SHA is the Phase 7 rollback anchor — **the incremental
+  React migration roadmap in `docs/react-migration.md` is now complete.** Full details in
+  [react-migration-evidence.md](react-migration-evidence.md).
 
 ---
 

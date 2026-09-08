@@ -20,7 +20,11 @@ buttons (6e, accepted in production at `130af31bd80f8cd55f5b413e8a1ce8f6563deb15
 genuinely separable from the capo control and the chord editor, which remained one
 sub-slice (6f) because they share one DOM row and one per-frame-recomputed hidden state — now
 accepted in production at `c833b7e3022e7e0a7c414ca848aa50da51364d5f`, completing Phase 6 in
-full. See the Phase 6 section below. Created 2026-09-05.
+full. Phase 7 (legacy UI retirement and release acceptance) is also complete, accepted in
+production at `abcc94e136be5c48f7d183cb53f44e37c37068cd` — its own audit found no removable
+migration adapter anywhere in the codebase, so its actual work was four misleading-comment
+fixes plus a chained real-build acceptance pass. See the Phase 6 and Phase 7 sections below.
+This completes the incremental React migration roadmap in full. Created 2026-09-05.
 
 ## Goal and scope
 
@@ -320,6 +324,27 @@ and so moved together in 6f, completing Phase 6.
 
 **Outcome:** one documented component architecture with all migration adapters accounted for.
 
+**Completed:** the bounded plan is
+[react-phase-7-retire-legacy-plan.md](react-phase-7-retire-legacy-plan.md). Three independent
+audits covered `app.js`, `lib/player-application.js`, every `components/*.jsx` file, and
+`styles.css`, and found **no removable dead code** — every `window.sansBass` member, every
+`sansbass:*` event, every DOM attach hook, and every CSS selector still has a live consumer,
+because each of Phase 6's sub-slices (6b through 6f) had already retired its own scaffolding
+before merging. The audit's other finding was a documentation-accuracy gap: four `app.js`
+comments mislabeled permanent, documented bridges (the drums/overview lane's notes-feature
+content, the `sansbass:transport` clock adapter, and the `window.sansBass` bridge itself) as
+"temporary" or "explicitly deferred" — reworded to state the settled, permanent facts CLAUDE.md
+already describes. A third audit cross-referenced every `behaviour.md` scenario against the
+accumulated evidence in `react-migration-evidence.md` and found the real acceptance gap this
+phase's outcome actually calls for: no single prior phase had chained a full real-song
+load→separate→detect→interpret→tempo→edit→capo/chord→export workflow, or exercised the real
+separation/notes Workers with a cached model, together on the final post-6f build (the last
+such evidence predates Phase 5a). Phase 7's acceptance pass closed that gap directly against
+the PR preview and production, with physical-handheld and auditory/subjective checks recorded
+as explicit skips (no device or reliable listening judgment available this session) rather than
+fabricated. Full evidence:
+[react-migration-evidence.md](react-migration-evidence.md#phase-7--retire-legacy-ui-and-accept-the-migration).
+
 - Remove unused DOM builders, listeners, temporary subscriptions/events, and dead styles
   only after their last consumers move. Keep intentional imperative audio/canvas modules.
 - Update `CLAUDE.md` with the actual module and ownership map; update testing and behaviour
@@ -389,6 +414,7 @@ Use a revert PR on shared `main` rather than resetting published history.
 | Phase 6d zoomed-pane mount-lifecycle refactor accepted in production | `6a49bb47d9cfb2f6eb43c2059a97694e1d00c331` | Known-good pure refactor (zero ownership change) from [PR #93](https://github.com/SansWord/sans_bass/pull/93): the zoomed pane (capo/chord row, Edit-notes toggle, shared Export/Import buttons, and everything else inside it) is built once and reused across a song replacement that keeps a vocals/bass stem, moved into its own `#zoom-lane-root` so the per-song ribbon-lane teardown no longer reaches it — the same fix Phase 4b applied to the Overview lane, applied here to the much larger zoomed pane. This slice's own audit found the still-unscheduled future sub-slice 6b/6c deferred (capo/chord/Edit-toggle/Export-Import) itself needed splitting into this bounded, ownership-neutral restructuring PR and a separate ownership-handoff PR (originally scoped as one slice, 6e) — see [the plan doc](react-phase-6d-zoomed-pane-mount-refactor-plan.md)'s scope decision. Restore to this boundary to retain the complete Phase 6c ownership plus the stable zoomed-pane DOM lifecycle while backing out later ownership handoffs. |
 | Phase 6e Edit-notes toggle and Export/Import buttons accepted in production | `130af31bd80f8cd55f5b413e8a1ce8f6563deb15` | Known-good React ownership of the Edit-notes toggle (`#notes-edit`) and shared Export/Import edits JSON buttons from [PR #95](https://github.com/SansWord/sans_bass/pull/95) — narrower than originally scoped ("capo control, chord display/editing, the Edit-notes toggle, and the shared Export/Import edits JSON buttons"): this slice's own audit found capo and the chord editor remain entangled with each other via one shared per-frame-recomputed hidden state, deferred to a new Phase 6f rather than bundled in — see [the plan doc](react-phase-6e-edit-toggle-export-import-plan.md)'s scope decision, which also sketches 6f's design. `lib/player-application.js` gained a new `publishEditHost`/`subscribeEditHost`/`getEditHost` channel (the reverse direction of every other attach hook) since these controls' DOM parent is legacy-built, not static markup. Restore to this boundary to retain the complete Phase 6d ownership plus React-owned Edit-notes-toggle/Export-Import presentation while backing out Phase 6f. |
 | Phase 6f capo control and chord display/editing accepted in production | `c833b7e3022e7e0a7c414ca848aa50da51364d5f` | Known-good React ownership of the capo control and chord display/editing (`CapoSelect`/`ChordInput`/`ChordCandidatesSelect`/`ChordRow`) from [PR #97](https://github.com/SansWord/sans_bass/pull/97), completing Phase 6 in full — matches the scope 6e's audit sketched: this slice's own re-audit confirmed most of the chord editor's per-frame-recomputed fields are ordinary discrete-state derivations, not genuinely time-dependent, and reused `publishTransport`'s dedup shape for the one part that is (the chord segment under the playhead). `lib/player-application.js` gained a `publishChord`/`subscribeChord`/`getChordSnapshot` triplet (a distinct store from `transport`/`notesEdit`) and a `publishChordHost`/`subscribeChordHost`/`getChordHost` triplet mirroring `publishEditHost`. The one new pattern, a focus-aware controlled `<input>` for the chord field, needed no imperative escape hatch — see [the plan doc](react-phase-6f-capo-chord-editor-plan.md)'s design section. Restore to this boundary to retain the complete Phase 6 ownership; Phase 7 (legacy UI retirement and release acceptance) may begin from here. |
+| Phase 7 legacy UI retirement and release acceptance accepted in production | `abcc94e136be5c48f7d183cb53f44e37c37068cd` | Known-good completion of the migration roadmap from [PR #99](https://github.com/SansWord/sans_bass/pull/99): its own audit of `app.js`, `lib/player-application.js`, every `components/*.jsx` file, and `styles.css` found no removable migration adapter — every `window.sansBass` member, `sansbass:*` event, DOM attach hook, and CSS selector still has a live consumer. The only code change reworded four `app.js` comments that mislabeled permanent, documented bridges as "temporary" or "explicitly deferred." A cross-reference of every `behaviour.md` scenario against the accumulated evidence found the real gap this phase's acceptance pass closed: a chained real-song load→separate→detect→interpret→tempo→edit→capo/chord→export workflow, real cached-model separation, and real notes-Worker detection, none of which any prior phase had exercised together on the final post-6f build — see [the plan doc](react-phase-7-retire-legacy-plan.md) and [the evidence section](react-migration-evidence.md#phase-7--retire-legacy-ui-and-accept-the-migration). Physical-handheld and auditory/subjective checks are recorded as explicit skips, not fabricated. This is the final rollback anchor of the React migration roadmap. |
 
 Add one row after each phase is accepted in production. The target SHA is a restoration and
 comparison anchor, not permission to `git reset` a shared branch; revert the commits after the
@@ -424,7 +450,7 @@ is still in question; do not build or maintain dedicated LOC tooling for this mi
 | 4 | Complete; Phase 4b accepted in production at `d961db7` | [Phase 4a plan](react-phase-4a-stem-lanes-plan.md) · [Phase 4b plan](react-phase-4b-shared-overview-plan.md) · [Evidence](react-migration-evidence.md#phase-4b--react-shared-overview-lane-integration) · [PR #79](https://github.com/SansWord/sans_bass/pull/79) · [PR #81](https://github.com/SansWord/sans_bass/pull/81) | Complete; Phase 5 may begin |
 | 5 | Complete; Phase 5b (detection controls) accepted in production at `3e241da` | [Phase 5a plan](react-phase-5a-separation-panel-plan.md) · [Phase 5b plan](react-phase-5b-detection-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-5b--react-detection-controls) · [PR #83](https://github.com/SansWord/sans_bass/pull/83) · [PR #85](https://github.com/SansWord/sans_bass/pull/85) | Complete; Phase 6 may begin |
 | 6 | Complete; Phase 6a (interpretation/key/display controls) accepted in production at `61e2b29`, Phase 6b (tempo/grid controls) accepted at `65a8ae6`, Phase 6c (edit list/undo/list-export controls) accepted at `2aa9cdc`, Phase 6d (zoomed-pane mount-lifecycle refactor) accepted at `6a49bb4`, Phase 6e (Edit-notes toggle/Export-Import buttons) accepted at `130af31`, Phase 6f (capo control/chord display-editing) accepted at `c833b7e` | [Phase 6a plan](react-phase-6a-interpretation-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6a--react-interpretation-controls) · [PR #87](https://github.com/SansWord/sans_bass/pull/87) · [Phase 6b plan](react-phase-6b-tempo-chord-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6b--react-tempogrid-controls) · [PR #89](https://github.com/SansWord/sans_bass/pull/89) · [Phase 6c plan](react-phase-6c-editor-export-controls-plan.md) · [Evidence](react-migration-evidence.md#phase-6c--react-edit-list-undo-and-list-export-controls) · [PR #91](https://github.com/SansWord/sans_bass/pull/91) · [Phase 6d plan](react-phase-6d-zoomed-pane-mount-refactor-plan.md) · [Evidence](react-migration-evidence.md#phase-6d--zoomed-pane-mount-lifecycle-refactor) · [PR #93](https://github.com/SansWord/sans_bass/pull/93) · [Phase 6e plan](react-phase-6e-edit-toggle-export-import-plan.md) · [Evidence](react-migration-evidence.md#phase-6e--edit-notes-toggle-and-shared-exportimport-edits-json-buttons) · [PR #95](https://github.com/SansWord/sans_bass/pull/95) · [Phase 6f plan](react-phase-6f-capo-chord-editor-plan.md) · [Evidence](react-migration-evidence.md#phase-6f--capo-control-and-chord-displayediting) · [PR #97](https://github.com/SansWord/sans_bass/pull/97) | Complete; Phase 7 (legacy UI retirement and release acceptance) may begin |
-| 7 | Not started | — | Cleanup and acceptance |
+| 7 | Complete; accepted in production at `abcc94e` | [Plan](react-phase-7-retire-legacy-plan.md) · [Evidence](react-migration-evidence.md#phase-7--retire-legacy-ui-and-accept-the-migration) · [PR #99](https://github.com/SansWord/sans_bass/pull/99) | Complete — the React migration roadmap is finished |
 
 Update this table after each accepted slice. Store detailed evidence in a linked migration
 log or PR, recording:

@@ -1,5 +1,197 @@
 # React migration evidence
 
+## Phase 7 — retire legacy UI and accept the migration
+
+Status: accepted in production at rollback anchor
+`abcc94e136be5c48f7d183cb53f44e37c37068cd`, completing the React migration roadmap in full.
+Evidence collected 2026-09-07 America/Los_Angeles. Branch
+`feat/react-phase-7-retire-legacy-ui`; starting source
+`379ed78e689ecc68b7d9eaafc193dd77c1505897` (Phase 6f documentation-anchor merge, PR #98);
+implementation committed as `132a818` (squash-merged as PR #99's single commit, `abcc94e`).
+Previous accepted implementation rollback anchor: Phase 6f at
+`c833b7e3022e7e0a7c414ca848aa50da51364d5f`, documented through
+[PR #97](https://github.com/SansWord/sans_bass/pull/97) and anchored through
+[PR #98](https://github.com/SansWord/sans_bass/pull/98).
+
+Phase 7's brief is cleanup plus acceptance, not a new ownership handoff: retire any migration
+adapter whose last consumer has moved, finalize the ownership documentation, and run the
+chained real-build acceptance checks no prior phase's own scoping covered together. The
+bounded audit and scope decision are recorded in
+[react-phase-7-retire-legacy-plan.md](react-phase-7-retire-legacy-plan.md).
+
+### Audit findings — no removable dead code
+
+Three independent read-only research passes covered every location the brief named:
+
+- **`app.js`** — every `window.sansBass` member (`application`, `playerShell.{unmount,remount}`,
+  `currentMix`, `isSingleTrack`, `stemBuffer`, `setNotes`, `setTempoRange`, `notesAudio`,
+  `transport`, `ribbonMuted`, `setRibbonVisible`/`ribbonVisible`, `say`), every `sansbass:*`
+  event dispatch/listener pair, and every top-level function declaration (~100, checked by
+  occurrence count) has a live consumer in `notes.js`, `separate.js`,
+  `components/*.jsx`, or `tests/*`. No dead code found. Two doc-comment findings instead:
+  `attachLaneExtra`/`attachOverviewExtra` called the drums-hint/range-caption content
+  "explicitly deferred, same as the rest of notes/tempo (Phase 6)" — Phase 6 is complete and
+  never moved this content, so the wording read as an open TODO for settled, permanent
+  architecture; and `announceTransport`/the `window.sansBass` block called themselves
+  "Temporary," when both are the permanent, documented cross-module bridges CLAUDE.md's own
+  bridge rule allows (mutable closure state `notes.js`/`separate.js` cannot statically
+  `import`).
+- **`lib/player-application.js` and every `components/*.jsx` file** — every exported command,
+  every `publish*/subscribe*/get*Snapshot` triplet (`transport`, `editHost`, `chord`,
+  `chordHost`, the root `subscribe`/`getSnapshot`), and every attach hook has a live call site
+  in `PlayerShell.jsx` or a production caller in `separate.js`/`notes.js`. No component holds
+  stale retry/polling scaffolding for a "not ready yet" host beyond the ordinary
+  optional-chaining `useSyncExternalStore` already needs. No component touches
+  `window.sansBass`. All 84 top-level CSS selectors in `styles.css` have a live consumer,
+  including the retired `chordGroup`/`editLabel`/`ioGroup` region's replacements — those old
+  identifiers survive only inside one explanatory code comment, not as selectors.
+- **`behaviour.md` scenarios vs. `react-migration-evidence.md`'s accumulated evidence** — every
+  SEP/NOTE evidence entry from Phase 5a onward explicitly scoped out real Worker/model
+  re-verification; the only real cached-model separation, real notes-Worker, and real
+  AudioWorklet evidence anywhere in the log predates Phase 5a entirely (Phase 1, before any of
+  the affected React ownership existed). No single pass had chained a full real-song
+  load→separate→detect→interpret→tempo→edit→capo/chord→export workflow on the post-6f UI.
+  Auditory/subjective checks were "not claimed" at every phase. Physical handheld checks had
+  only ever used the capability-predicate test or a simulated viewport. Background-tab
+  playback was last confirmed at Phase 3e, before lanes, separation/detection, and all of
+  notes/tempo/editor/capo-chord moved to React.
+
+**Scope decision:** no code removal (none was safe or needed); reword the four misleading
+comments; run the acceptance checks the audit's third finding calls for. Full reasoning in the
+plan doc.
+
+### Automated evidence
+
+Environment: Apple M4 Max (arm64), macOS 26.6.2, Node v26.7.0, npm 11.19.0, Vitest 4.1.11,
+Vite 8.2.2, Playwright headless Chromium (bundled).
+
+The only code change is rewording four comments (`app.js:1247`, `app.js:1297`, `app.js:2309`,
+`app.js:3556`) — no logic touched, so no new failing-first test was needed and none of the
+existing 460 were expected to change behavior:
+
+- full `npm test`: 31 files, 460 tests passed — identical count to Phase 6f's anchor, as
+  expected for a comment-only diff;
+- `npm run build`: passed; existing intentional unresolved-at-build-time
+  `stretch-processor.js` URL warning only;
+- `git diff --check`: passed;
+- `/code-review low` against the diff: "This diff is comment-only (docstring/comment
+  rewording, no logic touched)" — no findings.
+
+Exact commit `abcc94e`'s player bundle is **124,387 bytes**, byte-for-byte identical to Phase
+6f's anchor — comments are stripped at minification, so a comment-only diff produces zero
+bundle-size change, confirmed by measurement rather than assumed. The CSS chunk (13,356 bytes)
+and the shared React chunk (218,172 bytes) are likewise unchanged.
+
+### Real acceptance pass
+
+This is the bulk of Phase 7's actual work: a chained real-build pass no prior phase's own
+scoping had run together, per the audit's third finding above. Performed against the PR #99
+preview (`https://sansword.github.io/sans_bass/pr-99/`) via live browser automation — every
+result below reflects the actual running application, not a fake Worker or synthetic event
+substitute, except where a fixture's size is noted.
+
+- **Real cached-model separation.** An 8-second synthetic 44.1 kHz stereo WAV fed through the
+  real `#file-input` and "Separate into 6 stems." Console logged `[separate] model loaded from
+  cache`; six real lanes (Vocals, Guitar, Bass, Drums, Piano, Other) replaced the single track
+  with no console errors. "Save stems (.zip)" then produced a real download
+  (`phase7-separation-test-stems.zip`, 8,467,464 bytes) containing all six correctly named
+  full-length WAVs, with a "saved 8 MB" confirmation shown in the UI.
+- **Real song fixture.** `examples/nov_you.zip` (279 MB, six pre-separated real stems under the
+  Unicode folder `9 十二月的妳`) exceeds the browser-automation upload tool's 10 MB cap, so an
+  8-second-per-stem excerpt was trimmed with `ffmpeg` and rezipped preserving the UTF-8
+  filename flag (confirmed via `zipfile.ZipInfo.flag_bits & 0x800`) — 4.7 MB total. Loading it
+  displayed the real Unicode title correctly with real (non-flat) waveforms and no console
+  errors.
+- **Real notes-detection Worker**, both channels, on both fixtures: the synthetic tone
+  (Vocals: 0 notes/C major; Bass: 1 note/B major; tempo grid 92.3 BPM) and the real song excerpt
+  (Vocals: 11 notes/B major; tempo grid 76.9 BPM at 45% confidence from real drums evidence) —
+  no console errors either time.
+- **Real chord detection** on the real song excerpt produced an actual progression (F#, F#m7,
+  G#m, C#m) with an ambiguous-candidate dropdown and a real pitch-tracked melody overlay on the
+  waveform — not placeholder or zero output.
+- **Capo control**: setting capo to 5 correctly re-transposed the play-key readout from C to G
+  (concert C, capo 5 ⇒ play shape G), confirming the real `setCapo` command → `publishChord`
+  pipeline.
+- **Chord input**: typing "Gm7" and pressing Enter committed the edit — it appeared in both the
+  input and the canvas overlay — confirming the focus-aware controlled `<input>` → `commitChord`
+  → `sansbass:chordedit` → repaint pipeline end to end.
+- **Edit-notes toggle**: checking it correctly triggered the Overview lane's range-select
+  caption ("Drag along the bottom to select a time range"), confirming `setEditMode` →
+  `sansbass:editmode` → `notes.js` → `attachOverviewExtra` wiring.
+- **Export edits (JSON)** and **notation export (HTML)** both produced real downloads
+  (`sans_bass_song_notes_edits_2026_09_07_18_25.json`;
+  `sans_bass_song_vocals_notes_2026_09_07_18_29.html`, 7,643 bytes). The HTML was inspected
+  directly: self-contained (no external references), a working embedded capo-transposition
+  script, and correctly bar-wrapped 簡譜 notation with the same chords (F#, F#m7, G#m, C#m)
+  the live UI showed.
+- **Real AudioWorklet stretched playback**: speed set to 130% via the real range input, played
+  with a trusted `space` keypress (a synthetic click does not unlock `AudioContext`, per this
+  repo's own standing gotcha) — the BPM tag correctly scaled to 120.0/92.3, and the source
+  reached its natural end and reset to 0:00 with no console errors.
+- **Background-tab playback**: started the same 8-second clip at 130%, switched to a second
+  foreground tab for 6 seconds, then switched back — the source had already reached its
+  natural end and reset, confirming end-of-song detection still works while backgrounded on
+  the current, fully-React-owned DOM. This directly closes the staleness gap the audit found
+  (previously confirmed only at Phase 3e, before four later phases changed the surrounding
+  DOM).
+- **Language switch mid-playback**: clicking 中文 while the clip was playing at 0:04.18/0:08
+  retranslated every visible label, the tab title, and the lane names in place, while the
+  transport clock and audio continued uninterrupted at the same position.
+- **Narrow viewport** (390×800): no horizontal overflow; header and controls stack correctly.
+
+### Evidence categories and current omissions
+
+| Category | Evidence / omission |
+|---|---|
+| Synthetic | An 8-second generated WAV exercised real cached-model separation, both notes channels, tempo grid, capo, chord edit, edit-mode toggle, export, save, and stretched/backgrounded playback. |
+| Real song | An 8-second-per-stem excerpt of `examples/nov_you.zip` (trimmed to fit the automation upload tool's 10 MB cap; UTF-8 ZIP flag preserved) exercised real Unicode-title loading, real musical detection/chord/tempo output, and a real notation export — the fuller multi-minute file was not itself uploaded through browser automation this session. |
+| Malformed input | Unchanged; no ownership-affecting code path touched this phase. |
+| Storage/locale | Both languages confirmed, including a live mid-playback switch with the transport unaffected. |
+| Handheld | **Explicit skip.** No physical touch device was available this session; per user direction, this is recorded as a named gap rather than reused from the standing capability-predicate/simulated-viewport evidence, which answers a different question. |
+| Worker | Real `separate.worker.js` (cached-model ONNX inference) and real `notes.worker.js` (both channels) both exercised directly — the first real-Worker/model evidence since Phase 1, closing the gap the audit found. |
+| Visual | Desktop and 390×800 narrow-viewport layouts both confirmed on the PR preview, in both languages. |
+| Auditory | **Explicit skip.** Per user direction: pitch preservation, loop-seam quality, and note-tone alignment require actual listening judgment this session has no reliable way to render; not fabricated. |
+| Bundle size | Exact commit `abcc94e`'s player bundle (124,387 bytes) and CSS chunk (13,356 bytes) are byte-for-byte identical to Phase 6f's anchor — measured, not assumed. |
+
+**Accepted pre-existing tradeoff:** `attachOverviewExtra`'s range-select caption is never
+retranslated on a language switch until the next edit changes it — a property of
+`syncRangeHints()`'s content that predates this migration (it depends on which layer owns the
+host div, not on which layer wrote the string), not a regression. Fixing it would require
+giving this content its own React-rendered presentation, a new ownership handoff outside
+Phase 7's cleanup-not-handoff scope. Recorded here as an explicitly accepted gap rather than
+silently dropped or silently fixed.
+
+### PR-preview deployment evidence
+
+[PR #99](https://github.com/SansWord/sans_bass/pull/99)'s `test` and `deploy` checks both
+passed. Before any behavior assertion, `https://sansword.github.io/sans_bass/pr-99/` (loaded
+with a cache-busting query string) displayed exact synthetic merge `05dd53e54b6953ffe2a077864fe173debd127ebc`
+(`05dd53e`), matching `gh api repos/SansWord/sans_bass/pulls/99 --jq '.merge_commit_sha'` at
+the time of the check. The complete real acceptance pass above was run against this preview.
+The first-party console carried no errors throughout.
+
+### Production acceptance evidence
+
+PR #99 squash-merged as exact production source
+`abcc94e136be5c48f7d183cb53f44e37c37068cd`. Its
+[Deploy main workflow](https://github.com/SansWord/sans_bass/actions/runs/34177099928) and
+[Test workflow](https://github.com/SansWord/sans_bass/actions/runs/34177099900) both passed.
+Before any behavior assertion, `https://sansword.github.io/sans_bass/` (fetched with a
+cache-busting query string) displayed exact `abcc94e`.
+
+The production delivery canary repeated the affected boundary: the same real-song fixture
+loaded correctly with its Unicode title and six real lanes, and the page booted with no
+console errors.
+
+The complete real-Worker/model, chord/tempo/capo, export/save, stretched/backgrounded-playback,
+and language-switch matrix was not repeated in production because the canary agreed with the
+preview evidence above. No physical-handheld or subjective auditory check is claimed, for the
+reasons given in the omissions table above.
+
+Phase 7 is accepted at the full SHA above, completing the incremental React migration roadmap
+in `docs/react-migration.md`. This separate documentation-only PR records the immutable
+rollback anchor.
+
 ## Phase 6f — capo control and chord display/editing
 
 Status: accepted in production at rollback anchor

@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.35.0](#v1350--post-migration-cleanup-2026-09-07) | A comparative review of `main` vs. `before_react_migration` found the migration's real code came out ahead but its own phase-by-phase docs outweighed the code 5:1; extracted a `makeChannel()` pub/sub factory in `lib/player-application.js`, rewrote `CLAUDE.md`'s React sections as steady-state description, and archived the 17 phase-plan docs plus the evidence log. |
 | [React phase 7](#react-phase-7--retire-legacy-ui-and-accept-the-migration-2026-09-07) | Legacy-UI retirement audit found no removable migration adapter anywhere — every phase had already cleaned up after itself. Reworded four `app.js` comments that mislabeled permanent bridges as "temporary," then ran a chained real-build acceptance pass (real cached-model separation, real notes Workers, real song, stretched/backgrounded playback, language switch) closing the last evidence gap. Accepted in production at `abcc94e`, completing the React migration roadmap. |
 | [React phase 6f](#react-phase-6f--capo-control-and-chord-displayediting-2026-09-07) | React now owns the zoomed pane's capo control and chord display/editing, completing Phase 6 in full. `lib/player-application.js` gains a `publishChord`/`subscribeChord` dedup channel mirroring `publishTransport`, and a focus-aware controlled `<input>` for the chord field needed no imperative escape hatch. Accepted in production at `c833b7e`. |
 | [React phase 6e](#react-phase-6e--edit-notes-toggle-and-shared-exportimport-edits-json-buttons-2026-09-07) | React now owns the zoomed pane's Edit-notes toggle and shared Export/Import edits JSON buttons; `app.js` keeps `editMode` and event dispatch, exposing state through a new `notesEdit` snapshot field and three commands. The audit found capo and the chord editor remain entangled via one shared per-frame-recomputed hidden state, deferred to a new Phase 6f. Accepted in production at `130af31`. |
@@ -95,6 +96,46 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.35.0 — Post-migration cleanup (2026-09-07 20:17)
+
+**Review:** not yet
+**Design docs:**
+- Post-migration cleanup: [Plan](superpowers/plans/2026-09-07-post-migration-cleanup.md)
+
+**What was built:**
+- Extracted a `makeChannel()` pub/sub factory in `lib/player-application.js`, replacing five
+  near-identical Set-based subscribe/publish implementations (`subscribe`,
+  `subscribeTransport`, `subscribeChord`, `subscribeEditHost`, `subscribeChordHost`) with one
+  factory. Each channel keeps its own dedup logic (`sameTransport`, `sameChord`) as a thin
+  wrapper, since host channels don't dedupe by value. Pure refactor, no behavior change.
+- Rewrote `CLAUDE.md`'s "Hard constraints" and "Repo layout" sections from an incremental
+  phase-by-phase narrative (Phase 1 through Phase 7) into a flat, current-state description of
+  what React owns, what `app.js` owns, and what `lib/player-application.js` is.
+- Moved the full phase-by-phase history to a new `docs/react-migration-history.md`, linked
+  from `CLAUDE.md`.
+- Archived the 17 `docs/react-phase-*-plan.md` files and `docs/react-migration-evidence.md`
+  into `docs/archive/react-migration/` (with a README noting they're historical), and fixed
+  the still-live links pointing at them in `docs/devlog.md`, `docs/react-migration.md`, and
+  `docs/test-coverage.md`.
+- Added a Working Conventions note: future architecture/behavior docs and PR descriptions
+  describe the current design on its own terms rather than compare against the pre-React
+  imperative approach, unless a specific regression is suspected.
+
+**Key technical learnings:**
+- `[insight]` A migration's own phase-by-phase documentation can outweigh its code by a wide
+  margin and become a maintenance cost in its own right. The comparative review that motivated
+  this cleanup found the React migration's real code delta was a modest net +1,429 lines
+  (+2,851/−1,422), while its planning/evidence docs alone totaled roughly 7,546 lines across 17
+  phase-plan files plus a 3,045-line evidence log — over 5x the code, for a single-page app's
+  migration.
+- `[gotcha]` The completed migration's own devlog entries (React phase 0 through 7) never
+  adopted this project's three-part semver convention — they're titled "React phase N" rather
+  than `vX.Y.Z`, so the TL;DR table's version column mixes two labeling schemes across entries
+  spanning the same 2026-09-05–2026-09-07 window this entry's `v1.35.0` continues from. Flagged
+  here rather than silently backfilled or renamed: those anchors are already referenced from
+  merged PR history and `docs/react-migration.md`'s rollback-anchor table, so renaming them is
+  a separate, larger task if the user wants it done.
 
 ## React phase 7 — retire legacy UI and accept the migration (2026-09-07)
 

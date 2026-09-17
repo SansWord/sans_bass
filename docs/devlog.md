@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.36.0](#v1360--fixed-song-page-2026-09-16-2232) | A new `puma_taipei_smooth.html` is the same six-stem player pinned to one hosted stems zip, with no file input, drop target or separation panel, and a download link for the zip in the Load button's slot. The song is declared in markup because Vite merges a page's module scripts into one chunk and hoists their imports — an entry module that ran before `app.js` in dev ran after it once built. `scripts/repack-stems.sh` re-encodes a lossless stems zip for hosting (116 MB → 13 MB). |
 | [v1.35.0](#v1350--post-migration-cleanup-2026-09-07) | A comparative review of `main` vs. `before_react_migration` found the migration's real code came out ahead but its own phase-by-phase docs outweighed the code 5:1; extracted a `makeChannel()` pub/sub factory in `lib/player-application.js`, rewrote `CLAUDE.md`'s React sections as steady-state description, and archived the 17 phase-plan docs plus the evidence log. |
 | [React phase 7](#react-phase-7--retire-legacy-ui-and-accept-the-migration-2026-09-07) | Legacy-UI retirement audit found no removable migration adapter anywhere — every phase had already cleaned up after itself. Reworded four `app.js` comments that mislabeled permanent bridges as "temporary," then ran a chained real-build acceptance pass (real cached-model separation, real notes Workers, real song, stretched/backgrounded playback, language switch) closing the last evidence gap. Accepted in production at `abcc94e`, completing the React migration roadmap. |
 | [React phase 6f](#react-phase-6f--capo-control-and-chord-displayediting-2026-09-07) | React now owns the zoomed pane's capo control and chord display/editing, completing Phase 6 in full. `lib/player-application.js` gains a `publishChord`/`subscribeChord` dedup channel mirroring `publishTransport`, and a focus-aware controlled `<input>` for the chord field needed no imperative escape hatch. Accepted in production at `c833b7e`. |
@@ -96,6 +97,59 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.36.0 — Fixed-song page (2026-09-16 22:32)
+
+**Review:** not yet
+
+**What was built:**
+- `puma_taipei_smooth.html` — the same six-stem player pinned to one stems zip hosted off-repo.
+  No file input, no drop affordance, no document drag listeners, no separation panel.
+- `lib/fixed-song.js` — resolves the page's declaration, downloads the zip with progress, and
+  hands it to the ordinary `load` command as a `File`. Same `subscribe`/`getSnapshot`/`commands`
+  shape as `separation`/`detection`/`tempoGrid`.
+- `components/FixedSongPanel.jsx` — download progress in the drop affordance's place, plus a
+  download link for the same zip in the header slot the Load button occupies.
+- `scripts/repack-stems.sh` — re-encodes a lossless stems zip to `.m4a` for hosting and can
+  rename the folder inside it. On this song: 116 MB → 13 MB, six 44.1 kHz stereo WAVs → AAC 160k.
+- One new scenario, `FIXED-001`, in `docs/behaviour.md`, and `tests/fixed-song.test.js`.
+
+**Key technical learnings:**
+- `[gotcha]` **A page's `<script type="module">` tags are merged into one entry chunk by Vite,
+  and static imports hoist — so tag order is not execution order in a build.** The page first
+  declared its song from a tiny entry module listed before `app.js`. That works under
+  `npm run dev`, where the tags are separate modules fetched and executed in order, and inverts
+  the moment it is built: Rollup emits one chunk whose `import "./app-<hash>.js"` hoists above
+  the `configure(...)` call, so `app.js` mounted the React shell first and the built page
+  painted the file input and drop target the whole page exists to not have. Nothing errored; it
+  just rendered the ordinary player. The fix is to declare the song in markup
+  (`<body data-fixed-song="…">`), which is in the document before any module evaluates at all.
+- `[insight]` **Anything that must be true before the first render belongs in markup, not in a
+  module that "runs first".** Module ordering is a bundler's to rearrange; the DOM is not. This
+  is the same class of reasoning as the `#build-sha` badge — observe the thing itself rather
+  than a proxy that a build step can invalidate.
+- `[gotcha]` **Verify an entry-page change against `npm run build` plus `npm run preview`, not
+  only `npm run dev`.** This class of bug is invisible in dev by construction. The dev server
+  had every fixed-song assertion passing — no file input, no dropzone, six lanes, correct title
+  — while the built output silently rendered the ordinary player.
+- `[insight]` **A fixed song is not a new way in; it is the same way in with the file supplied
+  by the page.** Fetching the zip and handing `load` a `File` means stem detection, titling,
+  decode-failure recovery, notes, tempo and chords all work untouched. The only genuinely new
+  state is the download itself.
+- `[note]` Lossless stems are ~1 MB per stem-second. Six 44.1 kHz stereo WAVs of a 1:49 track
+  are 116 MB — over GitHub's 100 MB per-file limit on its own, before considering that it would
+  be a 116 MB download per visit. AAC at 160k is 1/9th of that and the player decodes both
+  identically.
+- `[gotcha]` `ffmpeg` reads the surrounding shell loop's stdin and swallows the paths a
+  `while read` is still consuming, which mangles every file after the first. `-nostdin`.
+- `[note]` The download progress publishes once per whole percent rather than per chunk; a
+  13 MB body arrives in a few hundred chunks, each otherwise re-rendering for an invisible
+  change.
+
+**Process learnings:**
+- `[insight]` The duplicate drums tempo hint seen while checking the dev server was a
+  StrictMode double-attach artifact, not a regression — it appeared once in the production
+  build. Worth checking which environment a suspicious rendering came from before chasing it.
 
 ## v1.35.0 — Post-migration cleanup (2026-09-07 20:17)
 

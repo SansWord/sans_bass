@@ -85,6 +85,28 @@ describe('fixed-song page markup', () => {
   });
 });
 
+describe('featured song banner', () => {
+  it('links to the fixed-song page from index.html only', () => {
+    expect(read('index.html')).toMatch(/class="song-banner"[^>]*href="\.\/puma_taipei_smooth\.html"/);
+    // The markup lives in index.html rather than the shared React header, which is what keeps
+    // it off the other entry pages without any gating — including off the page it points at.
+    expect(read('puma_taipei_smooth.html')).not.toContain('song-banner');
+    expect(read('scripts/build-demos.js')).not.toContain('song-banner');
+  });
+
+  it('keeps the banner title at a size that clears AA on the brand orange', () => {
+    const css = read('styles.css');
+    const size = css.match(/\.song-banner-title\s*\{[^}]*font-size:\s*(\d+)px/);
+    const weight = css.match(/\.song-banner-title\s*\{[^}]*font-weight:\s*(\d+)/);
+    // White on #db6a41 is 3.41:1 — AA for large text only. Large text means >=18.66px at
+    // weight 700, so shrinking this below that silently drops the banner under AA. px and not
+    // rem on purpose: this sheet's root is 14px, so 1.2rem would be 16.8px and fail.
+    expect(Number(size?.[1])).toBeGreaterThanOrEqual(19);
+    expect(Number(weight?.[1])).toBeGreaterThanOrEqual(700);
+    expect(css).not.toMatch(/\.song-banner-title\s*\{[^}]*font-size:\s*[\d.]+rem/);
+  });
+});
+
 describe('fixed song store', () => {
   const loads = [];
   let fetchMock;

@@ -32,23 +32,25 @@ init({ titleKey: 'puma.title' });
         async src="https://gc.zgo.at/count.js"></script>
 </head>
 <!-- ──────────────────────────────────────────────────────────────────────────────────────
-     TODO: replace with the R2 public URL of the repacked stems zip, e.g.
-       https://pub-<hash>.r2.dev/puma_taipei_smooth_stems.zip
+     The song, hosted in R2 rather than committed here.
 
-     Build that zip with
+     Rebuild the zip with
        ./scripts/repack-stems.sh -n '《台北順起來 𝙁𝙪𝙩𝙪𝙧𝙚 𝙎𝙤𝙤𝙣》' \
          puma_song/puma_song_stems.zip puma_song/puma_taipei_smooth_stems.zip
      and upload the ~13 MB result, not the 116 MB lossless one. -n names the folder inside
      the zip, which is what the player shows as the song title.
 
-     The bucket must send `Access-Control-Allow-Origin` for this page's origin: a cross-origin
-     fetch without it fails with an opaque network error carrying no status to report. Exposing
-     `Content-Length` too is what turns the panel's byte counter into a percentage.
+     The bucket must send `Access-Control-Allow-Origin` for this page's origin, via a CORS
+     policy on the R2 bucket. Without one the object still serves perfectly to curl — 200, right
+     length — and the browser refuses to let the page read it, surfacing only `TypeError: Failed
+     to fetch` with no status to report. That is the failure to expect here, and the panel's
+     Retry is what recovers from it. `Content-Length` is CORS-safelisted, so the percentage
+     works as soon as the origin is allowed.
 
      Declared here rather than in a module because a bundler merges and hoists this page's
      module scripts — see the header comment in lib/fixed-song.js.
      ────────────────────────────────────────────────────────────────────────────────────── -->
-<body data-fixed-song="REPLACE_WITH_R2_URL/puma_taipei_smooth_stems.zip">
+<body data-fixed-song="https://pub-074cc92e7f7c4a97beab9ba20f7f476b.r2.dev/puma_taipei_smooth/puma_taipei_smooth_stems.zip">
 
 <header class="bar" id="site-header"></header>
 

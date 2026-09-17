@@ -86,25 +86,38 @@ describe('fixed-song page markup', () => {
 });
 
 describe('featured song banner', () => {
-  it('links to the fixed-song page from index.html only', () => {
+  // Each entry page's banner is written into its own markup rather than into the shared React
+  // header, which is what lets the two point in opposite directions — and keeps /demos/ out of
+  // it entirely — with no gating anywhere.
+  it('points from index.html at the fixed-song page', () => {
     expect(read('index.html')).toMatch(/class="song-banner"[^>]*href="\.\/puma_taipei_smooth\.html"/);
-    // The markup lives in index.html rather than the shared React header, which is what keeps
-    // it off the other entry pages without any gating — including off the page it points at.
-    expect(read('puma_taipei_smooth.html')).not.toContain('song-banner');
     expect(read('scripts/build-demos.js')).not.toContain('song-banner');
   });
 
-  it('keeps the banner title at a size that clears AA on the brand orange', () => {
-    const css = read('styles.css');
-    const size = css.match(/\.song-banner-title\s*\{[^}]*font-size:\s*(\d+)px/);
-    const weight = css.match(/\.song-banner-title\s*\{[^}]*font-weight:\s*(\d+)/);
-    // White on #db6a41 is 3.41:1 — AA for large text only. Large text means >=18.66px at
-    // weight 700, so shrinking this below that silently drops the banner under AA. px and not
-    // rem on purpose: this sheet's root is 14px, so 1.2rem would be 16.8px and fail.
-    expect(Number(size?.[1])).toBeGreaterThanOrEqual(19);
-    expect(Number(weight?.[1])).toBeGreaterThanOrEqual(700);
-    expect(css).not.toMatch(/\.song-banner-title\s*\{[^}]*font-size:\s*[\d.]+rem/);
+  it('points from the fixed-song page out to the campaign, never back at itself', () => {
+    const html = read('puma_taipei_smooth.html');
+    expect(html).toMatch(/class="song-banner"[^>]*href="https:\/\/puma\.taipei\/songs"/);
+    // An external destination, opened in a new tab because the song is loaded and may be
+    // playing behind it — which is exactly the case rel="noopener" has to cover.
+    expect(html).toMatch(/class="song-banner"[^>]*rel="noopener"/);
+    expect(html).not.toMatch(/class="song-banner"[^>]*href="\.?\/?puma_taipei_smooth\.html"/);
   });
+
+  // Both sheets, not just styles.css: the fixed-song page carries its own banner out to the
+  // campaign, on the same orange, and puma.css restates these rules rather than sharing them.
+  // A copy is exactly the thing that drifts, so the guard reads both.
+  it.each(['styles.css', 'puma.css'])(
+    'keeps %s\'s banner title at a size that clears AA on the brand orange', (sheet) => {
+      const css = read(sheet);
+      const size = css.match(/\.song-banner-title\s*\{[^}]*font-size:\s*(\d+)px/);
+      const weight = css.match(/\.song-banner-title\s*\{[^}]*font-weight:\s*(\d+)/);
+      // White on #db6a41 is 3.41:1 — AA for large text only. Large text means >=18.66px at
+      // weight 700, so shrinking this below that silently drops the banner under AA. px and not
+      // rem on purpose: these sheets' root is 14px, so 1.2rem would be 16.8px and fail.
+      expect(Number(size?.[1])).toBeGreaterThanOrEqual(19);
+      expect(Number(weight?.[1])).toBeGreaterThanOrEqual(700);
+      expect(css).not.toMatch(/\.song-banner-title\s*\{[^}]*font-size:\s*[\d.]+rem/);
+    });
 });
 
 describe('fixed song store', () => {

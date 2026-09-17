@@ -15,17 +15,96 @@
  * linking its own. Seeing one shared file in dist/ today is not the duplication having failed.
  */
 
+/* Light, warm, orange — puma.taipei's own palette rather than a lightened version of the
+ * player's dark one. The values below are that site's brand tokens, read off its stylesheet:
+ *
+ *   --brand-surface #fff8f4   --brand-white  #fff      --brand-border #efc5ad
+ *   --brand-ink     #211d1d   --brand-muted  #665b57
+ *   --brand-primary #db6a41   --brand-action #ad4d2a   --brand-action-hover #963f24
+ *
+ * The orange arrives as TWO tokens, because one cannot do both jobs. `--brand-primary`
+ * (#db6a41) measures 3.4:1 against both white and this background — enough for a rule, a
+ * waveform or a 20px heading, not enough for a button label or body text. `--brand-action`
+ * (#ad4d2a) measures 5.1:1 on the background and 5.4:1 under white text, so every filled
+ * control and every piece of coloured text uses that one. puma.taipei splits them the same
+ * way: fact-check cards carry a 6px #db6a41 rule, and its buttons are #ad4d2a.
+ *
+ *   --accent  interactive: filled controls (white text on top), focus rings, slider thumbs
+ *   --brand   decorative: the card rule, the vocal waveform — never text, never a label bg
+ *
+ * A-B repeat leaves the orange family entirely. Amber on a cream page is under 2:1 and the
+ * markers sit *inside* the waveform, where they have to win against the stem colour as well
+ * as the background; a deep teal is ~7:1 on both, and being the one cool thing on the page is
+ * what makes a loop boundary findable at a glance. */
 :root {
-  --bg: #0d0d10;
-  --panel: #16161b;
-  --panel-2: #1d1d24;
-  --line: #2a2a33;
-  --fg: #e9e9ef;
-  --dim: #7c7c8a;
-  --accent: #ff2e63;
-  --loop: #ff9f1c;
+  --bg: #fff8f4;
+  --panel: #fff;
+  --panel-2: #fdeee5;
+  --line: #efc5ad;
+  --fg: #211d1d;
+  --dim: #665b57;
+  --accent: #ad4d2a;
+  --accent-hover: #963f24;
+  --brand: #db6a41;
+  --loop: #15616d;
   --radius: 10px;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  /* Native form controls (the volume/speed sliders, the mode <select>) pick their own
+     rendering from this. Without it Chrome keeps painting the dark-mode variants it inferred
+     before, and a dark scrollbar and a grey-on-grey select turn up on a cream page. */
+  color-scheme: light;
+
+  /* ---- colours app.js paints into a <canvas>, which no rule below can reach ----
+     Each of these is read by themeColor() in app.js, which falls back to the dark-theme
+     literal when the property is absent — so styles.css needs none of them and the main
+     player is untouched. They are here because every one of them is white-on-near-black in
+     that fallback and would paint invisibly on this page. */
+  --wave-playhead: rgba(33, 29, 29, .85);      /* was rgba(255,255,255,.85) */
+  --wave-grid: rgba(33, 29, 29, .10);          /* bar lines under a lane's waveform */
+  --wave-loop-scrim: rgba(255, 248, 244, .74); /* veils everything outside A-B */
+  --wave-loop-mark: #15616d;                   /* matches --loop */
+  --wave-loop-ink: #fff;                       /* the A / B glyphs, on that teal */
+  /* The unplayed half of a waveform, drawn at 0.55 alpha (0.45 on the overview) by
+     renderWave/renderOverview. Pick it for the COMPOSITE, not for how it reads alone: this
+     lands near #9b9694 on white, ~2.7:1, which is the same recessive weight the dark theme's
+     #6b6b7a gets over #16161b. A value chosen to look right on its own comes out invisible. */
+  --wave-idle: #4a3f3b;
+  /* The played half of the main transport waveform (the whole mix, so it has no --stem-* of
+     its own). --brand-primary itself: it is the largest coloured thing on the page and the
+     first thing that moves, which is the right place for the record's own orange. 3.3:1
+     against the card — under the 4.5:1 text needs, over the 3:1 a graphical object needs. */
+  --wave-main: #db6a41;
+
+  /* The zoomed pane. It is NOT hidden on this page — only the note detection above it is —
+     so its canvas is the largest single surface here, and left at its fallback it is a
+     near-black slab in the middle of a cream page. Everything the pane draws without notes
+     is themed; the piano-roll, pitch-contour and note-name colours are not, because
+     `showNotes` is never true here and those branches never run. */
+  --zoom-bg: #fffdfb;
+  --zoom-grid-bar: rgba(33, 29, 29, .28);
+  --zoom-grid-beat: rgba(33, 29, 29, .11);
+  --zoom-grid-quarter: rgba(33, 29, 29, .07);
+  --zoom-grid-half: rgba(33, 29, 29, .13);
+  --zoom-ruler: #8a7a72;
+  --zoom-playhead: rgba(33, 29, 29, .9);
+
+  /* Per-stem waveform colours, overriding lib/stems.js for this page only (app.js resolves
+     --stem-<id> at track build). That file's palette is tuned for a near-black lane: on white
+     the amber guitar is 1.8:1, the mint bass 1.8:1 and the cyan drums 1.9:1 — three lanes
+     that simply are not there. Each hue is kept and deepened to clear 4:1 on white, well past
+     the 3:1 a graphical object needs.
+
+     Vocals is the exception and takes --brand-primary itself, unchanged. It is the stem this
+     page exists for, #db6a41 is the record's own colour, and it replaces the #ff2e63 red that
+     had nothing to do with either. */
+  --stem-vocals: #db6a41;
+  --stem-guitar: #b07000;
+  --stem-bass: #0f8f5f;
+  --stem-drums: #1273a3;
+  --stem-piano: #7b4bd0;
+  --stem-other: #5b6b7d;
+  --stem-mix: #3a3230;
 }
 
 * { box-sizing: border-box; }
@@ -56,7 +135,7 @@ body { min-height: 100vh; }
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
-  background: rgba(13, 13, 16, .88);
+  background: rgba(255, 255, 255, .92);
   backdrop-filter: blur(12px);
   z-index: 5;
 }
@@ -130,7 +209,7 @@ body { min-height: 100vh; }
   background: var(--accent);
   color: #fff;
 }
-.lang-toggle button[aria-pressed="true"]:hover { background: var(--accent); filter: brightness(1.1); }
+.lang-toggle button[aria-pressed="true"]:hover { background: var(--accent-hover); }
 
 /* Any author rule that sets `display` beats the UA stylesheet's `[hidden] { display: none }`,
    so .btn / .loop-badge / .sep elements stayed visible while their .hidden property read
@@ -149,7 +228,7 @@ body { min-height: 100vh; }
   border: 1px solid transparent;
   user-select: none;
 }
-.btn:hover { filter: brightness(1.1); }
+.btn:hover { background: var(--accent-hover); }
 .btn.ghost {
   background: transparent;
   color: var(--fg);
@@ -158,6 +237,53 @@ body { min-height: 100vh; }
 .btn.ghost:hover { background: var(--panel-2); }
 .btn[disabled] { opacity: .5; cursor: default; }
 .btn[disabled]:hover { filter: none; background: transparent; }
+
+/* ---- campaign banner ----
+   Out to the campaign this record belongs to. index.html carries the same three classes
+   pointing the other way (at this page); the rules are restated here rather than shared,
+   for the same reason the whole file is a copy.
+
+   Solid --brand-primary, which makes it the one saturated block on a cream page and the
+   only thing above the transport card. That fill is what constrains everything on top of
+   it: white on #db6a41 measures 3.41:1, which clears AA for LARGE text and nothing else.
+   Large text means >=18.66px at weight 700, so the title has to be 20px/700 and has to be
+   stated in px — this sheet's root is 14px, so the 1.2rem that looks big enough computes to
+   16.8px and fails silently. tests/fixed-song.test.js reads both sheets and enforces it.
+
+   The shadow is the transport card's, repeated: two objects, one family. */
+.song-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 14px 18px;
+  background: var(--brand);
+  border-radius: var(--radius);
+  box-shadow: 6px 6px 0 rgba(230, 184, 129, .45);
+  color: #fff;
+  text-decoration: none;
+  transition: background .12s;
+}
+.song-banner:hover { background: #db682a; }
+/* --fg is the page ink, which the orange cannot swallow the way it would a white ring. */
+.song-banner:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+.song-banner-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.song-banner-title { font-size: 20px; font-weight: 700; line-height: 1.4; }
+/* Unused here — this banner is one line — but kept so the three classes stay a set. The
+   dark brown measures 4.55:1 on the orange, which clears AA for normal text; white would not. */
+.song-banner-sub { font-size: 13px; color: #3d1a0b; }
+.song-banner-go { margin-left: auto; font-size: 1.3rem; line-height: 1; transition: transform .12s; }
+.song-banner:hover .song-banner-go { transform: translate(3px, -3px); }
+@media (prefers-reduced-motion: reduce) {
+  .song-banner, .song-banner-go { transition: none; }
+  .song-banner:hover .song-banner-go { transform: none; }
+}
+@media (max-width: 480px) {
+  /* Padding only. The title must not shrink below 18.66px at weight 700, or it stops
+     counting as large text and white-on-orange drops under AA at exactly the size where a
+     phone user needs it most. 20px is the floor, not a starting point. */
+  .song-banner { padding: 12px 14px; gap: 12px; }
+}
 
 /* ---------- layout ---------- */
 
@@ -215,7 +341,7 @@ code {
   justify-content: center;
   padding: 24px;
   pointer-events: none;
-  background: rgba(13, 13, 16, .8);
+  background: rgba(255, 248, 244, .85);
   backdrop-filter: blur(3px);
 }
 .drag-card {
@@ -233,14 +359,21 @@ code {
 /* React portals own selected descendants without adding a layout box or a second root. */
 .react-portal-host { display: contents; }
 
+/* The one piece of structure borrowed from puma.taipei rather than just its colours: its
+   cards carry a thick brand rule along the top and a hard, un-blurred offset shadow in the
+   brand's peach (#e6b881 at ~52%), which is what stops a white card on a cream page reading
+   as a blank area. Applied to the transport card only. Repeating it down six stacked lanes
+   would turn a quiet list into six competing objects, so those keep the plain warm border. */
 .master {
   display: flex;
   align-items: center;
   gap: 16px;
   background: var(--panel);
   border: 1px solid var(--line);
+  border-top: 4px solid var(--brand);
   border-radius: var(--radius);
   padding: 14px 16px;
+  box-shadow: 6px 6px 0 rgba(230, 184, 129, .45);
 }
 
 .master-mid { flex: 1; min-width: 0; }
@@ -323,15 +456,15 @@ input[type=range] { width: 110px; }
    .controls flexbox, so it is read left-to-right from the same edge as everything else
    instead of being squeezed right-aligned into whatever space was left over.
    The colour is a deliberate override of `.dim` (hence the doubled class, so it wins on
-   specificity rather than on source order): --dim is ~4.7:1 on the background, which is
-   thin for 11px text that is the only place the keyboard map is written down. #a3a3b2 is
-   ~7.8:1, and the size goes 11px → 12.5px. */
+   specificity rather than on source order): --dim is ~6.2:1 on this background, which is
+   thin for 11px text that is the only place the keyboard map is written down. #4a423f is
+   ~9.1:1, and the size goes 11px → 12.5px. */
 .hint.dim {
   flex: 1 0 100%;
   order: 9;
   margin: 2px 0 0;
   font: 12.5px/1.7 var(--mono);
-  color: #a3a3b2;
+  color: #4a423f;
   /* Stacked, not side by side. Laid out in a row the two halves ran together into one
      unreadable sentence — a gap is not a separator when both halves are the same colour
      and the same monospace face. One instruction per line. */
@@ -397,8 +530,8 @@ input[type=range] { width: 110px; }
   padding: 8px 12px;
   transition: opacity .15s, border-color .15s;
 }
-.lane.muted { opacity: .38; }
-.lane.muted:hover { opacity: .6; }
+.lane.muted { opacity: .45; }
+.lane.muted:hover { opacity: .68; }
 
 .lane-name {
   display: flex;
@@ -432,8 +565,8 @@ input[type=range] { width: 110px; }
   border-radius: 7px 0 0 7px;
   transition: background .12s;
 }
-.lane-name:hover { background: #2b2b36; }
-.lane-name:active { background: #34343f; }
+.lane-name:hover { background: #fbe1d2; }
+.lane-name:active { background: #f7d2bd; }
 .lane-name .dot {
   flex: none;
   width: 9px; height: 9px;
@@ -496,7 +629,7 @@ input[type=range] { width: 110px; }
   color: var(--dim);
   white-space: pre-wrap;
 }
-.status.err { color: #ff6b81; }
+.status.err { color: #a52f2f; }
 
 @media (max-width: 640px) {
   .lane { grid-template-columns: 96px 1fr; }
@@ -510,11 +643,11 @@ input[type=range] { width: 110px; }
 .sep {
   display: flex; flex-direction: column; gap: 10px;
   padding: 14px 16px; margin: 0 0 14px;
-  background: #141419; border: 1px solid #23232b; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
 }
 .sep-row { display: flex; align-items: center; gap: 12px; }
-.sep-bar { height: 6px; background: #23232b; border-radius: 3px; overflow: hidden; }
-.sep-bar > div { height: 100%; width: 0; background: #ff9f1c; transition: width .2s linear; }
+.sep-bar { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.sep-bar > div { height: 100%; width: 0; background: var(--brand); transition: width .2s linear; }
 
 /* The ribbon reuses the lane grid exactly — 128px / 1fr / 96px — so its canvas starts and
    ends on the same pixels as every waveform above it. A lane that computes its own
@@ -526,7 +659,7 @@ input[type=range] { width: 110px; }
 .lane.ribbon,
 .lane.ribbon-zoom { position: relative; padding-bottom: 14px; }
 /* Height is set on the canvas by renderRibbon, not here — it is drag state, not style. */
-.lane.ribbon .lane-name .dot { background: #6fbf8e; }
+.lane.ribbon .lane-name .dot { background: #0f8f5f; }
 
 /* The drag grip. 10px is comfortably above the ~7px minimum for a pointer target while
    staying visually quiet; ns-resize is the affordance doing the real work. */
@@ -537,9 +670,9 @@ input[type=range] { width: 110px; }
 }
 .ribbon-grip::after {
   content: ''; width: 34px; height: 3px; border-radius: 2px;
-  background: #3a3a47; transition: background .15s;
+  background: #e3c3ae; transition: background .15s;
 }
-.ribbon-grip:hover::after { background: #55556a; }
+.ribbon-grip:hover::after { background: #c99f85; }
 
 /* The label used to sit inline with the seconds readout and zoom buttons in the same
    128px column as every other lane's name, which truncated "局部放大" to an ellipsis the
@@ -618,10 +751,10 @@ input[type=range] { width: 110px; }
 .zoom-chord-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 1px; }
 .capo-select { width: 48px; }
 .capo-play-key { white-space: nowrap; }
-.chord-field { width: 74px; color: #5ecbff; font-weight: 700; }
-.chord-field.ambiguous { color: #ffd166; border-color: #ffd166; }
-.chord-field.edited { color: #c99bf0; border-color: #c99bf0; }
-.note-field.chord-candidates { width: auto; max-width: 145px; color: #ffd166; }
+.chord-field { width: 74px; color: #1d6fa0; font-weight: 700; }
+.chord-field.ambiguous { color: #8a5a00; border-color: #8a5a00; }
+.chord-field.edited { color: #7b4bd0; border-color: #7b4bd0; }
+.note-field.chord-candidates { width: auto; max-width: 145px; color: #8a5a00; }
 .zoom-sub-btn { padding: 2px 6px; }
 .zoom-sub-btn.active { border-color: var(--loop); color: var(--loop); }
 
@@ -636,13 +769,13 @@ input[type=range] { width: 110px; }
 .zoom-btn {
   font: 600 12px var(--mono); line-height: 1;
   width: 22px; height: 22px; padding: 0;
-  background: #2a2a35; color: var(--text);
+  background: var(--panel-2); color: var(--fg);
   border: 1px solid var(--line); border-radius: 5px; cursor: pointer;
 }
-.zoom-btn:hover { background: #343442; }
-.zoom-btn:focus-visible { outline: 2px solid #9ad; outline-offset: 1px; }
-.btn.ghost { background: #2a2a35; color: var(--text); border: 1px solid var(--line); }
-.btn.ghost:hover { background: #343442; }
+.zoom-btn:hover { background: #f7d2bd; }
+.zoom-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn.ghost { background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); }
+.btn.ghost:hover { background: #f7d2bd; }
 
 .notes { margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px; }
 .notes-panel-label { font: 600 12px var(--mono); color: var(--fg); }
@@ -663,8 +796,8 @@ input[type=range] { width: 110px; }
 /* Blue and grey match the lane's folded/doubtful fills, so the readout and the picture
    agree without a legend. */
 .notes-stats { font: 12px var(--mono); font-variant-numeric: tabular-nums; }
-.notes-stats .n-fold { color: #6cc5e0; }
-.notes-stats .n-mute { color: #a8a8b8; }
+.notes-stats .n-fold { color: #1273a3; }
+.notes-stats .n-mute { color: #7a716d; }
 /* The A-B orange, reused for its established meaning in this app: look at this. Above ~2.5
    the fold starts accepting octave-plus-a-fifth errors and drawing them as trusted. */
 .notes-val.risky { color: var(--loop); }
@@ -686,7 +819,7 @@ input[type=range] { width: 110px; }
 }
 .note-tbtn { font: 11px var(--mono); }
 .note-tbtn:disabled { opacity: .4; cursor: default; }
-.note-tbtn-danger { border-color: color-mix(in srgb, #ff6b81 45%, var(--line)); color: #ff9aa8; }
+.note-tbtn-danger { border-color: color-mix(in srgb, #a52f2f 45%, var(--line)); color: #a52f2f; }
 .note-tbtn-armed { border-color: var(--loop); color: var(--loop); }
 
 .note-fields {
@@ -742,7 +875,7 @@ input[type=range] { width: 110px; }
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 10px 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+  box-shadow: 0 8px 24px rgba(33, 29, 29, .16);
   max-width: min(480px, 90vw);
   max-height: 320px;
   overflow-y: auto;

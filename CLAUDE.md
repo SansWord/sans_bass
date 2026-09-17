@@ -281,10 +281,21 @@ for them. It also carries a `youtube-nocookie.com` embed of the record at the bo
 sets no tracking cookies for a visitor who never presses play, and `loading="lazy"` keeps it
 from contacting Google until it is scrolled near.
 
-`puma.css` is a deliberate byte-for-byte copy of `styles.css`, loaded only by that page so its
-look can diverge. While the two are identical the build emits one stylesheet both pages link —
-Vite strips comments, the processed output matches, the assets dedupe to one hash. The first
-real edit makes them differ and Vite emits one per page automatically.
+`puma.css` began as a byte-for-byte copy of `styles.css` and has since diverged: it is a light,
+warm theme on puma.taipei's own brand tokens, and only that page loads it. Vite emits one
+stylesheet per page now that their processed output differs. Two things about it are load-bearing:
+
+- **The orange is two tokens.** `--brand` (`#db6a41`) measures 3.4:1 against both white and the
+  page background, so it can be a rule, a waveform or a 20px/700 heading and nothing else.
+  `--accent` (`#ad4d2a`) measures 5.1:1 and is every filled control and every piece of coloured
+  text. Collapsing them into one is an accessibility regression that nothing will report.
+- **CSS is not the whole theme.** `app.js` paints the waveforms, playhead, bar grid, A–B shading
+  and the entire zoomed pane into a `<canvas>`, in literals no stylesheet can reach. Those paint
+  sites read a custom property through `themeColor()` (and `stemColor()`/`mainWaveColor()`) with
+  the original literal as the fallback, so `styles.css` defines none of them and the main player
+  is unchanged, while `puma.css` restates them — including all seven `--stem-*` colours, half of
+  which are invisible on a light lane at `lib/stems.js`'s values. **A new canvas paint site added
+  with a hardcoded colour will silently vanish on that page**; give it a token and a fallback.
 
 `npm run dev` and `npm run build` first generate `demos/index.html` from files directly
 inside `public/demos/`. Vite bundles the generated list as an entry and copies the demo

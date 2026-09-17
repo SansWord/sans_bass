@@ -278,6 +278,41 @@ function hexToRgba(hex, alpha) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
+/* Canvas colours the stylesheet cannot otherwise reach.
+ *
+ * Everything drawn into a <canvas> — the playhead, the bar grid, the A-B shading, the
+ * waveform itself — is painted by this file, so a page that wants a different look has no
+ * way to ask for one from CSS. These two helpers give it one: each paint site names a custom
+ * property and keeps its current literal as the fallback, so a sheet that defines nothing
+ * (styles.css) paints exactly what it painted before, and a sheet that defines the property
+ * (puma.css, which is a light theme where white-on-dark values disappear) gets its own value.
+ *
+ * Resolved once per property and cached. These run inside the per-frame paint path, where a
+ * getComputedStyle() per lane per rAF tick would be real work; a page's palette is fixed at
+ * load, so there is nothing to invalidate. */
+const themeColorCache = new Map();
+function themeColor(prop, fallback) {
+  if (!themeColorCache.has(prop)) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
+    themeColorCache.set(prop, v || fallback);
+  }
+  return themeColorCache.get(prop);
+}
+
+/** A stem's waveform colour, overridable per stem id. lib/stems.js picks colours that read on
+ *  a near-black lane; several of them (the amber guitar, the mint bass) wash out to nothing on
+ *  a light one, so a light page restates the whole set rather than just the one it dislikes. */
+function stemColor(stem, fallback) {
+  return stem ? themeColor(`--stem-${stem}`, fallback) : fallback;
+}
+
+/** The played half of the main transport waveform. Not a stem — it is the whole mix — so it
+ *  has no entry in lib/stems.js and took a literal white, which is exactly the value a light
+ *  page cannot use: white over a white card is a waveform that vanishes as it plays. */
+function mainWaveColor() {
+  return themeColor('--wave-main', '#ffffff');
+}
+
 const fmt = formatClockTime;
 
 /** Like fmt(), but to the hundredth of a second — for the overview/zoom time-code, where the
@@ -474,7 +509,7 @@ function buildTracks(items, title, token) {
     name: t.name,          // source filename — the ZIP folder name is derived from it
     stem: t.stem,
     label: t.label,
-    color: t.color,
+    color: stemColor(t.stem, t.color),
     order: t.order,
     buffer: t.buffer,
     muted: false,
@@ -1215,7 +1250,7 @@ function renderAll() {
   const mp = mixPeaks();
   // The overview keeps true relative dynamics; it only ever shrinks, never boosts.
   if (primarySeekCanvas) {
-    renderWave(primarySeekCanvas, mp, '#ffffff', primarySeekCanvas.clientWidth, 'main',
+    renderWave(primarySeekCanvas, mp, mainWaveColor(), primarySeekCanvas.clientWidth, 'main',
                Math.min(1, laneScale(mp)));
   }
   tracks.forEach(t => {
@@ -1239,7 +1274,7 @@ function attachPrimarySeekCanvas(canvas) {
   primarySeekCanvas = canvas;
   if (tracks.length) {
     const mp = mixPeaks();
-    renderWave(canvas, mp, '#ffffff', canvas.clientWidth, 'main', Math.min(1, laneScale(mp)));
+    renderWave(canvas, mp, mainWaveColor(), canvas.clientWidth, 'main', Math.min(1, laneScale(mp)));
     paint(canvas, duration ? Math.min(1, currentTime() / duration) : 0);
   }
   return () => {
@@ -1386,7 +1421,7 @@ function renderWave(canvas, peaks, color, cssWidth, kind, scale) {
     return off;
   };
 
-  const layers = { idle: make('#6b6b7a', 0.55), active: make(color, 1), h, w };
+  const layers = { idle: make(themeColor('--wave-idle', '#6b6b7a'), 0.55), active: make(color, 1), h, w };
   canvas.__layers = layers;
   return layers;
 }
@@ -1437,7 +1472,8 @@ function renderOverview() {
     return off;
   };
 
-  const layers = { idle: make(() => '#6b6b7a', 0.45), active: make((t) => t.color, 0.6), h, w };
+  const layers = { idle: make(() => themeColor('--wave-idle', '#6b6b7a'), 0.45),
+                   active: make((t) => t.color, 0.6), h, w };
   canvas.__layers = layers;
 }
 
@@ -1685,7 +1721,7 @@ function renderZoom(canvas) {
     semi = Math.abs(y(0) - y(1));
   }
 
-  c.fillStyle = '#141419';
+  c.fillStyle = themeColor('--zoom-bg', '#141419');
   c.fillRect(0, 0, w, h);
 
   /* A resting-state hint for the range-select band, drawn even with nothing dragged or
@@ -1744,7 +1780,8 @@ function renderZoom(canvas) {
     for (const b of beats) {
       if (b.t < win.from || b.t > win.to) continue;
       const bx = x(b.t);
-      c.fillStyle = b.bar ? 'rgba(255,255,255,.30)' : 'rgba(255,255,255,.12)';
+      c.fillStyle = b.bar ? themeColor('--zoom-grid-bar', 'rgba(255,255,255,.30)')
+                          : themeColor('--zoom-grid-beat', 'rgba(255,255,255,.12)');
       c.fillRect(bx, 0, b.bar ? 2 : 1, h);
     }
 
@@ -1765,12 +1802,12 @@ function renderZoom(canvas) {
       c.setLineDash([2, 2]);
       if (showQuarterBeat) {
         for (const t of SansRibbon.subdivisionTimes(tempoRibbon.tempo, duration, 4)) {
-          if (t >= win.from && t <= win.to) drawDotted(t, 'rgba(255,255,255,.07)');
+          if (t >= win.from && t <= win.to) drawDotted(t, themeColor('--zoom-grid-quarter', 'rgba(255,255,255,.07)'));
         }
       }
       if (showHalfBeat) {
         for (const t of SansRibbon.subdivisionTimes(tempoRibbon.tempo, duration, 2)) {
-          if (t >= win.from && t <= win.to) drawDotted(t, 'rgba(255,255,255,.14)');
+          if (t >= win.from && t <= win.to) drawDotted(t, themeColor('--zoom-grid-half', 'rgba(255,255,255,.14)'));
         }
       }
       c.setLineDash([]);
@@ -1918,7 +1955,7 @@ function renderZoom(canvas) {
   }
 
   // Time ruler, one label per second while there is room for it.
-  c.fillStyle = '#8a8a99';
+  c.fillStyle = themeColor('--zoom-ruler', '#8a8a99');
   c.font = '400 9px ui-monospace, Menlo, monospace';
   c.textBaseline = 'bottom';
   const step = span <= 6 ? 1 : span <= 20 ? 2 : 5;
@@ -1929,7 +1966,7 @@ function renderZoom(canvas) {
 
   const now = currentTime();
   if (now >= win.from && now <= win.to) {
-    c.fillStyle = 'rgba(255,255,255,.9)';
+    c.fillStyle = themeColor('--zoom-playhead', 'rgba(255,255,255,.9)');
     c.fillRect(x(now), 0, 1.5, h);
   }
 }
@@ -2114,7 +2151,7 @@ function paint(canvas, frac) {
   if (overviewEl.canvas && canvas === overviewEl.canvas) paintRangeBand(c, canvas, dpr);
   if (tempoDrumsCanvas && canvas === tempoDrumsCanvas) paintTempoRangeBand(c, canvas, dpr);
 
-  c.fillStyle = 'rgba(255,255,255,.85)';
+  c.fillStyle = themeColor('--wave-playhead', 'rgba(255,255,255,.85)');
   c.fillRect(px, 0, Math.max(1, dpr), canvas.height);
 }
 
@@ -2133,7 +2170,7 @@ function paintLaneGrid(c, canvas, dpr) {
   const w = canvas.width;
   const h = canvas.height;
   const beats = SansRibbon.beatTimes(tempo, duration);
-  c.fillStyle = 'rgba(255,255,255,.06)';
+  c.fillStyle = themeColor('--wave-grid', 'rgba(255,255,255,.06)');
   for (const b of beats) {
     if (!b.bar) continue;
     const bx = Math.round((b.t / duration) * w);
@@ -2151,12 +2188,14 @@ function paintLoopRegion(c, canvas, dpr, withLabels) {
   const xb = loopB !== null ? (loopB / duration) * w : null;
 
   if (xa !== null && xb !== null) {
-    c.fillStyle = 'rgba(9,9,12,.62)';
+    c.fillStyle = themeColor('--wave-loop-scrim', 'rgba(9,9,12,.62)');
     c.fillRect(0, 0, xa, h);
     c.fillRect(xb, 0, w - xb, h);
   }
 
-  c.fillStyle = '#ff9f1c';
+  const markColor = themeColor('--wave-loop-mark', '#ff9f1c');
+  const markInk = themeColor('--wave-loop-ink', '#0d0d10');
+  c.fillStyle = markColor;
   const mark = Math.max(1, 1.5 * dpr);
   if (xa !== null) c.fillRect(xa - mark / 2, 0, mark, h);
   if (xb !== null) c.fillRect(xb - mark / 2, 0, mark, h);
@@ -2164,9 +2203,9 @@ function paintLoopRegion(c, canvas, dpr, withLabels) {
   if (withLabels) {
     c.font = `600 ${10 * dpr}px ui-monospace, Menlo, monospace`;
     c.textBaseline = 'top';
-    if (xa !== null) { c.fillRect(xa, 0, 13 * dpr, 13 * dpr); c.fillStyle = '#0d0d10';
-                       c.fillText('A', xa + 3.5 * dpr, 2 * dpr); c.fillStyle = '#ff9f1c'; }
-    if (xb !== null) { c.fillRect(xb - 13 * dpr, 0, 13 * dpr, 13 * dpr); c.fillStyle = '#0d0d10';
+    if (xa !== null) { c.fillRect(xa, 0, 13 * dpr, 13 * dpr); c.fillStyle = markInk;
+                       c.fillText('A', xa + 3.5 * dpr, 2 * dpr); c.fillStyle = markColor; }
+    if (xb !== null) { c.fillRect(xb - 13 * dpr, 0, 13 * dpr, 13 * dpr); c.fillStyle = markInk;
                        c.fillText('B', xb - 9.5 * dpr, 2 * dpr); }
   }
 }

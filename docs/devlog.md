@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.37.0](#v1370--puma-light-theme-2026-09-16) | `puma_taipei_smooth.html` goes light and orange on puma.taipei's own brand tokens, and gains a banner out to the campaign. The orange arrives as two tokens because one cannot do both jobs — `#db6a41` measures 3.4:1 and can only be a rule or a waveform, `#ad4d2a` measures 5.1:1 and is every filled control. CSS alone could not deliver it: `app.js` paints the playhead, bar grid, A–B shading and the whole zoomed pane in white-on-near-black literals no stylesheet can reach, so those became custom properties that keep their current literal as the fallback — `styles.css` defines none of them and the main player is untouched. Half of `lib/stems.js`'s stem palette is invisible on white, so the page restates all seven. |
 | [v1.36.0](#v1360--fixed-song-page-2026-09-16-2232) | A new `puma_taipei_smooth.html` is the same six-stem player pinned to one hosted stems zip, with no file input, drop target or separation panel, and a download link for the zip in the Load button's slot. The song is declared in markup because Vite merges a page's module scripts into one chunk and hoists their imports — an entry module that ran before `app.js` in dev ran after it once built. `scripts/repack-stems.sh` re-encodes a lossless stems zip for hosting (116 MB → 13 MB). The page drops note detection/editing but keeps the tempo grid, which needed `app.js` to be able to paint a grid from a tempo detected without any note ribbon. It is zh-TW only and embeds the record; adding it as a second entry re-chunked `app.js` and silently broke the main player's language, fixed by having `init()` announce the locale it chose. |
 | [v1.35.0](#v1350--post-migration-cleanup-2026-09-07) | A comparative review of `main` vs. `before_react_migration` found the migration's real code came out ahead but its own phase-by-phase docs outweighed the code 5:1; extracted a `makeChannel()` pub/sub factory in `lib/player-application.js`, rewrote `CLAUDE.md`'s React sections as steady-state description, and archived the 17 phase-plan docs plus the evidence log. |
 | [React phase 7](#react-phase-7--retire-legacy-ui-and-accept-the-migration-2026-09-07) | Legacy-UI retirement audit found no removable migration adapter anywhere — every phase had already cleaned up after itself. Reworded four `app.js` comments that mislabeled permanent bridges as "temporary," then ran a chained real-build acceptance pass (real cached-model separation, real notes Workers, real song, stretched/backgrounded playback, language switch) closing the last evidence gap. Accepted in production at `abcc94e`, completing the React migration roadmap. |
@@ -97,6 +98,75 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.37.0 — Puma light theme (2026-09-16)
+
+**Review:** not yet
+
+**What was built:**
+- `puma.css` goes light and warm on puma.taipei's own brand tokens, read off that site rather
+  than eyeballed from a screenshot: `#fff8f4` surface, `#fff` cards, `#efc5ad` borders,
+  `#211d1d` ink, `#665b57` muted, `#db6a41`/`#ad4d2a` orange. Only that page loads this sheet,
+  so the main player keeps its dark palette and its `#ff2e63`.
+- The orange is two tokens, not one: `--brand` (`#db6a41`) for rules and waveforms, `--accent`
+  (`#ad4d2a`) for every filled control and every piece of coloured text. See below.
+- A–B repeat leaves the orange family for a deep teal (`#15616d`), since amber on cream is under
+  2:1 and the markers have to win against the stem colour as well as the background.
+- `app.js` gains `themeColor()`/`stemColor()`/`mainWaveColor()`: fifteen canvas colours became
+  custom properties whose fallback is the literal that was already there. `styles.css` defines
+  none of them, so the main player paints exactly what it painted before.
+- `puma.css` restates all seven stem colours through `--stem-*`, deepening each hue rather than
+  changing it — except vocals, which takes `--brand-primary` itself and is the `#ff2e63` → orange
+  swap this work was asked for.
+- The zoomed pane is themed too. It is not hidden on this page — only the note detection above
+  it is — and at its fallback it was a near-black slab in the middle of a cream page.
+- A `.song-banner` out to `https://puma.taipei/songs`, in the same top-of-main slot and with the
+  same three classes as the banner on `index.html` that points the other way.
+- `tests/fixed-song.test.js`: the banner-size guard now reads both stylesheets, and the
+  "banner on index.html only" assertion became a pair naming each page's direction.
+- `docs/behaviour.md`'s `FIXED-001` covers the outbound banner and the canvas palette.
+
+**Key technical learnings:**
+- `[insight]` **A theme is not a stylesheet when the app paints pixels itself.** Retheming this
+  page from CSS alone got the chrome and left the content: the playhead
+  (`rgba(255,255,255,.85)`), the bar grid (`rgba(255,255,255,.06)`), the main transport
+  waveform (a literal `'#ffffff'`) and the whole zoomed pane (`#141419`) are painted by `app.js`
+  into a `<canvas>`, where no rule can reach them. Nothing errors; the controls go light and the
+  waveform the page exists for disappears. The shape that fixed it costs almost nothing:
+  `themeColor('--wave-playhead', 'rgba(255,255,255,.85)')` at each paint site keeps the old
+  literal as the fallback, so a sheet that defines nothing is bit-identical and a sheet that
+  defines the property gets its own value. Resolve once and cache — these run inside the
+  per-frame paint path, and a page's palette is fixed at load.
+- `[insight]` **One brand orange cannot be both the fill and the text on it.** `#db6a41` is
+  3.4:1 against white *and* against `#fff8f4`, which clears AA for large text and nothing else
+  — so it can be a 6px rule, a waveform or a 20px/700 heading, and never a button label, a link
+  or body copy. puma.taipei ships a second token for exactly this (`--brand-action #ad4d2a`,
+  5.1:1 on the surface and 5.4:1 under white text) and paints its buttons with it. Carrying both
+  across is what made the page work; picking the prettier one and using it everywhere is what
+  would have failed silently.
+- `[gotcha]` **Half of `lib/stems.js`'s palette is invisible on a light lane.** Those colours
+  are tuned for a near-black background: on white the amber guitar measures 1.8:1, the mint bass
+  1.8:1 and the cyan drums 1.9:1 — three lanes that are simply not there, with the waveform data
+  perfectly correct underneath. A light theme has to restate the whole set, not just the one
+  colour it dislikes.
+- `[gotcha]` **Pick a translucent colour for its composite, not for how it reads alone.** The
+  unplayed half of a waveform is drawn at 0.55 alpha (0.45 on the overview), so `--wave-idle`
+  is a value that lands at ~2.7:1 *after* compositing — the same recessive weight `#6b6b7a` gets
+  over `#16161b`. A value chosen to look right on its own comes out invisible.
+- `[note]` The zoomed pane is visible on the fixed-song page. The `<style>` block hides
+  `#note-lanes-root` (the per-stem ribbons) but not `#zoom-lane-root`, which is a separate root
+  since React phase 6d — easy to assume otherwise from the list of what that page removes.
+
+**Process learnings:**
+- `[insight]` **Read a reference site's tokens, do not eyeball its screenshots.** Enumerating
+  `document.styleSheets` for custom properties returned puma.taipei's entire palette by its own
+  names, plus the exact card treatment (`6px solid #db6a41` top rule, `1px #efc5ad`, radius 0,
+  `8px 8px 0` peach shadow). Every value in this diff is that site's own, which is a far better
+  answer than a colour picker and took one tool call.
+- `[gotcha]` A test that encodes *where* something lives — `expect(read('puma_taipei_smooth.html')).not.toContain('song-banner')`
+  — fails the moment that page legitimately gains one. It was a good guard; it just needed
+  rewriting into the invariant that actually holds now (each page's banner points at the other),
+  rather than deleting.
 
 ## v1.36.0 — Fixed-song page (2026-09-16 22:32)
 

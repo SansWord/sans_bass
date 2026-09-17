@@ -1157,6 +1157,25 @@ function anyRibbon() {
   return null;
 }
 
+/** The tempo the beat/bar grid should draw from, or null when there is no grid to draw.
+ *
+ *  A ribbon carries the same shared tempo object, so it wins whenever one exists and this
+ *  gates on `.on` alone there — identical to what the ribbon's own painter has always done.
+ *  The fallback is strictly additive: without a ribbon, `tempoInfo` (notes.js's
+ *  `sansbass:tempo` broadcast) carries the same fields, which is what lets a grid appear for a
+ *  tempo detected on its own — Re-detect tempo with nothing analysed, or a page that offers no
+ *  note detection at all. Both previously put a BPM in the readout and drew nothing under it.
+ *
+ *  Confidence gates only that fallback, and has to: the broadcast starts arriving on notes.js's
+ *  400 ms poll long before anything is detected, carrying `on: true` with the un-detected
+ *  defaults (120 BPM, phase 0). Confidence is what separates a real reading from that
+ *  placeholder — a ribbon's presence already implies one. */
+function paintableTempo() {
+  const ribbon = anyRibbon();
+  if (ribbon && ribbon.tempo) return ribbon.tempo.on ? ribbon.tempo : null;
+  return tempoInfo && tempoInfo.on && tempoInfo.confidence > 0 ? tempoInfo : null;
+}
+
 /* The interpretation layer hands its result over here, per stem. Called again on every
  * change of a detection parameter — see docs/transcription.md — so it must be cheap and
  * idempotent. */
@@ -1719,9 +1738,9 @@ function renderZoom(canvas) {
    * whole reason `showNotes` and this block use two different sources. Drawn over the
    * waveform but under the pitch grid/note blocks, same order as before this was pulled out
    * of the showNotes block. */
-  const tempoRibbon = ribbon ?? anyRibbon();
-  if (tempoRibbon && tempoRibbon.tempo && tempoRibbon.tempo.on) {
-    const beats = SansRibbon.beatTimes(tempoRibbon.tempo, duration);
+  const zoomTempo = ribbon?.tempo ? (ribbon.tempo.on ? ribbon.tempo : null) : paintableTempo();
+  if (zoomTempo) {
+    const beats = SansRibbon.beatTimes(zoomTempo, duration);
     for (const b of beats) {
       if (b.t < win.from || b.t > win.to) continue;
       const bx = x(b.t);
@@ -2109,11 +2128,11 @@ function paint(canvas, frac) {
  *  notes-lane grid already has. Live redraw costs nothing extra — draw() already repaints
  *  every lane on every tempo edit via setNotes(), same as it does every rAF tick. */
 function paintLaneGrid(c, canvas, dpr) {
-  const ribbon = anyRibbon();   // shared tempo — any channel that has notes answers the same
-  if (!ribbon || !ribbon.tempo || !ribbon.tempo.on || !duration) return;
+  const tempo = paintableTempo();   // a ribbon's shared tempo, else the standalone broadcast
+  if (!tempo || !duration) return;
   const w = canvas.width;
   const h = canvas.height;
-  const beats = SansRibbon.beatTimes(ribbon.tempo, duration);
+  const beats = SansRibbon.beatTimes(tempo, duration);
   c.fillStyle = 'rgba(255,255,255,.06)';
   for (const b of beats) {
     if (!b.bar) continue;
@@ -3372,7 +3391,17 @@ window.addEventListener('sansbass:temporangemode', (e) => {
  * settled song doesn't repaint 2.5 times a second for nothing. */
 window.addEventListener('sansbass:tempo', (e) => {
   const d = e.detail;
-  const changed = !tempoInfo || tempoInfo.bpmValue !== d.bpmValue || tempoInfo.confidence !== d.confidence;
+  /* Compare every field the readout AND the grid draw from. bpm/confidence alone were enough
+   * while the grid could only ever come from a ribbon — a ribbon arrives through setNotes(),
+   * which repaints on its own. Now that paintableTempo() can draw from this broadcast, a
+   * change to `on`, the phase or the meter has to repaint too, or toggling Show tempo grid
+   * with nothing analysed publishes a new reading that never reaches a canvas. */
+  const changed = !tempoInfo
+    || tempoInfo.bpmValue !== d.bpmValue
+    || tempoInfo.confidence !== d.confidence
+    || tempoInfo.on !== d.on
+    || tempoInfo.phaseMs !== d.phaseMs
+    || tempoInfo.beatsPerBar !== d.beatsPerBar;
   tempoInfo = d;
   if (changed) draw();
 });

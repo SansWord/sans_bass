@@ -1,3 +1,20 @@
+/* puma.css — the fixed-song page's own stylesheet.
+ *
+ * A deliberate copy of styles.css, not an import of it: this page is meant to diverge in look
+ * and feel, and a shared file would make every change here a change to the main player too.
+ * The cost is the obvious one — a fix to styles.css does not reach this page, and the two will
+ * drift. That is the trade being bought. Only puma_taipei_smooth.html loads this file.
+ *
+ * Which parts of the player that page hides (notes detection, editing, chord sources) is in a
+ * <style> block in the page itself, not here, so this file stays a pure styling surface.
+ *
+ * While this file is still a byte-for-byte copy, the build emits ONE stylesheet and both pages
+ * link it — Vite strips comments, the processed output is identical, so the two assets dedupe
+ * to one content hash. That is correct and costs nothing; the first real edit here makes the
+ * outputs differ and Vite emits `styles-<hash>.css` and `puma-<hash>.css` separately, each page
+ * linking its own. Seeing one shared file in dist/ today is not the duplication having failed.
+ */
+
 :root {
   --bg: #0d0d10;
   --panel: #16161b;
@@ -738,3 +755,50 @@ input[type=range] { width: 110px; }
 .edit-row { display: flex; align-items: center; gap: 6px; }
 .edit-warn { color: var(--loop); }
 .edit-remove { font-size: 9px; padding: 1px 5px; }
+
+/* ---------------------------------------------------------------- video panel
+ * Only the fixed-song page has this; styles.css has no equivalent. Kept at the end so the
+ * copied-from-styles.css body above stays diffable against its original.
+ *
+ * aspect-ratio rather than the old padding-top ratio box: the iframe has no intrinsic size,
+ * so the wrapper is what reserves the space, and reserving it up front is what stops the
+ * lazy-loaded frame shifting the page under a reader when it finally arrives.
+ */
+.yt-panel {
+  max-width: 900px;
+  margin: 48px auto 64px;
+  padding: 0 20px;
+}
+.yt-panel-title {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--fg);
+}
+.yt-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+}
+.yt-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+.yt-panel-note {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  color: var(--dim);
+}
+.yt-panel-note a {
+  color: var(--dim);
+  text-underline-offset: 3px;
+}
+.yt-panel-note a:hover { color: var(--fg); }

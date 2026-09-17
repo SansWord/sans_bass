@@ -14,6 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
+| [v1.36.0](#v1360--fixed-song-page-2026-09-16-2232) | A new `puma_taipei_smooth.html` is the same six-stem player pinned to one hosted stems zip, with no file input, drop target or separation panel, and a download link for the zip in the Load button's slot. The song is declared in markup because Vite merges a page's module scripts into one chunk and hoists their imports — an entry module that ran before `app.js` in dev ran after it once built. `scripts/repack-stems.sh` re-encodes a lossless stems zip for hosting (116 MB → 13 MB). The page drops note detection/editing but keeps the tempo grid, which needed `app.js` to be able to paint a grid from a tempo detected without any note ribbon. It is zh-TW only and embeds the record; adding it as a second entry re-chunked `app.js` and silently broke the main player's language, fixed by having `init()` announce the locale it chose. |
 | [v1.35.0](#v1350--post-migration-cleanup-2026-09-07) | A comparative review of `main` vs. `before_react_migration` found the migration's real code came out ahead but its own phase-by-phase docs outweighed the code 5:1; extracted a `makeChannel()` pub/sub factory in `lib/player-application.js`, rewrote `CLAUDE.md`'s React sections as steady-state description, and archived the 17 phase-plan docs plus the evidence log. |
 | [React phase 7](#react-phase-7--retire-legacy-ui-and-accept-the-migration-2026-09-07) | Legacy-UI retirement audit found no removable migration adapter anywhere — every phase had already cleaned up after itself. Reworded four `app.js` comments that mislabeled permanent bridges as "temporary," then ran a chained real-build acceptance pass (real cached-model separation, real notes Workers, real song, stretched/backgrounded playback, language switch) closing the last evidence gap. Accepted in production at `abcc94e`, completing the React migration roadmap. |
 | [React phase 6f](#react-phase-6f--capo-control-and-chord-displayediting-2026-09-07) | React now owns the zoomed pane's capo control and chord display/editing, completing Phase 6 in full. `lib/player-application.js` gains a `publishChord`/`subscribeChord` dedup channel mirroring `publishTransport`, and a focus-aware controlled `<input>` for the chord field needed no imperative escape hatch. Accepted in production at `c833b7e`. |
@@ -96,6 +97,111 @@ Running log of what was built and what was learned building it.
 | [v1.0.0](#v100--cd-to-browser-stem-player-2026-08-13) | CD → FLAC → Demucs stems → browser multitrack player with per-instrument waveforms and solo |
 
 ---
+
+## v1.36.0 — Fixed-song page (2026-09-16 22:32)
+
+**Review:** not yet
+
+**What was built:**
+- `puma_taipei_smooth.html` — the same six-stem player pinned to one stems zip hosted off-repo.
+  No file input, no drop affordance, no document drag listeners, no separation panel.
+- `lib/fixed-song.js` — resolves the page's declaration, downloads the zip with progress, and
+  hands it to the ordinary `load` command as a `File`. Same `subscribe`/`getSnapshot`/`commands`
+  shape as `separation`/`detection`/`tempoGrid`.
+- `components/FixedSongPanel.jsx` — download progress in the drop affordance's place, plus a
+  download link for the same zip in the header slot the Load button occupies.
+- `scripts/repack-stems.sh` — re-encodes a lossless stems zip to `.m4a` for hosting and can
+  rename the folder inside it. On this song: 116 MB → 13 MB, six 44.1 kHz stereo WAVs → AAC 160k.
+- `puma.css` — a deliberate byte-for-byte copy of `styles.css`, loaded only by that page so its
+  look can diverge later without touching the main player.
+- That page drops note detection, note editing, the chord-source picker, the tempo control
+  panel, the language toggle and the demos link (a `<style>` block, not deleted markup), and
+  keeps the drums-derived tempo grid itself, pinned to 136.4 BPM at 290 ms — the grid paints
+  onto the canvases and never needed its panel in the layout.
+- That page is Taiwanese Mandarin only, and carries a `youtube-nocookie.com` embed of the
+  record at the bottom.
+- `lib/i18n.js`'s `init()` now announces the locale it chose, fixing a regression this work
+  introduced on the main player (below).
+- `app.js` gains `paintableTempo()`: the grid now draws from a tempo detected on its own when no
+  note ribbon exists. `notes.js`'s `sansbass:tempo` broadcast carries `on`/`phaseMs`/
+  `beatsPerBar` to make that possible.
+- One new scenario, `FIXED-001`, in `docs/behaviour.md`, an extended `TEMPO-001`, and
+  `tests/fixed-song.test.js`.
+
+**Key technical learnings:**
+- `[gotcha]` **A page's `<script type="module">` tags are merged into one entry chunk by Vite,
+  and static imports hoist — so tag order is not execution order in a build.** The page first
+  declared its song from a tiny entry module listed before `app.js`. That works under
+  `npm run dev`, where the tags are separate modules fetched and executed in order, and inverts
+  the moment it is built: Rollup emits one chunk whose `import "./app-<hash>.js"` hoists above
+  the `configure(...)` call, so `app.js` mounted the React shell first and the built page
+  painted the file input and drop target the whole page exists to not have. Nothing errored; it
+  just rendered the ordinary player. The fix is to declare the song in markup
+  (`<body data-fixed-song="…">`), which is in the document before any module evaluates at all.
+- `[insight]` **Anything that must be true before the first render belongs in markup, not in a
+  module that "runs first".** Module ordering is a bundler's to rearrange; the DOM is not. This
+  is the same class of reasoning as the `#build-sha` badge — observe the thing itself rather
+  than a proxy that a build step can invalidate.
+- `[gotcha]` **Verify an entry-page change against `npm run build` plus `npm run preview`, not
+  only `npm run dev`.** This class of bug is invisible in dev by construction. The dev server
+  had every fixed-song assertion passing — no file input, no dropzone, six lanes, correct title
+  — while the built output silently rendered the ordinary player.
+- `[insight]` **A fixed song is not a new way in; it is the same way in with the file supplied
+  by the page.** Fetching the zip and handing `load` a `File` means stem detection, titling,
+  decode-failure recovery, notes, tempo and chords all work untouched. The only genuinely new
+  state is the download itself.
+- `[note]` Lossless stems are ~1 MB per stem-second. Six 44.1 kHz stereo WAVs of a 1:49 track
+  are 116 MB — over GitHub's 100 MB per-file limit on its own, before considering that it would
+  be a 116 MB download per visit. AAC at 160k is 1/9th of that and the player decodes both
+  identically.
+- `[gotcha]` `ffmpeg` reads the surrounding shell loop's stdin and swallows the paths a
+  `while read` is still consuming, which mangles every file after the first. `-nostdin`.
+- `[note]` The download progress publishes once per whole percent rather than per chunk; a
+  13 MB body arrives in a few hundred chunks, each otherwise re-rendering for an invisible
+  change.
+
+- `[insight]` **Tempo detection and tempo *rendering* had different dependencies, and only the
+  rendering one was load-bearing.** `tempoGrid`'s detector is drums-only and needs no note
+  analysis — but all three grid painters read `anyRibbon()`, which exists only after a note
+  channel completes. So a page could detect a tempo, show `136.4 BPM · 42% confidence`, and draw
+  nothing under it. The same gap was already reachable on the main player through **Re-detect
+  tempo** with nothing analysed. Worth separating "what computes this" from "what is allowed to
+  draw it" before assuming a feature is self-contained.
+- `[gotcha]` **A dedup guard that predates a new data source will silently stop firing.**
+  `sansbass:tempo`'s handler only redrew when `bpmValue` or `confidence` moved, which was right
+  while a grid could only come from a ribbon (ribbons arrive via `setNotes`, which repaints
+  itself). The moment the broadcast became a paint source, toggling Show tempo grid published a
+  new reading that never reached a canvas. The symptom was a checkbox that did nothing.
+- `[insight]` **Measure a phase, don't reason about it.** Scoring an onset-flux envelope of the
+  drums stem across every candidate phase peaked at 290 ms for 68.2 BPM (1.67x over the mean)
+  and 292 ms for 136.4 (1.37x) — so 290 ms sits on the optimum at both rates and within one
+  analysis hop of the detector's own 280 ms. A first attempt using the circular mean of picked
+  onsets returned a lock strength of 0.04, i.e. noise; the phase sweep is what the project's own
+  `lib/tempo.js` does, and it is what worked.
+- `[gotcha]` **Adding an entry page silently re-ordered an existing page's boot, and broke its
+  language.** While `index.html` was the only entry using `app.js`, Rollup inlined `app.js` into
+  the entry chunk, so the `<head>` `init()` call ran before it and the locale was set before
+  React mounted. A second entry page that also loads `app.js` made Rollup split it into a shared
+  chunk; the hoisted `import` then ran `app.js` first, React mounted against the pre-init
+  default, and `init()` — which set the locale but announced nothing — never told it otherwise.
+  The main player rendered `<html lang="en">` with an English tab title and Taiwanese Mandarin
+  React controls. Nothing errored, no test failed, and the page being broken was not the page being
+  edited. `init()` now dispatches `sansbass:langchange` like `setLocale` does, converging either
+  order. This is the same lesson as the fixed-song declaration, learned twice in one session:
+  **never let correctness rest on which module a bundler chose to evaluate first.**
+- `[insight]` **The regression was only visible because a check compared two things that should
+  agree.** `<html lang>` said `en` while a React-rendered string was Taiwanese Mandarin —
+  either reading
+  alone looked fine. Asserting agreement between the legacy and React halves of the same state
+  is what caught it; asserting either one would not have.
+- `[note]` **Vite dedupes two stylesheets whose processed output is identical**, so a fresh
+  byte-for-byte copy leaves one CSS asset that both pages link. It separates by itself on the
+  first real edit. Looks like the copy failed; it has not.
+
+**Process learnings:**
+- `[insight]` The duplicate drums tempo hint seen while checking the dev server was a
+  StrictMode double-attach artifact, not a regression — it appeared once in the production
+  build. Worth checking which environment a suspicious rendering came from before chasing it.
 
 ## v1.35.0 — Post-migration cleanup (2026-09-07 20:17)
 

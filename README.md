@@ -32,7 +32,7 @@ Steps 1–3 below are the one-time job of getting stems out of a CD.
 - **Export 簡譜:** save self-contained HTML notation with rhythm, octave markings, bars,
   available chord estimates, and an interactive capo selector.
 - **Browse examples:** open published notation examples from the shared header. Both
-  pages support English and Traditional Chinese and remember your language choice.
+  pages support English and Taiwanese Mandarin and remember your language choice.
 
 Notes, tempo, and chords are assistive estimates you can review and correct.
 
@@ -56,7 +56,7 @@ check the production build locally.
 
 Browse [HTML demos and notation exports](https://sansword.github.io/sans_bass/demos/).
 The shared header links between the player and the list, and remembers your English/中文
-choice. In Chinese, the list is labeled「匯出簡譜範例」.
+choice. In Taiwanese Mandarin, the list is labeled「匯出簡譜範例」.
 
 ### Where demo files live
 
@@ -496,7 +496,7 @@ layers; [`docs/product-contract.md`](docs/product-contract.md) describes support
 index.html                markup
 styles.css                styling
 app.js                    player: decode, waveform render, transport, mixing
-lib/i18n.js               English/Traditional Chinese dictionary and saved locale
+lib/i18n.js               English/Taiwanese Mandarin dictionary and saved locale
 components/SiteHeader.jsx shared React navigation and language header
 components/PlayerShell.jsx React player header, loading/status, and drag/drop UI
 components/DemoHeader.jsx React demo-header wrapper

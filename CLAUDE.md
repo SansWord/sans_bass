@@ -249,6 +249,43 @@ two notes sonifiers. The lowercase `window.sansBass` bridge remains only for nam
 notes/separation service operations and browser-harness application/shell
 lifecycle checks; it is migration debt, not the public ESM API.
 
+`puma_taipei_smooth.html` is a **fixed-song page**: the same player, pinned to one stems zip hosted
+off-repo, with no way to load another. It declares its song in markup —
+`<body data-fixed-song="https://…/stems.zip">` — and `lib/fixed-song.js` resolves that
+attribute, downloads the zip with progress, and hands it to the ordinary `load` command as a
+`File`, so nothing downstream of the handoff knows it did not come from a file picker. That
+module owns its own `subscribe`/`getSnapshot`/`commands` state machine, the same shape
+`separation`, `detection` and `tempoGrid` use, and `components/FixedSongPanel.jsx` renders it.
+`PlayerShell.jsx` reads `isFixedSong()` once per render and, when true, drops the file input,
+the drop affordance, the document drag listeners, and the separation panel — separation is an
+entry point of its own, and its input is a song such a page never has. The fetch is inbound
+only; no audio, filename or title ever leaves the machine.
+
+That page also removes note detection and, with it, note editing, the chord-source picker, the
+tempo control panel, the language toggle and the demos link, through a `<style>` block in the
+page rather than by deleting markup — every React portal host
+has to stay present and spelled as `index.html` spells it or `mountPlayerShell` refuses to
+mount. The **tempo grid deliberately survives**: `tempoGrid`'s detector is drums-only and never
+needed note detection, so a page-local module script calls `tempoGrid.commands.redetect()` and
+then overrides BPM and phase. The grid paints onto the lane and zoom canvases and does not
+depend on its panel being in the layout, which is what lets the panel go while the grid stays. Painting the grid without notes needed `app.js`'s
+`paintableTempo()` — a ribbon's shared tempo still wins whenever one exists, and `tempoInfo`
+(notes.js's `sansbass:tempo` broadcast, which now carries `on`/`phaseMs`/`beatsPerBar` too) is
+the fallback. This also closed a gap on the main player: **Re-detect tempo** with nothing
+analysed used to put a BPM in the readout and draw nothing under it.
+
+It is Taiwanese Mandarin only — `setLocale('zh-TW', { persist: false })` in its `<head>`,
+where `persist: false` is load-bearing: `init()` has already read whatever locale the visitor
+chose on the main player, and writing zh-TW back to storage would change that player's language
+for them. It also carries a `youtube-nocookie.com` embed of the record at the bottom; that host
+sets no tracking cookies for a visitor who never presses play, and `loading="lazy"` keeps it
+from contacting Google until it is scrolled near.
+
+`puma.css` is a deliberate byte-for-byte copy of `styles.css`, loaded only by that page so its
+look can diverge. While the two are identical the build emits one stylesheet both pages link —
+Vite strips comments, the processed output matches, the assets dedupe to one hash. The first
+real edit makes them differ and Vite emits one per page automatically.
+
 `npm run dev` and `npm run build` first generate `demos/index.html` from files directly
 inside `public/demos/`. Vite bundles the generated list as an entry and copies the demo
 exports unchanged. Edit the generator, not the ignored generated HTML. See
@@ -256,11 +293,15 @@ exports unchanged. Edit the generator, not the ignored generated HTML. See
 
 ```
 index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
+puma_taipei_smooth.html                     fixed-song page — the same player pinned to one hosted zip
+puma.css                           that page's own copy of styles.css, free to diverge
 lib/stems.js                       stem identity — ESM, no window bridge
 lib/unzip.js                       zip reading — ESM, no window bridge
 lib/player-application.js          DOM-independent player commands, snapshots and lifecycle
+lib/fixed-song.js                  one hosted song a page pins itself to — ESM, no window bridge
 lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
 components/{SiteHeader,DemoHeader,PlayerShell}.jsx  React headers + player shell/controls
+components/FixedSongPanel.jsx      React fixed-song download progress + header download link
 components/SeparationPanel.jsx     React separation-panel presentation
 components/DetectionPanel.jsx      React detection-controls presentation
 components/InterpretationPanel.jsx React interpretation-controls presentation
@@ -301,6 +342,7 @@ vitest.config.js                   unit test config — three tiers (node/jsdom/
                                    see the comment at its top for which tier a file needs
 dist/                               build output (git-ignored; CI builds it, never committed)
 scripts/rip-cd.sh                  CD → rips/*.flac
+scripts/repack-stems.sh            lossless stems zip → small .m4a zip for hosting
 scripts/prep-stems.sh              one song → stems/<song>/*.m4a
 rips/    <track>.flac, <album>/<track>.flac      ~560 MB, local only
 stems/   <album>/<track>/{vocals,guitar,bass,drums,piano,other}.m4a
@@ -390,6 +432,30 @@ out of the project; never commit them.
   at double volume. Covered by a test in `tests/stems.test.js`. In-browser separation avoids
   the question by dropping the original: `loadSeparated` builds lanes from the six stems
   only, which is also why `__hasStems` is false there and every lane starts unmuted.
+- **A page's module script tags are merged into one entry chunk, and static imports hoist —
+  so tag order is not execution order in a build.** `puma_taipei_smooth.html` listed its own tiny entry
+  module before `app.js` to declare the fixed song first, which worked perfectly under
+  `npm run dev` (separate modules, fetched and run in order) and inverted the moment it was
+  built: Rollup emitted one chunk whose `import "./app-<hash>.js"` hoisted above the
+  `configure(...)` call, app.js mounted the React shell first, and the built page painted the
+  file input and drop target the whole page exists to not have. Nothing failed — it just
+  rendered the ordinary player. Anything that must be true before the first render belongs in
+  markup, where there is no order to get wrong; that is why the song is a `<body>` attribute.
+  The same hoisting already applies to `index.html`'s inline `init()` script, harmlessly.
+  **Verify an entry-page change against `npm run build` plus `npm run preview`, not only
+  `npm run dev`** — this class of bug is invisible in dev by construction.
+
+  It bit a second time, from the other direction, and on a page that was not even being
+  changed. While `index.html` was the only entry using `app.js`, Rollup inlined `app.js` into
+  the entry chunk, so the `<head>` `init()` call ran before it and the locale was set before
+  React mounted. Adding a second entry page that also loads `app.js` made Rollup split it into
+  a shared chunk, the hoisted `import` inverted the order, and `init()` — which set the locale
+  but announced nothing — left React mounted against the pre-init default. The main player
+  rendered `<html lang="en">` and an English tab title with Taiwanese Mandarin React controls. **Adding an
+  entry page can silently re-order an existing page's boot**, so `init()` now dispatches
+  `sansbass:langchange` and converges either order (`tests/i18n.test.js` guards it). The durable
+  lesson is the same one as the fixed-song declaration: do not let correctness rest on which
+  module a bundler chose to evaluate first.
 - **Cache-busting is now Vite's content hash, not a hand-written `?v=`.** GitHub Pages still
   pins everything to `max-age=600` with no way to override it, but every asset Vite's build
   touches — every entry HTML's `<script src>`/`<link href>`/`<img src>`, and every
@@ -424,7 +490,7 @@ out of the project; never commit them.
 - **`numThreads = 1` is load-bearing, not a performance tweak.** It avoids SharedArrayBuffer,
   which avoids COOP/COEP, which is what makes static hosting (GitHub Pages) possible at all.
 - **ZIP filenames need general purpose bit 11 set.** Without it the spec says names are
-  CP437, and every Chinese song title extracts as mojibake. macOS's bundled Info-ZIP
+  CP437, and every non-ASCII song title extracts as mojibake. macOS's bundled Info-ZIP
   `unzip` ignores the bit anyway and still displays garbage — verify with `ditto -xk`,
   `bsdtar` or Python's `zipfile`, not `unzip -l`.
 - **The overlap window barely matters.** Overlap-add normalises by the weight sum, so the

@@ -53,7 +53,7 @@ test('zip: multiple entries each get a central directory record', async () => {
 
 test('zip: non-ASCII names set the UTF-8 flag (bit 11)', async () => {
   // We always write UTF-8 name bytes. Without general purpose bit 11 set, unzip decodes
-  // them as CP437 — every Chinese song title extracts to a mojibake folder name.
+  // them as CP437 — every non-ASCII song title extracts to a mojibake folder name.
   const blob = buildZip([{ name: '2 最後兩禮拜/bass.wav', bytes: new Uint8Array(4) }]);
   const b = new Uint8Array(await blob.arrayBuffer());
   const dv = new DataView(b.buffer);

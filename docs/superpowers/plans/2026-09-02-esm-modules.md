@@ -812,7 +812,7 @@ export function getLocale() { return locale; }
 export function setLocale(loc, opts) {
 ```
 
-`DEFAULT_LOCALE`, `STORAGE_KEY`, `locale`, `booted`, and `isTraditionalChinese` stay plain
+`DEFAULT_LOCALE`, `STORAGE_KEY`, `locale`, `booted`, and `isTaiwanLocale` stay plain
 (unexported) declarations — nothing outside this file reads them.
 
 - [ ] **Step 3: Replace every `global.` with `window.`**

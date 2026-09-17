@@ -23,18 +23,36 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/main-3F29Xrx5.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/SiteHeader-6dTu9Gxf.js">
+  <script type="module" crossorigin src="./assets/main-TL1tvTkP.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/SiteHeader-49Enga8f.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/sonify-DfBfGpzd.js">
-  <link rel="modulepreload" crossorigin href="./assets/app-DzISfYrT.js">
-  <link rel="stylesheet" crossorigin href="./assets/styles-suOaFPwt.css">
+  <link rel="modulepreload" crossorigin href="./assets/app-B_Iasnfa.js">
+  <link rel="stylesheet" crossorigin href="./assets/styles-9Vmc4CfV.css">
 </head>
 <body>
 
 <header class="bar" id="site-header"></header>
 
 <main id="app">
+
+  <!-- Featured song banner. Lives in this page's own markup rather than in the shared React
+       header, which is what keeps it off /demos/ and off the fixed-song page itself without
+       any gating: those pages simply do not contain it.
+
+       The label is a record's title and carries no `data-i18n` — a proper noun is the same in
+       either locale, the same rule that keeps stem ids and filenames untranslated, and the page
+       it points at renders in Taiwanese Mandarin only, so an English label would promise a page
+       that is not in English.
+
+       Relative, never root-relative: a leading slash 404s under a per-PR preview at /pr-<N>/. -->
+  <a class="song-banner" href="./puma_taipei_smooth.html">
+    <span class="song-banner-text">
+      <strong class="song-banner-title">《台北順起來 &#119813;&#119854;&#119853;&#119854;&#119851;&#119838; &#119826;&#119848;&#119848;&#119847;》</strong>
+      <span class="song-banner-sub">六軌分軌播放 · 單獨聽任一樂器、循環練習樂句</span>
+    </span>
+    <span class="song-banner-go" aria-hidden="true">&rarr;</span>
+  </a>
 
   <div id="loading-ui-root"></div>
 

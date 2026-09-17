@@ -247,7 +247,7 @@ release integrity.
 | Saving stems | `Z2` | `EXPORT-001` | ⚠ Non-ASCII song titles survive the round trip (general purpose bit 11). | merge | `tests/zip.test.js#zip: non-ASCII names set the UTF-8 flag (bit 11)` | `EXPORT-001` |
 | Saving stems | `Z3` | `EXPORT-001` | ⚠ Stems are encoded one at a time so the WAV bytes are never all live at once. | merge | — | `EXPORT-001` |
 | Saving stems | `Z4` | `EXPORT-001` | Save re-enables itself after a failure. | merge | — | `EXPORT-001` |
-| Language | `N1` | `LANG-001` | Default is zh-TW. English only when the system language is not Traditional Chinese. | merge | `tests/i18n.test.js#i18n: detectLocale maps system languages to a locale` | `LANG-001` |
+| Language | `N1` | `LANG-001` | Default is zh-TW. English only when the system language is not Taiwanese Mandarin. | merge | `tests/i18n.test.js#i18n: detectLocale maps system languages to a locale` | `LANG-001` |
 | Language | `N2` | `LANG-001` | A stored choice beats detection; detection never reads storage. | merge | `tests/i18n.test.js#i18n: a stored explicit choice wins and a clean first visit is not persisted` | `LANG-001` |
 | Language | `N3` | `LANG-001` | The first visit does **not** persist a locale. Only clicking the switcher does. | merge | `tests/i18n.test.js#i18n: a stored explicit choice wins and a clean first visit is not persisted` | `LANG-001` |
 | Language | `N4` | `LANG-001` | ⚠ Switching language never disturbs audio. No reload, no re-decode, no re-render of waveforms. | merge | `tests/player.test.js#rerenders language without replacing playback canvases or routing` | `LANG-001` |

@@ -262,7 +262,7 @@ describe('production player integration', () => {
     expect(audio.starts).toHaveLength(2);
 
     player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
-    await waitFor(() => firstPlay.getAttribute('aria-label') === '播放／暫停', 'Chinese play label');
+    await waitFor(() => firstPlay.getAttribute('aria-label') === '播放／暫停', 'Taiwanese Mandarin play label');
 
     player.win.sansBass.playerShell.unmount();
     expect(player.doc.getElementById('play')).toBeNull();
@@ -884,7 +884,7 @@ describe('production player integration', () => {
     player.doc.querySelector('#lang-toggle [data-lang="zh-TW"]').click();
     expect(() => application.commands.setPlaybackRate(Number.NaN)).toThrow(/finite number/);
     await waitFor(() => player.doc.getElementById('status').textContent.includes('播放器指令失敗'),
-      'rendered Chinese command error');
+      'rendered Taiwanese Mandarin command error');
     player.doc.querySelector('#lang-toggle [data-lang="en"]').click();
     await loadSong(player);
     expect(application.getSnapshot().song.title).toBe('song');

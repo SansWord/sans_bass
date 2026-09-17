@@ -49,8 +49,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 # Python, not `unzip`/`zip`: the spec says a zip without general purpose bit 11 holds CP437
-# names, and macOS's bundled Info-ZIP writes and reads them that way — which turns a Chinese
-# song folder into mojibake in the player's title. Python's zipfile sets the bit for any
+# names, and macOS's bundled Info-ZIP writes and reads them that way — which turns a
+# non-ASCII song folder into mojibake in the player's title. Python's zipfile sets the bit for any
 # non-ASCII name and reads it back correctly. See CLAUDE.md's ZIP filename gotcha.
 python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$SRC" "$WORK/in"
 

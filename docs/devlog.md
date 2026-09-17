@@ -118,7 +118,7 @@ Running log of what was built and what was learned building it.
   panel, the language toggle and the demos link (a `<style>` block, not deleted markup), and
   keeps the drums-derived tempo grid itself, pinned to 136.4 BPM at 290 ms — the grid paints
   onto the canvases and never needed its panel in the layout.
-- That page is Traditional Chinese only, and carries a `youtube-nocookie.com` embed of the
+- That page is Taiwanese Mandarin only, and carries a `youtube-nocookie.com` embed of the
   record at the bottom.
 - `lib/i18n.js`'s `init()` now announces the locale it chose, fixing a regression this work
   introduced on the main player (below).
@@ -184,13 +184,14 @@ Running log of what was built and what was learned building it.
   React mounted. A second entry page that also loads `app.js` made Rollup split it into a shared
   chunk; the hoisted `import` then ran `app.js` first, React mounted against the pre-init
   default, and `init()` — which set the locale but announced nothing — never told it otherwise.
-  The main player rendered `<html lang="en">` with an English tab title and Chinese React
-  controls. Nothing errored, no test failed, and the page being broken was not the page being
+  The main player rendered `<html lang="en">` with an English tab title and Taiwanese Mandarin
+  React controls. Nothing errored, no test failed, and the page being broken was not the page being
   edited. `init()` now dispatches `sansbass:langchange` like `setLocale` does, converging either
   order. This is the same lesson as the fixed-song declaration, learned twice in one session:
   **never let correctness rest on which module a bundler chose to evaluate first.**
 - `[insight]` **The regression was only visible because a check compared two things that should
-  agree.** `<html lang>` said `en` while a React-rendered string was Chinese — either reading
+  agree.** `<html lang>` said `en` while a React-rendered string was Taiwanese Mandarin —
+  either reading
   alone looked fine. Asserting agreement between the legacy and React halves of the same state
   is what caught it; asserting either one would not have.
 - `[note]` **Vite dedupes two stylesheets whose processed output is identical**, so a fresh

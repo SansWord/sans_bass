@@ -34,7 +34,7 @@ html, body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  /* PingFang TC / JhengHei / Noto Sans TC carry the Traditional Chinese glyphs: Segoe UI
+  /* PingFang TC / JhengHei / Noto Sans TC carry the glyphs zh-TW needs: Segoe UI
      has no CJK coverage at all. System fonts only — a web font would be an outbound
      fetch, and this project makes none for the UI. */
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,

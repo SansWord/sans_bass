@@ -274,7 +274,7 @@ depend on its panel being in the layout, which is what lets the panel go while t
 the fallback. This also closed a gap on the main player: **Re-detect tempo** with nothing
 analysed used to put a BPM in the readout and draw nothing under it.
 
-It is Traditional Chinese only — `setLocale('zh-TW', { persist: false })` in its `<head>`,
+It is Taiwanese Mandarin only — `setLocale('zh-TW', { persist: false })` in its `<head>`,
 where `persist: false` is load-bearing: `init()` has already read whatever locale the visitor
 chose on the main player, and writing zh-TW back to storage would change that player's language
 for them. It also carries a `youtube-nocookie.com` embed of the record at the bottom; that host
@@ -451,7 +451,7 @@ out of the project; never commit them.
   React mounted. Adding a second entry page that also loads `app.js` made Rollup split it into
   a shared chunk, the hoisted `import` inverted the order, and `init()` — which set the locale
   but announced nothing — left React mounted against the pre-init default. The main player
-  rendered `<html lang="en">` and an English tab title with Chinese React controls. **Adding an
+  rendered `<html lang="en">` and an English tab title with Taiwanese Mandarin React controls. **Adding an
   entry page can silently re-order an existing page's boot**, so `init()` now dispatches
   `sansbass:langchange` and converges either order (`tests/i18n.test.js` guards it). The durable
   lesson is the same one as the fixed-song declaration: do not let correctness rest on which
@@ -490,7 +490,7 @@ out of the project; never commit them.
 - **`numThreads = 1` is load-bearing, not a performance tweak.** It avoids SharedArrayBuffer,
   which avoids COOP/COEP, which is what makes static hosting (GitHub Pages) possible at all.
 - **ZIP filenames need general purpose bit 11 set.** Without it the spec says names are
-  CP437, and every Chinese song title extracts as mojibake. macOS's bundled Info-ZIP
+  CP437, and every non-ASCII song title extracts as mojibake. macOS's bundled Info-ZIP
   `unzip` ignores the bit anyway and still displays garbage — verify with `ditto -xk`,
   `bsdtar` or Python's `zipfile`, not `unzip -l`.
 - **The overlap window barely matters.** Overlap-add normalises by the weight sum, so the

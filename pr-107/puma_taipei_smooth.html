@@ -35,6 +35,8 @@
   #note-lanes-root,            /* the per-stem note ribbons */
   #chord-stems-ui-root,        /* chord-source picker — configures work that never runs here */
   #tempo-ui-root,              /* BPM/phase/meter controls — decided below, not offered */
+  #lang-toggle,                /* one locale, set in <head>; nothing to switch between */
+  .demos-link,                 /* this page is the destination, not a route into the site */
   .zoom-edit-host,             /* Edit-notes toggle + shared Export/Import edits JSON */
   .zoom-chord-host {           /* capo + chord display/editing in the zoomed pane */
     display: none !important;
@@ -51,12 +53,12 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/puma-CXRSDhX2.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/SiteHeader-BkxN-JUa.js">
+  <script type="module" crossorigin src="./assets/puma-D3cPVfl8.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/SiteHeader-6dTu9Gxf.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/sonify-DfBfGpzd.js">
-  <link rel="modulepreload" crossorigin href="./assets/app-BMHyHJ2c.js">
-  <link rel="stylesheet" crossorigin href="./assets/puma-suOaFPwt.css">
+  <link rel="modulepreload" crossorigin href="./assets/app-C0fLScw_.js">
+  <link rel="stylesheet" crossorigin href="./assets/puma-CsBh-ey2.css">
 </head>
 <!-- ──────────────────────────────────────────────────────────────────────────────────────
      The song, hosted in R2 rather than committed here.
@@ -184,6 +186,33 @@
   </section>
 
   <div id="status-ui-root"></div>
+
+  <!-- The record itself, so the page is a place to hear the song as well as take it apart.
+       Plain markup with Traditional Chinese written inline rather than `data-i18n` keys: the
+       locale is fixed in <head>, so a dictionary entry would be one dictionary entry per
+       locale for a string only ever rendered in one of them. Styling lives in puma.css with
+       the rest of this page's look.
+
+       youtube-nocookie.com, not youtube.com: same player, same video, but it does not set
+       tracking cookies for a visitor who never presses play. `loading="lazy"` keeps it from
+       contacting Google at all until it is scrolled near. This is still a third-party embed
+       and Google sees the visit when it loads — an inbound fetch, like the ONNX runtime and
+       the model, and no audio, filename or song title leaves the machine through it. -->
+  <section class="yt-panel" aria-labelledby="yt-panel-title">
+    <h2 class="yt-panel-title" id="yt-panel-title">原曲 MV</h2>
+    <div class="yt-frame">
+      <iframe src="https://www.youtube-nocookie.com/embed/Wa3n3KuT028"
+        title="原曲 MV"
+        loading="lazy"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen></iframe>
+    </div>
+    <p class="yt-panel-note">
+      <a href="https://www.youtube.com/watch?v=Wa3n3KuT028"
+         target="_blank" rel="noopener">在 YouTube 上開啟 ↗</a>
+    </p>
+  </section>
 </main>
 
 <!-- The visible drop target. #dropzone above explains the two ways in, but it disappears

@@ -35,6 +35,24 @@ init();
 
 <main id="app">
 
+  <!-- Featured song banner. Lives in this page's own markup rather than in the shared React
+       header, which is what keeps it off /demos/ and off the fixed-song page itself without
+       any gating: those pages simply do not contain it.
+
+       The label is a record's title and carries no `data-i18n` — a proper noun is the same in
+       either locale, the same rule that keeps stem ids and filenames untranslated, and the page
+       it points at renders in Taiwanese Mandarin only, so an English label would promise a page
+       that is not in English.
+
+       Relative, never root-relative: a leading slash 404s under a per-PR preview at /pr-<N>/. -->
+  <a class="song-banner" href="./puma_taipei_smooth.html">
+    <span class="song-banner-text">
+      <strong class="song-banner-title">《台北順起來 &#119813;&#119854;&#119853;&#119854;&#119851;&#119838; &#119826;&#119848;&#119848;&#119847;》</strong>
+      <span class="song-banner-sub">六軌分軌播放 · 單獨聽任一樂器、循環練習樂句</span>
+    </span>
+    <span class="song-banner-go" aria-hidden="true">&rarr;</span>
+  </a>
+
   <div id="loading-ui-root"></div>
 
   <section id="player" hidden>

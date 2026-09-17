@@ -261,6 +261,22 @@ the drop affordance, the document drag listeners, and the separation panel — s
 entry point of its own, and its input is a song such a page never has. The fetch is inbound
 only; no audio, filename or title ever leaves the machine.
 
+That page also removes note detection and, with it, note editing and the chord-source picker,
+through a `<style>` block in the page rather than by deleting markup — every React portal host
+has to stay present and spelled as `index.html` spells it or `mountPlayerShell` refuses to
+mount. The **tempo grid deliberately survives**: `tempoGrid`'s detector is drums-only and never
+needed note detection, so a page-local module script calls `tempoGrid.commands.redetect()` and
+then overrides BPM and phase. Painting the grid without notes needed `app.js`'s
+`paintableTempo()` — a ribbon's shared tempo still wins whenever one exists, and `tempoInfo`
+(notes.js's `sansbass:tempo` broadcast, which now carries `on`/`phaseMs`/`beatsPerBar` too) is
+the fallback. This also closed a gap on the main player: **Re-detect tempo** with nothing
+analysed used to put a BPM in the readout and draw nothing under it.
+
+`puma.css` is a deliberate byte-for-byte copy of `styles.css`, loaded only by that page so its
+look can diverge. While the two are identical the build emits one stylesheet both pages link —
+Vite strips comments, the processed output matches, the assets dedupe to one hash. The first
+real edit makes them differ and Vite emits one per page automatically.
+
 `npm run dev` and `npm run build` first generate `demos/index.html` from files directly
 inside `public/demos/`. Vite bundles the generated list as an entry and copies the demo
 exports unchanged. Edit the generator, not the ignored generated HTML. See
@@ -269,6 +285,7 @@ exports unchanged. Edit the generator, not the ignored generated HTML. See
 ```
 index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
 puma_taipei_smooth.html                     fixed-song page — the same player pinned to one hosted zip
+puma.css                           that page's own copy of styles.css, free to diverge
 lib/stems.js                       stem identity — ESM, no window bridge
 lib/unzip.js                       zip reading — ESM, no window bridge
 lib/player-application.js          DOM-independent player commands, snapshots and lifecycle

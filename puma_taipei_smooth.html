@@ -12,7 +12,32 @@
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="theme-color" content="#0d0d10">
-<link rel="stylesheet" href="styles.css">
+<!-- This page's own copy of the player's stylesheet, so its look can diverge without
+     touching the main player. See the header comment in puma.css. -->
+<link rel="stylesheet" href="puma.css">
+<style>
+  /* Notes detection is removed from this page, and with it note editing — a fixed song is for
+     playing along to, and the detect/edit surface is the part that assumes a song you brought
+     yourself. Hidden rather than deleted from the markup: every React portal host has to stay
+     present and spelled as index.html spells it or mountPlayerShell refuses to mount at all
+     (tests/fixed-song.test.js guards that), so the hosts remain and only their pixels go.
+
+     The tempo grid deliberately survives. It is derived from the drums stem through
+     `tempoGrid`, which has its own detector and never needed note detection — see the module
+     script at the end of this file.
+
+     `display: none` and not `visibility`/`opacity`: a hidden control that still occupies
+     layout, or still takes a click, is the failure mode this is avoiding. */
+  #detection-ui-root,          /* Find notes button, spinner, busy-channel status */
+  #notes-vocals,               /* per-channel count / show / 簡譜 / key / interpretation */
+  #notes-bass,
+  #note-lanes-root,            /* the per-stem note ribbons */
+  #chord-stems-ui-root,        /* chord-source picker — configures work that never runs here */
+  .zoom-edit-host,             /* Edit-notes toggle + shared Export/Import edits JSON */
+  .zoom-chord-host {           /* capo + chord display/editing in the zoomed pane */
+    display: none !important;
+  }
+</style>
 <!-- i18n loads in <head>, before anything paints, so `lang` and the tab title are already
      right and the DOM walk can run the moment the body exists. init() is called explicitly
      rather than on load, so tests/i18n.test.js can import lib/i18n.js directly (under
@@ -94,30 +119,11 @@ init({ titleKey: 'puma.title' });
          page's song arrives already separated, so there is nothing for the panel to do. -->
     <div id="separation-ui-root" class="react-portal-host"></div>
 
-    <!-- Detection is button-triggered, never automatic: the first run is ~7 s of CPU on a
-         4-minute track, and unbidden CPU that size is a surprise rather than a convenience.
-         One shared button (#notes-go-all) triggers whichever of vocals/bass still needs
-         analysis — a zip with only one melodic stem detects just that one. The section
-         disables (never hides) when no melodic stem was ever loaded — nothing this button
-         could ever do for this song — but once every present stem IS analysed, the whole
-         section hides outright: a leftover disabled button would itself look stale. While
-         busy, a spinner and a "Detecting: <stems>" hint next to it name whichever stem(s)
-         are still in flight, so one channel finishing first is never mistaken for the whole
-         run being done. Two independent panels — one per note-capable stem — otherwise stay
-         separate: each gated on its own stem's presence, with their own count/toggle/tune/
-         edit-list/list-export controls all hidden until that channel actually has notes (same
-         illusion-of-completion problem, same fix). Edit notes moves to one global toggle
-         beside the zoomed pane's two Notes chips (built by app.js), since only one channel
-         is ever edited at a time; Export/Import edits follow it out there too, next to that
-         toggle, for the same reason — one shared pair combining both stems' edits into one
-         JSON file, rather than a pair per panel (notes.js listens for the
-         'sansbass:exportedits'/'sansbass:importedits' events app.js dispatches, since app.js
-         has no reach into this module's channel state). The tempo grid moves to its own
-         shared section below, hidden the same way until a real detection succeeds, since it
-         is derived from drums and has never depended on which melodic stem is being read. See
-         docs/superpowers/specs/2026-09-01-bass-notes-design.md and lib/notes-edits.js. -->
-    <!-- React-owned (Phase 5b): shared Find-notes button/spinner/busy-channel status. See
-         components/DetectionPanel.jsx's DetectionControls. -->
+    <!-- Detection hosts, kept present and hidden. This page offers no note detection, so the
+         rationale index.html carries here — why detection is button-triggered, how the shared
+         button picks channels, how each panel gates on its own stem — does not apply; see the
+         <style> block at the top for what is hidden and why. The hosts themselves must stay,
+         spelled exactly as index.html spells them, or mountPlayerShell refuses to mount. -->
     <div id="detection-ui-root" class="react-portal-host"></div>
 
     <section id="notes-vocals" class="notes" hidden>
@@ -198,5 +204,62 @@ init({ titleKey: 'puma.title' });
 <script type="module" src="lib/transport-math.js"></script>
 <script type="module" src="app.js"></script>
 <script type="module" src="notes.js"></script>
+<!-- Tempo grid without notes detection.
+     `tempoGrid` runs its own drums-only detector, so the grid does not depend on the note
+     detection this page hides. redetect() is what establishes a confidence, which is what
+     makes the panel and the grid visible at all; the BPM and phase are then overridden.
+
+     This song is detected at 68.2 BPM / 280 ms phase, which is half the rate it is actually
+     felt at. 136.4 is that doubled. The phase was measured rather than guessed: scoring an
+     onset-flux envelope of the drums stem across every candidate phase peaks at 290 ms for
+     68.2 (lift 1.67x over the mean) and 292 ms for 136.4 (lift 1.37x), so 290 ms sits on the
+     optimum at both rates and within one analysis hop (5.8 ms) of the detector's own answer.
+     Doubling the rate keeps the original beats and adds one between each, so the same phase
+     holds.
+
+     A module script here is bundled and hoisted like any other, so this runs after app.js —
+     which is what we want. It waits for the song rather than assuming any ordering. -->
+<script type="module">
+import { playerApplication } from './lib/player-application.js';
+import { tempoGrid } from './notes.js';
+
+const BPM = 136.4;
+const PHASE_MS = 290;
+
+let started = false;
+
+function hasDrums() {
+  const snapshot = playerApplication.getSnapshot();
+  return !!snapshot.song?.tracks?.some((track) => track.stem === 'drums');
+}
+
+function deriveGrid() {
+  const stop = tempoGrid.subscribe((view) => {
+    // Wait for the run to finish AND to have produced a confidence; a failed detection
+    // leaves confidence at 0, and overriding the BPM then would show a grid nothing backs.
+    if (view.redetecting || !view.confidence) return;
+    stop();
+    tempoGrid.commands.setBpm(BPM);
+    tempoGrid.commands.setPhase(PHASE_MS);
+    tempoGrid.commands.setOn(true);
+  });
+  tempoGrid.commands.redetect();
+}
+
+// Declared before check() rather than as a const after it: check() runs once directly below,
+// and a const would still be in its temporal dead zone if subscribe() ever called back
+// synchronously.
+let unsubscribe = null;
+
+function check() {
+  if (started || !hasDrums()) return;
+  started = true;
+  unsubscribe?.();
+  deriveGrid();
+}
+
+unsubscribe = playerApplication.subscribe(check);
+check();   // the song may already be loaded by the time this runs
+</script>
 </body>
 </html>

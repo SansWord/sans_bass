@@ -14,7 +14,7 @@ Running log of what was built and what was learned building it.
 
 | Version | Summary |
 |---------|---------|
-| [v1.36.0](#v1360--fixed-song-page-2026-09-16-2232) | A new `puma_taipei_smooth.html` is the same six-stem player pinned to one hosted stems zip, with no file input, drop target or separation panel, and a download link for the zip in the Load button's slot. The song is declared in markup because Vite merges a page's module scripts into one chunk and hoists their imports — an entry module that ran before `app.js` in dev ran after it once built. `scripts/repack-stems.sh` re-encodes a lossless stems zip for hosting (116 MB → 13 MB). |
+| [v1.36.0](#v1360--fixed-song-page-2026-09-16-2232) | A new `puma_taipei_smooth.html` is the same six-stem player pinned to one hosted stems zip, with no file input, drop target or separation panel, and a download link for the zip in the Load button's slot. The song is declared in markup because Vite merges a page's module scripts into one chunk and hoists their imports — an entry module that ran before `app.js` in dev ran after it once built. `scripts/repack-stems.sh` re-encodes a lossless stems zip for hosting (116 MB → 13 MB). The page drops note detection/editing but keeps the tempo grid, which needed `app.js` to be able to paint a grid from a tempo detected without any note ribbon. |
 | [v1.35.0](#v1350--post-migration-cleanup-2026-09-07) | A comparative review of `main` vs. `before_react_migration` found the migration's real code came out ahead but its own phase-by-phase docs outweighed the code 5:1; extracted a `makeChannel()` pub/sub factory in `lib/player-application.js`, rewrote `CLAUDE.md`'s React sections as steady-state description, and archived the 17 phase-plan docs plus the evidence log. |
 | [React phase 7](#react-phase-7--retire-legacy-ui-and-accept-the-migration-2026-09-07) | Legacy-UI retirement audit found no removable migration adapter anywhere — every phase had already cleaned up after itself. Reworded four `app.js` comments that mislabeled permanent bridges as "temporary," then ran a chained real-build acceptance pass (real cached-model separation, real notes Workers, real song, stretched/backgrounded playback, language switch) closing the last evidence gap. Accepted in production at `abcc94e`, completing the React migration roadmap. |
 | [React phase 6f](#react-phase-6f--capo-control-and-chord-displayediting-2026-09-07) | React now owns the zoomed pane's capo control and chord display/editing, completing Phase 6 in full. `lib/player-application.js` gains a `publishChord`/`subscribeChord` dedup channel mirroring `publishTransport`, and a focus-aware controlled `<input>` for the chord field needed no imperative escape hatch. Accepted in production at `c833b7e`. |
@@ -112,7 +112,15 @@ Running log of what was built and what was learned building it.
   download link for the same zip in the header slot the Load button occupies.
 - `scripts/repack-stems.sh` — re-encodes a lossless stems zip to `.m4a` for hosting and can
   rename the folder inside it. On this song: 116 MB → 13 MB, six 44.1 kHz stereo WAVs → AAC 160k.
-- One new scenario, `FIXED-001`, in `docs/behaviour.md`, and `tests/fixed-song.test.js`.
+- `puma.css` — a deliberate byte-for-byte copy of `styles.css`, loaded only by that page so its
+  look can diverge later without touching the main player.
+- That page drops note detection, note editing and the chord-source picker (a `<style>` block,
+  not deleted markup), and keeps the drums-derived tempo grid, pinned to 136.4 BPM at 290 ms.
+- `app.js` gains `paintableTempo()`: the grid now draws from a tempo detected on its own when no
+  note ribbon exists. `notes.js`'s `sansbass:tempo` broadcast carries `on`/`phaseMs`/
+  `beatsPerBar` to make that possible.
+- One new scenario, `FIXED-001`, in `docs/behaviour.md`, an extended `TEMPO-001`, and
+  `tests/fixed-song.test.js`.
 
 **Key technical learnings:**
 - `[gotcha]` **A page's `<script type="module">` tags are merged into one entry chunk by Vite,
@@ -145,6 +153,28 @@ Running log of what was built and what was learned building it.
 - `[note]` The download progress publishes once per whole percent rather than per chunk; a
   13 MB body arrives in a few hundred chunks, each otherwise re-rendering for an invisible
   change.
+
+- `[insight]` **Tempo detection and tempo *rendering* had different dependencies, and only the
+  rendering one was load-bearing.** `tempoGrid`'s detector is drums-only and needs no note
+  analysis — but all three grid painters read `anyRibbon()`, which exists only after a note
+  channel completes. So a page could detect a tempo, show `136.4 BPM · 42% confidence`, and draw
+  nothing under it. The same gap was already reachable on the main player through **Re-detect
+  tempo** with nothing analysed. Worth separating "what computes this" from "what is allowed to
+  draw it" before assuming a feature is self-contained.
+- `[gotcha]` **A dedup guard that predates a new data source will silently stop firing.**
+  `sansbass:tempo`'s handler only redrew when `bpmValue` or `confidence` moved, which was right
+  while a grid could only come from a ribbon (ribbons arrive via `setNotes`, which repaints
+  itself). The moment the broadcast became a paint source, toggling Show tempo grid published a
+  new reading that never reached a canvas. The symptom was a checkbox that did nothing.
+- `[insight]` **Measure a phase, don't reason about it.** Scoring an onset-flux envelope of the
+  drums stem across every candidate phase peaked at 290 ms for 68.2 BPM (1.67x over the mean)
+  and 292 ms for 136.4 (1.37x) — so 290 ms sits on the optimum at both rates and within one
+  analysis hop of the detector's own 280 ms. A first attempt using the circular mean of picked
+  onsets returned a lock strength of 0.04, i.e. noise; the phase sweep is what the project's own
+  `lib/tempo.js` does, and it is what worked.
+- `[note]` **Vite dedupes two stylesheets whose processed output is identical**, so a fresh
+  byte-for-byte copy leaves one CSS asset that both pages link. It separates by itself on the
+  first real edit. Looks like the copy failed; it has not.
 
 **Process learnings:**
 - `[insight]` The duplicate drums tempo hint seen while checking the dev server was a

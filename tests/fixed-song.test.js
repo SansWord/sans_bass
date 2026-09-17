@@ -35,6 +35,30 @@ describe('fixed-song page markup', () => {
   it('is built as its own Vite entry, or it ships as an unprocessed copy', () => {
     expect(read('vite.config.js')).toContain('puma_taipei_smooth.html');
   });
+
+  // Hidden, never deleted: mountPlayerShell resolves every host up front, so removing the
+  // markup would take the whole page down rather than just the controls.
+  it('hides note detection and editing while keeping their portal hosts', () => {
+    const html = read('puma_taipei_smooth.html');
+    for (const id of ['detection-ui-root', 'notes-vocals', 'notes-bass', 'chord-stems-ui-root']) {
+      expect(html, id).toContain(`id="${id}"`);
+      expect(html, id).toMatch(new RegExp(`#${id}\\b[^{]*\\{[^}]*display:\\s*none`, 's'));
+    }
+  });
+
+  it('uses its own stylesheet so its look can diverge from the player', () => {
+    const html = read('puma_taipei_smooth.html');
+    expect(html).toContain('href="puma.css"');
+    expect(html).not.toContain('href="styles.css"');
+    // A copy, not a re-export: an @import of styles.css would defeat the point.
+    expect(read('puma.css')).not.toMatch(/@import[^;]*styles\.css/);
+  });
+
+  it('keeps the tempo grid by driving tempoGrid, not note detection', () => {
+    const html = read('puma_taipei_smooth.html');
+    expect(html).toContain('tempoGrid.commands.redetect()');
+    expect(html).not.toMatch(/detection\.commands|notes-go-all/);
+  });
 });
 
 describe('fixed song store', () => {

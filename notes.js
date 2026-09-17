@@ -410,9 +410,21 @@ function refreshTempo() {
    * know the current BPM — including a manual override, which is just tempo.bpmValue like
    * any other reading — regardless of which of the many controls changed it. Piggybacking on
    * this function's existing 400ms poll (refreshAll()) is simpler than hooking every mutation
-   * site (the checkbox, the number field, half/double, phase, redetect, import). */
+   * site (the checkbox, the number field, half/double, phase, redetect, import).
+   *
+   * The grid fields ride along for the same reason. app.js paints the beat/bar grid from a
+   * note channel's ribbon, which only exists once that channel has been analysed — so a tempo
+   * detected on its own (Re-detect tempo, or a page that never offers note detection at all)
+   * produced a BPM in the readout and no grid under it. These are everything beatTimes()
+   * needs, so app.js can draw from the tempo alone when there is no ribbon to read. */
   window.dispatchEvent(new CustomEvent('sansbass:tempo', {
-    detail: { bpmValue: tempo.bpmValue, confidence: tempo.confidence },
+    detail: {
+      bpmValue: tempo.bpmValue,
+      confidence: tempo.confidence,
+      on: tempo.on,
+      phaseMs: tempo.phaseMs,
+      beatsPerBar: tempo.beatsPerBar,
+    },
   }));
 }
 

@@ -114,8 +114,10 @@ Running log of what was built and what was learned building it.
   rename the folder inside it. On this song: 116 MB → 13 MB, six 44.1 kHz stereo WAVs → AAC 160k.
 - `puma.css` — a deliberate byte-for-byte copy of `styles.css`, loaded only by that page so its
   look can diverge later without touching the main player.
-- That page drops note detection, note editing and the chord-source picker (a `<style>` block,
-  not deleted markup), and keeps the drums-derived tempo grid, pinned to 136.4 BPM at 290 ms.
+- That page drops note detection, note editing, the chord-source picker and the tempo control
+  panel (a `<style>` block, not deleted markup), and keeps the drums-derived tempo grid itself,
+  pinned to 136.4 BPM at 290 ms — the grid paints onto the canvases and never needed its panel
+  in the layout.
 - `app.js` gains `paintableTempo()`: the grid now draws from a tempo detected on its own when no
   note ribbon exists. `notes.js`'s `sansbass:tempo` broadcast carries `on`/`phaseMs`/
   `beatsPerBar` to make that possible.

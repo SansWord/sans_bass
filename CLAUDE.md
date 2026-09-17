@@ -261,12 +261,13 @@ the drop affordance, the document drag listeners, and the separation panel — s
 entry point of its own, and its input is a song such a page never has. The fetch is inbound
 only; no audio, filename or title ever leaves the machine.
 
-That page also removes note detection and, with it, note editing and the chord-source picker,
-through a `<style>` block in the page rather than by deleting markup — every React portal host
+That page also removes note detection and, with it, note editing, the chord-source picker and
+the tempo control panel, through a `<style>` block in the page rather than by deleting markup — every React portal host
 has to stay present and spelled as `index.html` spells it or `mountPlayerShell` refuses to
 mount. The **tempo grid deliberately survives**: `tempoGrid`'s detector is drums-only and never
 needed note detection, so a page-local module script calls `tempoGrid.commands.redetect()` and
-then overrides BPM and phase. Painting the grid without notes needed `app.js`'s
+then overrides BPM and phase. The grid paints onto the lane and zoom canvases and does not
+depend on its panel being in the layout, which is what lets the panel go while the grid stays. Painting the grid without notes needed `app.js`'s
 `paintableTempo()` — a ribbon's shared tempo still wins whenever one exists, and `tempoInfo`
 (notes.js's `sansbass:tempo` broadcast, which now carries `on`/`phaseMs`/`beatsPerBar` too) is
 the fallback. This also closed a gap on the main player: **Re-detect tempo** with nothing

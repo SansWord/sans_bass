@@ -38,9 +38,10 @@ describe('fixed-song page markup', () => {
 
   // Hidden, never deleted: mountPlayerShell resolves every host up front, so removing the
   // markup would take the whole page down rather than just the controls.
-  it('hides note detection and editing while keeping their portal hosts', () => {
+  it('hides note detection, editing and the tempo controls, keeping their portal hosts', () => {
     const html = read('puma_taipei_smooth.html');
-    for (const id of ['detection-ui-root', 'notes-vocals', 'notes-bass', 'chord-stems-ui-root']) {
+    for (const id of ['detection-ui-root', 'notes-vocals', 'notes-bass', 'chord-stems-ui-root',
+      'tempo-ui-root']) {
       expect(html, id).toContain(`id="${id}"`);
       expect(html, id).toMatch(new RegExp(`#${id}\\b[^{]*\\{[^}]*display:\\s*none`, 's'));
     }

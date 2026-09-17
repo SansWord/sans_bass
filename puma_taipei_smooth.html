@@ -22,9 +22,11 @@
      present and spelled as index.html spells it or mountPlayerShell refuses to mount at all
      (tests/fixed-song.test.js guards that), so the hosts remain and only their pixels go.
 
-     The tempo grid deliberately survives. It is derived from the drums stem through
-     `tempoGrid`, which has its own detector and never needed note detection — see the module
-     script at the end of this file.
+     The tempo grid itself deliberately survives — only its control panel goes. The BPM, phase
+     and meter are decided for this song by the module script at the end of this file, so the
+     panel would only offer ways to undo that. The grid is painted onto the lane and zoom
+     canvases and does not depend on the panel being in the layout; `setOn(true)` in that
+     script replaces the Show-tempo-grid checkbox this hides.
 
      `display: none` and not `visibility`/`opacity`: a hidden control that still occupies
      layout, or still takes a click, is the failure mode this is avoiding. */
@@ -33,6 +35,7 @@
   #notes-bass,
   #note-lanes-root,            /* the per-stem note ribbons */
   #chord-stems-ui-root,        /* chord-source picker — configures work that never runs here */
+  #tempo-ui-root,              /* BPM/phase/meter controls — decided below, not offered */
   .zoom-edit-host,             /* Edit-notes toggle + shared Export/Import edits JSON */
   .zoom-chord-host {           /* capo + chord display/editing in the zoomed pane */
     display: none !important;

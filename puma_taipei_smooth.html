@@ -6,12 +6,13 @@
 <title>《台北順起來 𝙁𝙪𝙩𝙪𝙧𝙚 𝙎𝙤𝙤𝙣》— stem practice</title>
 <!-- Icons. Relative paths, never root-relative: the per-PR preview at /pr-<N>/ would 404 on
      a leading slash. apple-touch-icon must be a PNG — iOS ignores an SVG here — and it is
-     180x180 full bleed because iOS applies its own corner mask. theme-color stops Safari
-     painting default light chrome above a near-black page. -->
+     180x180 full bleed because iOS applies its own corner mask. theme-color carries this
+     page's own cream (--bg in puma.css) up into Safari's chrome, so the bar above the page
+     is the same surface as the page rather than the browser's default. -->
 <link rel="icon" href="./assets/icon-CNNK3h42.svg" type="image/svg+xml">
 <link rel="icon" href="./assets/favicon-32-D9nVlJ2I.png" sizes="32x32">
 <link rel="apple-touch-icon" href="./assets/apple-touch-icon-BWNmolE4.png">
-<meta name="theme-color" content="#0d0d10">
+<meta name="theme-color" content="#fff8f4">
 <!-- This page's own copy of the player's stylesheet, so its look can diverge without
      touching the main player. See the header comment in puma.css. -->
 <style>
@@ -53,12 +54,12 @@
      keep it an unambiguous absolute URL. -->
 <script data-goatcounter="https://sansword.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/puma-CkLS_sm-.js"></script>
+  <script type="module" crossorigin src="./assets/puma-Dk3RU1_Y.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/SiteHeader-49Enga8f.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/sonify-DfBfGpzd.js">
-  <link rel="modulepreload" crossorigin href="./assets/app-B_Iasnfa.js">
-  <link rel="stylesheet" crossorigin href="./assets/puma-CsBh-ey2.css">
+  <link rel="modulepreload" crossorigin href="./assets/app-D31IB2Lu.js">
+  <link rel="stylesheet" crossorigin href="./assets/puma-DzGJN8-O.css">
 </head>
 <!-- ──────────────────────────────────────────────────────────────────────────────────────
      The song, hosted in R2 rather than committed here.
@@ -91,6 +92,19 @@
        present and spelled exactly as index.html spells it, including #separation-ui-root,
        which stays empty here: mountPlayerShell refuses to mount at all if one is missing.
        tests/fixed-song.test.js fails the build if the two pages' hosts drift apart. -->
+
+  <!-- Out to the campaign this record belongs to, in the same top-of-main slot and with the
+       same .song-banner classes index.html's banner uses — that page's banner points here,
+       this one points on. External, so it opens in a new tab (the song is still loaded and
+       possibly playing behind it) and carries rel="noopener"; the glyph is the outbound
+       arrow rather than index.html's rightward one, for the same reason the YouTube link at
+       the foot of this page uses it. -->
+  <a class="song-banner" href="https://puma.taipei/songs" target="_blank" rel="noopener">
+    <span class="song-banner-text">
+      <strong class="song-banner-title">市長，我給你聽好的！「台北順起來」市民歌曲募集計畫</strong>
+    </span>
+    <span class="song-banner-go" aria-hidden="true">&#8599;</span>
+  </a>
 
   <div id="loading-ui-root"></div>
 

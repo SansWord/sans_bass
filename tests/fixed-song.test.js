@@ -55,6 +55,29 @@ describe('fixed-song page markup', () => {
     expect(read('puma.css')).not.toMatch(/@import[^;]*styles\.css/);
   });
 
+  it('hides the language toggle and the demos link', () => {
+    const html = read('puma_taipei_smooth.html');
+    expect(html).toMatch(/#lang-toggle\b[^{]*\{[^}]*display:\s*none/s);
+    expect(html).toMatch(/\.demos-link\b[^{]*\{[^}]*display:\s*none/s);
+  });
+
+  // persist: false is the point. init() has already read whatever locale the visitor chose on
+  // the main player, and persisting zh-TW here would change that player's language for them.
+  it('locks the locale to zh-TW without writing it to storage', () => {
+    const html = read('puma_taipei_smooth.html');
+    expect(html).toMatch(/setLocale\(\s*'zh-TW'\s*,\s*\{\s*persist:\s*false\s*\}\s*\)/);
+    expect(html).not.toMatch(/setLocale\(\s*'zh-CN'|zh-Hans/);
+  });
+
+  it('embeds the record through the no-cookie host and never autoplays', () => {
+    const html = read('puma_taipei_smooth.html');
+    expect(html).toContain('youtube-nocookie.com/embed/');
+    expect(html).toContain('loading="lazy"');
+    expect(html).not.toMatch(/autoplay=1|[?&]autoplay/);
+    // The reserved 16:9 box is what stops the lazy frame shifting the page when it arrives.
+    expect(read('puma.css')).toMatch(/\.yt-frame\b[^}]*aspect-ratio:\s*16\s*\/\s*9/s);
+  });
+
   it('keeps the tempo grid by driving tempoGrid, not note detection', () => {
     const html = read('puma_taipei_smooth.html');
     expect(html).toContain('tempoGrid.commands.redetect()');

@@ -218,3 +218,24 @@ test('i18n: translating labels never renames a stem', () => {
 
   I18N.setLocale('en', { persist: false });
 });
+
+test('init announces the locale it chose, so late subscribers converge', () => {
+  // Regression guard. Whether init() runs before or after the code that mounts subscribers is
+  // a bundler's decision — a page's module scripts merge into one entry chunk and static
+  // imports hoist — and a subscriber that reads getLocale() once at mount (React's
+  // useSyncExternalStore does exactly that) would otherwise keep the pre-init default forever.
+  // The visible symptom was <html lang> and the tab title in one language while every
+  // React-rendered control stayed in the other. See the dispatch comment in lib/i18n.js.
+  const seen = [];
+  const onChange = (e) => seen.push(e.detail.locale);
+  window.addEventListener('sansbass:langchange', onChange);
+  try {
+    I18N.init();
+    assertEq(seen.length, 1, 'init() dispatches exactly one sansbass:langchange');
+    assertEq(seen[0], I18N.getLocale(), 'the announced locale is the one init() settled on');
+  } finally {
+    window.removeEventListener('sansbass:langchange', onChange);
+  }
+
+  I18N.setLocale('en', { persist: false });
+});

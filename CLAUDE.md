@@ -261,8 +261,9 @@ the drop affordance, the document drag listeners, and the separation panel — s
 entry point of its own, and its input is a song such a page never has. The fetch is inbound
 only; no audio, filename or title ever leaves the machine.
 
-That page also removes note detection and, with it, note editing, the chord-source picker and
-the tempo control panel, through a `<style>` block in the page rather than by deleting markup — every React portal host
+That page also removes note detection and, with it, note editing, the chord-source picker, the
+tempo control panel, the language toggle and the demos link, through a `<style>` block in the
+page rather than by deleting markup — every React portal host
 has to stay present and spelled as `index.html` spells it or `mountPlayerShell` refuses to
 mount. The **tempo grid deliberately survives**: `tempoGrid`'s detector is drums-only and never
 needed note detection, so a page-local module script calls `tempoGrid.commands.redetect()` and
@@ -272,6 +273,13 @@ depend on its panel being in the layout, which is what lets the panel go while t
 (notes.js's `sansbass:tempo` broadcast, which now carries `on`/`phaseMs`/`beatsPerBar` too) is
 the fallback. This also closed a gap on the main player: **Re-detect tempo** with nothing
 analysed used to put a BPM in the readout and draw nothing under it.
+
+It is Traditional Chinese only — `setLocale('zh-TW', { persist: false })` in its `<head>`,
+where `persist: false` is load-bearing: `init()` has already read whatever locale the visitor
+chose on the main player, and writing zh-TW back to storage would change that player's language
+for them. It also carries a `youtube-nocookie.com` embed of the record at the bottom; that host
+sets no tracking cookies for a visitor who never presses play, and `loading="lazy"` keeps it
+from contacting Google until it is scrolled near.
 
 `puma.css` is a deliberate byte-for-byte copy of `styles.css`, loaded only by that page so its
 look can diverge. While the two are identical the build emits one stylesheet both pages link —
@@ -436,6 +444,18 @@ out of the project; never commit them.
   The same hoisting already applies to `index.html`'s inline `init()` script, harmlessly.
   **Verify an entry-page change against `npm run build` plus `npm run preview`, not only
   `npm run dev`** — this class of bug is invisible in dev by construction.
+
+  It bit a second time, from the other direction, and on a page that was not even being
+  changed. While `index.html` was the only entry using `app.js`, Rollup inlined `app.js` into
+  the entry chunk, so the `<head>` `init()` call ran before it and the locale was set before
+  React mounted. Adding a second entry page that also loads `app.js` made Rollup split it into
+  a shared chunk, the hoisted `import` inverted the order, and `init()` — which set the locale
+  but announced nothing — left React mounted against the pre-init default. The main player
+  rendered `<html lang="en">` and an English tab title with Chinese React controls. **Adding an
+  entry page can silently re-order an existing page's boot**, so `init()` now dispatches
+  `sansbass:langchange` and converges either order (`tests/i18n.test.js` guards it). The durable
+  lesson is the same one as the fixed-song declaration: do not let correctness rest on which
+  module a bundler chose to evaluate first.
 - **Cache-busting is now Vite's content hash, not a hand-written `?v=`.** GitHub Pages still
   pins everything to `max-age=600` with no way to override it, but every asset Vite's build
   touches — every entry HTML's `<script src>`/`<link href>`/`<img src>`, and every

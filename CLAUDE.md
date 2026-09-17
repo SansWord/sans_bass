@@ -249,6 +249,18 @@ two notes sonifiers. The lowercase `window.sansBass` bridge remains only for nam
 notes/separation service operations and browser-harness application/shell
 lifecycle checks; it is migration debt, not the public ESM API.
 
+`puma_taipei_smooth.html` is a **fixed-song page**: the same player, pinned to one stems zip hosted
+off-repo, with no way to load another. It declares its song in markup —
+`<body data-fixed-song="https://…/stems.zip">` — and `lib/fixed-song.js` resolves that
+attribute, downloads the zip with progress, and hands it to the ordinary `load` command as a
+`File`, so nothing downstream of the handoff knows it did not come from a file picker. That
+module owns its own `subscribe`/`getSnapshot`/`commands` state machine, the same shape
+`separation`, `detection` and `tempoGrid` use, and `components/FixedSongPanel.jsx` renders it.
+`PlayerShell.jsx` reads `isFixedSong()` once per render and, when true, drops the file input,
+the drop affordance, the document drag listeners, and the separation panel — separation is an
+entry point of its own, and its input is a song such a page never has. The fetch is inbound
+only; no audio, filename or title ever leaves the machine.
+
 `npm run dev` and `npm run build` first generate `demos/index.html` from files directly
 inside `public/demos/`. Vite bundles the generated list as an entry and copies the demo
 exports unchanged. Edit the generator, not the ignored generated HTML. See
@@ -256,11 +268,14 @@ exports unchanged. Edit the generator, not the ignored generated HTML. See
 
 ```
 index.html  styles.css  app.js     the player (app.js: ESM, real import/export)
+puma_taipei_smooth.html                     fixed-song page — the same player pinned to one hosted zip
 lib/stems.js                       stem identity — ESM, no window bridge
 lib/unzip.js                       zip reading — ESM, no window bridge
 lib/player-application.js          DOM-independent player commands, snapshots and lifecycle
+lib/fixed-song.js                  one hosted song a page pins itself to — ESM, no window bridge
 lib/i18n.js                        zh-TW/en dictionary + runtime — ESM, no window bridge
 components/{SiteHeader,DemoHeader,PlayerShell}.jsx  React headers + player shell/controls
+components/FixedSongPanel.jsx      React fixed-song download progress + header download link
 components/SeparationPanel.jsx     React separation-panel presentation
 components/DetectionPanel.jsx      React detection-controls presentation
 components/InterpretationPanel.jsx React interpretation-controls presentation
@@ -301,6 +316,7 @@ vitest.config.js                   unit test config — three tiers (node/jsdom/
                                    see the comment at its top for which tier a file needs
 dist/                               build output (git-ignored; CI builds it, never committed)
 scripts/rip-cd.sh                  CD → rips/*.flac
+scripts/repack-stems.sh            lossless stems zip → small .m4a zip for hosting
 scripts/prep-stems.sh              one song → stems/<song>/*.m4a
 rips/    <track>.flac, <album>/<track>.flac      ~560 MB, local only
 stems/   <album>/<track>/{vocals,guitar,bass,drums,piano,other}.m4a
@@ -390,6 +406,18 @@ out of the project; never commit them.
   at double volume. Covered by a test in `tests/stems.test.js`. In-browser separation avoids
   the question by dropping the original: `loadSeparated` builds lanes from the six stems
   only, which is also why `__hasStems` is false there and every lane starts unmuted.
+- **A page's module script tags are merged into one entry chunk, and static imports hoist —
+  so tag order is not execution order in a build.** `puma_taipei_smooth.html` listed its own tiny entry
+  module before `app.js` to declare the fixed song first, which worked perfectly under
+  `npm run dev` (separate modules, fetched and run in order) and inverted the moment it was
+  built: Rollup emitted one chunk whose `import "./app-<hash>.js"` hoisted above the
+  `configure(...)` call, app.js mounted the React shell first, and the built page painted the
+  file input and drop target the whole page exists to not have. Nothing failed — it just
+  rendered the ordinary player. Anything that must be true before the first render belongs in
+  markup, where there is no order to get wrong; that is why the song is a `<body>` attribute.
+  The same hoisting already applies to `index.html`'s inline `init()` script, harmlessly.
+  **Verify an entry-page change against `npm run build` plus `npm run preview`, not only
+  `npm run dev`** — this class of bug is invisible in dev by construction.
 - **Cache-busting is now Vite's content hash, not a hand-written `?v=`.** GitHub Pages still
   pins everything to `max-age=600` with no way to override it, but every asset Vite's build
   touches — every entry HTML's `<script src>`/`<link href>`/`<img src>`, and every

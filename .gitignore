@@ -32,6 +32,11 @@ demos/index.html
 # testing data that should not be upload
 examples/
 
+# Source audio for the fixed-song page. The lossless zip is 116 MB (over GitHub's 100 MB
+# per-file limit on its own), and the repacked one belongs in the R2 bucket puma-stem.js
+# points at, not in the repo — same rule as rips/ and stems/.
+puma_song/
+
 # Vitest browser-mode failure screenshots/attachments — regenerated per run, never committed
 .vitest-attachments/
 tests/__screenshots__/

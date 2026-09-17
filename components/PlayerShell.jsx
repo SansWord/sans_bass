@@ -2,12 +2,14 @@ import { StrictMode, useEffect, useLayoutEffect, useRef, useState, useSyncExtern
 import { createPortal, flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { AUDIO_RE, isZipFile as isZip } from '../lib/stems.js';
+import { isFixedSong } from '../lib/fixed-song.js';
 import { t } from '../lib/i18n.js';
 import { isHandheld } from '../lib/platform.js';
 import { ignoreReportedError } from '../lib/player-application.js';
 import { formatClockTime, formatClockTimeCentiseconds } from '../lib/time.js';
 import { ChordStemsPanel } from './ChordStemsPanel.jsx';
 import { DetectionControls, NotesChannelPanel } from './DetectionPanel.jsx';
+import { FixedSongDownload, FixedSongPanel } from './FixedSongPanel.jsx';
 import { EditListPanel, ListExportPanel } from './EditorPanel.jsx';
 import { InterpretationPanel } from './InterpretationPanel.jsx';
 import { SeparationPanel } from './SeparationPanel.jsx';
@@ -551,12 +553,20 @@ function PlayerShell({ application, hosts }) {
     application.getSnapshot,
     application.getSnapshot,
   );
+  // A fixed-song page has no way in: the song is the page's, not the viewer's. Read here
+  // rather than subscribed because configure() runs before this shell ever mounts and the
+  // answer never changes afterwards. Dropping the file input, the drop affordance, the
+  // document drag listeners and the separation panel together is what makes that true —
+  // separation is an entry point of its own, and its input is a song this page never has.
+  const fixed = isFixedSong();
   return <>
     {createPortal(<SiteHeaderContent page="player" locale={locale}
-      loadControl={<FileLoadControl application={application} />} />, hosts.header)}
-    {createPortal(<DropAffordance song={snapshot.song} />, hosts.loading)}
+      loadControl={fixed ? <FixedSongDownload />
+        : <FileLoadControl application={application} />} />, hosts.header)}
+    {createPortal(fixed ? <FixedSongPanel song={snapshot.song} />
+      : <DropAffordance song={snapshot.song} />, hosts.loading)}
     {createPortal(<Status status={snapshot.status} />, hosts.status)}
-    {createPortal(<DragOverlay application={application} />, hosts.overlay)}
+    {!fixed && createPortal(<DragOverlay application={application} />, hosts.overlay)}
     {createPortal(<PlaybackButton application={application}
       transport={snapshot.transport} />, hosts.playbackButton)}
     {createPortal(<PlaybackSpeed application={application}
@@ -568,7 +578,7 @@ function PlayerShell({ application, hosts }) {
     {createPortal(<ModeRoutingControls application={application}
       routing={snapshot.routing} song={snapshot.song} />, hosts.modeRouting)}
     <PrimarySeekControls application={application} hosts={hosts} />
-    {createPortal(<SeparationPanel />, hosts.separation)}
+    {!fixed && createPortal(<SeparationPanel />, hosts.separation)}
     {createPortal(<DetectionControls />, hosts.detection)}
     {createPortal(<NotesChannelPanel stem="vocals" />, hosts.notesMetaVocals)}
     {createPortal(<NotesChannelPanel stem="bass" />, hosts.notesMetaBass)}

@@ -18,6 +18,7 @@ const NODE_TESTS = [
   'jianpu', 'platform', 'notes-edits', 'time', 'chroma', 'chords',
   'coverage-map', 'audio-fixtures', 'routing-state', 'loop-state', 'detection-state',
   'separation-state',
+  'fixed-song',
   'editor-state',
   'jianpu-html',
   'player-application',
